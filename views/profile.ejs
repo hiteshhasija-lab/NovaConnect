@@ -1,0 +1,61 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4" style="max-width: 640px;">
+  <h4 class="section-title"><i class="bi bi-person-circle me-2"></i>My Profile</h4>
+
+  <% if (success) { %><div class="alert alert-success py-2 small"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-danger py-2 small"><%= error %></div><% } %>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <span class="user-avatar" style="width:3rem;height:3rem;font-size:1.1rem;background:<%= h.avatarColor(user.id) %>"><%= h.initials(user.full_name) %></span>
+        <div>
+          <div class="fw-semibold"><%= user.full_name %></div>
+          <div class="text-muted small">@<%= user.username %> · <%= user.role === 'admin' ? 'Admin' : 'Member' %></div>
+        </div>
+      </div>
+      <form method="POST" action="/profile">
+        <div class="mb-3">
+          <label class="form-label">Full name</label>
+          <input type="text" name="full_name" class="form-control" value="<%= user.full_name %>" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" value="<%= user.email || '' %>">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Job title</label>
+          <input type="text" name="title" class="form-control" value="<%= user.title || '' %>">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Status message</label>
+          <input type="text" name="status_message" class="form-control" maxlength="100" placeholder="e.g. In a meeting until 3pm" value="<%= user.status_message || '' %>">
+        </div>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card" id="password">
+    <div class="card-body">
+      <h6 class="mb-3">Change password</h6>
+      <form method="POST" action="/profile/password">
+        <div class="mb-3">
+          <label class="form-label">Current password</label>
+          <input type="password" name="current_password" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">New password</label>
+          <input type="password" name="new_password" class="form-control" minlength="8" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Confirm new password</label>
+          <input type="password" name="confirm_password" class="form-control" minlength="8" required>
+        </div>
+        <button type="submit" class="btn btn-outline-primary">Change password</button>
+      </form>
+    </div>
+  </div>
+</div>
+<%- include('partials/foot') %>

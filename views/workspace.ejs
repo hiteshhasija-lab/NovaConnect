@@ -1,0 +1,303 @@
+<%- include('partials/head') %>
+<div class="workspace">
+  <div class="rail">
+    <div class="rail-top">
+      <button class="rail-btn" data-view="activity" id="railActivity" title="Activity">
+        <i class="bi bi-bell-fill"></i><span>Activity</span>
+        <span class="rail-badge d-none" id="activityBadge">0</span>
+      </button>
+      <button class="rail-btn" data-view="chat" id="railChat" title="Chat">
+        <i class="bi bi-chat-dots-fill"></i><span>Chat</span>
+      </button>
+      <button class="rail-btn active" data-view="teams" id="railTeams" title="Teams">
+        <i class="bi bi-people-fill"></i><span>Teams</span>
+      </button>
+      <button class="rail-btn" data-view="calendar" id="railCalendar" title="Calendar">
+        <i class="bi bi-calendar3"></i><span>Calendar</span>
+      </button>
+      <button class="rail-btn" data-view="ai" id="railAI" title="Gemini">
+        <%- include('partials/gemini-mark') %><span>Gemini</span>
+      </button>
+    </div>
+    <div class="rail-bottom">
+      <div class="dropdown dropup">
+        <button class="rail-avatar-btn" data-bs-toggle="dropdown" aria-expanded="false" title="<%= currentUser.full_name %>">
+          <span class="user-avatar" style="background:<%= h.avatarColor(currentUser.id) %>"><%= h.initials(currentUser.full_name) %></span>
+          <span class="presence-dot presence-online" id="myPresenceDot"></span>
+        </button>
+        <ul class="dropdown-menu user-menu">
+          <li><h6 class="dropdown-header"><%= currentUser.full_name %></h6></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online"></span> Online</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away"></span> Away</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy"></span> Busy</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd"></span> Do not disturb</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="/profile"><i class="bi bi-person me-2"></i>My Profile</a></li>
+          <% if (currentUser.role === 'admin') { %><li><a class="dropdown-item" href="/admin/users"><i class="bi bi-people me-2"></i>Manage Users</a></li><% } %>
+          <li><a class="dropdown-item" href="#" id="toggleThemeBtn"><i class="bi bi-moon-stars me-2"></i>Toggle theme</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><form action="/logout" method="POST"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></form></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span id="sidebarTitle">Teams</span>
+      <div class="sidebar-actions" id="sidebarActions"></div>
+    </div>
+    <div class="sidebar-body" id="sidebarBody"></div>
+  </div>
+
+  <div class="main-pane">
+    <div class="main-header" id="mainHeader"></div>
+    <div class="message-list" id="messageList"></div>
+    <div class="typing-indicator d-none" id="typingIndicator"></div>
+    <div class="composer d-none" id="composer">
+      <div class="composer-file-preview d-none" id="composerFilePreview"></div>
+      <div class="composer-row">
+        <label class="composer-attach-btn" title="Attach a file">
+          <i class="bi bi-paperclip"></i>
+          <input type="file" id="composerFileInput" hidden>
+        </label>
+        <button type="button" class="composer-attach-btn" id="composerWandBtn" title="Rewrite with Gemini">
+          <i class="bi bi-magic"></i>
+        </button>
+        <textarea id="composerInput" class="composer-input" rows="1" placeholder="Type a message… (@ to mention)"></textarea>
+        <button class="composer-send-btn" id="composerSendBtn" title="Send"><i class="bi bi-send-fill"></i></button>
+      </div>
+      <div class="mention-popover d-none" id="mentionPopover"></div>
+      <div class="rewrite-popover d-none" id="rewritePopover"></div>
+    </div>
+
+    <div class="ai-pane d-none" id="aiPane">
+      <div class="main-header">
+        <div class="main-header-title"><%- include('partials/gemini-mark') %>Gemini<span class="main-header-sub">Private assistant — only you can see this</span></div>
+        <button class="btn btn-sm btn-outline-secondary" id="aiNewChatBtn"><i class="bi bi-plus-lg me-1"></i>New chat</button>
+      </div>
+      <div class="ai-message-list" id="aiMessageList"></div>
+      <div class="composer" id="aiComposer">
+        <div class="composer-row">
+          <textarea id="aiComposerInput" class="composer-input" rows="1" placeholder="Message Gemini…"></textarea>
+          <button class="composer-send-btn" id="aiSendBtn" title="Send"><i class="bi bi-send-fill"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="calendar-pane d-none" id="calendarPane">
+      <div class="main-header">
+        <div class="calendar-nav">
+          <button type="button" class="btn-plain" id="calPrevBtn" title="Previous month"><i class="bi bi-chevron-left"></i></button>
+          <span class="calendar-month-label" id="calMonthLabel"></span>
+          <button type="button" class="btn-plain" id="calNextBtn" title="Next month"><i class="bi bi-chevron-right"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="calTodayBtn">Today</button>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary" id="calNewEventBtn"><i class="bi bi-plus-lg me-1"></i>New event</button>
+      </div>
+      <div class="calendar-weekdays">
+        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+  </div>
+
+  <div class="thread-panel d-none" id="threadPanel">
+    <div class="thread-header">
+      <span><i class="bi bi-chat-square-text me-2"></i>Thread</span>
+      <button class="btn-plain" id="closeThreadBtn"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="thread-parent" id="threadParent"></div>
+    <div class="thread-replies" id="threadReplies"></div>
+    <div class="composer" id="threadComposer">
+      <div class="composer-row">
+        <textarea id="threadComposerInput" class="composer-input" rows="1" placeholder="Reply…"></textarea>
+        <button class="composer-send-btn" id="threadSendBtn" title="Send"><i class="bi bi-send-fill"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New / Join Team modal -->
+<div class="modal fade" id="teamsModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-people-fill me-2"></i>Teams</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs mb-3" role="tablist">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabJoin">Join a team</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCreate">Create a team</button></li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="tabJoin">
+            <div id="browseTeamsList" class="list-group"></div>
+          </div>
+          <div class="tab-pane fade" id="tabCreate">
+            <form id="createTeamForm">
+              <div class="mb-3">
+                <label class="form-label">Team name</label>
+                <input type="text" name="name" class="form-control" required maxlength="60">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea name="description" class="form-control" rows="2" maxlength="200"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary w-100">Create team</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Channel modal -->
+<div class="modal fade" id="channelModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-hash me-2"></i>New Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="createChannelForm">
+          <div class="mb-3">
+            <label class="form-label">Channel name</label>
+            <input type="text" name="name" class="form-control" required maxlength="40" placeholder="e.g. project-phoenix">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <input type="text" name="description" class="form-control" maxlength="200">
+          </div>
+          <div class="form-check mb-3">
+            <input type="checkbox" name="is_private" class="form-check-input" id="channelPrivateCheck">
+            <label class="form-check-label" for="channelPrivateCheck">Private channel</label>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Create channel</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Chat modal -->
+<div class="modal fade" id="newChatModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-chat-dots-fill me-2"></i>New Chat</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="newChatSearch" class="form-control mb-2" placeholder="Search people by name or username…">
+        <div id="newChatSelected" class="d-flex flex-wrap gap-1 mb-2"></div>
+        <div id="newChatResults" class="list-group"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary w-100" id="startChatBtn" disabled>Start chat</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Team Members modal -->
+<div class="modal fade" id="membersModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-people me-2"></i>Team Members</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addMemberForm" class="d-flex gap-2 mb-3">
+          <input type="text" name="username" class="form-control" placeholder="Add by username">
+          <button type="submit" class="btn btn-outline-primary text-nowrap">Add</button>
+        </form>
+        <div id="membersList" class="list-group"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New / Edit Event modal -->
+<div class="modal fade" id="eventModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="eventModalTitle"><i class="bi bi-calendar-plus me-2"></i>New Event</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="eventForm">
+          <input type="hidden" name="id">
+          <div class="mb-3">
+            <label class="form-label">Team</label>
+            <select name="team_id" class="form-select" id="eventTeamSelect" required></select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Title</label>
+            <input type="text" name="title" class="form-control" required maxlength="120">
+          </div>
+          <div class="form-check mb-3">
+            <input type="checkbox" name="all_day" class="form-check-input" id="eventAllDayCheck">
+            <label class="form-check-label" for="eventAllDayCheck">All day</label>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Starts</label>
+              <input type="datetime-local" name="start_at" class="form-control" id="eventStartInput" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Ends</label>
+              <input type="datetime-local" name="end_at" class="form-control" id="eventEndInput" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Location</label>
+            <input type="text" name="location" class="form-control" maxlength="120" placeholder="Optional">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="2" maxlength="500"></textarea>
+          </div>
+          <div id="eventFormError" class="alert alert-danger py-2 small d-none"></div>
+          <div class="d-flex justify-content-between">
+            <button type="button" class="btn btn-outline-danger d-none" id="eventDeleteBtn"><i class="bi bi-trash me-1"></i>Delete</button>
+            <button type="submit" class="btn btn-primary ms-auto">Save event</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Day Events modal (overflow list when a day has more events than fit in its cell) -->
+<div class="modal fade" id="dayEventsModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dayEventsModalTitle"><i class="bi bi-calendar3 me-2"></i>Events</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="dayEventsList" class="list-group"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__NC__ = {
+    currentUser: { id: <%= currentUser.id %>, full_name: <%- JSON.stringify(currentUser.full_name) %>, role: <%- JSON.stringify(currentUser.role) %> },
+    teams: <%- JSON.stringify(teams) %>,
+    conversations: <%- JSON.stringify(conversations) %>,
+    active: <%- JSON.stringify(active) %>,
+    unreadCount: <%= unreadCount %>
+  };
+</script>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<script src="/js/workspace.js?v=<%= h.jsVersion() %>"></script>
+<%- include('partials/foot') %>

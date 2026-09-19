@@ -1,0 +1,42 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4">
+  <h4 class="section-title"><i class="bi bi-people me-2"></i>Manage Users</h4>
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead>
+          <tr><th>Name</th><th>Username</th><th>Email</th><th>Title</th><th>Role</th><th>Status</th><th>Active</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% users.forEach(function(u) { %>
+          <tr>
+            <td><span class="user-avatar me-2" style="background:<%= h.avatarColor(u.id) %>"><%= h.initials(u.full_name) %></span><%= u.full_name %></td>
+            <td>@<%= u.username %></td>
+            <td><%= u.email || '—' %></td>
+            <td><%= u.title || '—' %></td>
+            <td>
+              <form method="POST" action="/admin/users/<%= u.id %>/role" class="d-inline">
+                <select name="role" class="form-select form-select-sm d-inline-block" style="width:auto" onchange="this.form.submit()" <%= u.id === currentUser.id ? 'disabled' : '' %>>
+                  <option value="member" <%= u.role === 'member' ? 'selected' : '' %>>Member</option>
+                  <option value="admin" <%= u.role === 'admin' ? 'selected' : '' %>>Admin</option>
+                </select>
+              </form>
+            </td>
+            <td><span class="badge" style="background:<%= h.STATUS_COLORS[u.status] || '#8a92a6' %>"><%= h.STATUS_LABELS[u.status] || u.status %></span></td>
+            <td><%= u.active ? 'Yes' : 'No' %></td>
+            <td>
+              <form method="POST" action="/admin/users/<%= u.id %>/toggle-active">
+                <button type="submit" class="btn btn-sm <%= u.active ? 'btn-outline-danger' : 'btn-outline-success' %>" <%= u.id === currentUser.id ? 'disabled' : '' %>>
+                  <%= u.active ? 'Deactivate' : 'Activate' %>
+                </button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('partials/foot') %>
