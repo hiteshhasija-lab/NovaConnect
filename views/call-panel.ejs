@@ -1,0 +1,19 @@
+<link rel="stylesheet" href="/css/calls.css?v=1">
+<section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
+  <div class="nc-call-kind" id="callKind"></div>
+  <h2 id="callName"></h2>
+  <p class="nc-call-status" id="callStatus" role="status" aria-live="polite"></p>
+  <div class="nc-call-media">
+    <video id="callRemote" autoplay playsinline aria-label="Other participant"></video>
+    <video id="callLocal" autoplay playsinline muted aria-label="Your camera preview"></video>
+  </div>
+  <div class="nc-call-controls">
+    <button type="button" id="callAccept" class="btn btn-success">Accept</button>
+    <button type="button" id="callDecline" class="btn btn-danger">Decline</button>
+    <button type="button" id="callMute" class="btn btn-outline-light" aria-pressed="false">Mute</button>
+    <button type="button" id="callCamera" class="btn btn-outline-light" aria-pressed="false">Turn camera off</button>
+    <button type="button" id="callStopSharing" class="btn btn-outline-light" hidden>Stop sharing</button>
+    <button type="button" id="callHangup" class="btn btn-danger">End call</button>
+    <button type="button" id="callPlayback" class="btn btn-light" hidden>Play call audio</button>
+  </div>
+</section>

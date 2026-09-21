@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const { db, nowStr } = require('./db');
+const { createCalls } = require('./calls');
 
 let io = null;
 // userId -> Set of live socket ids. A user counts as "online" while this set is non-empty.
@@ -57,7 +58,9 @@ function attach(server, sessionMiddleware) {
   // socket.io does not catch a rejected promise returned from an async listener — it becomes
   // an unhandled rejection that crashes the whole process (taking every connected user down
   // with it) the moment the database hiccups. Every listener body below is guarded accordingly.
+  const calls = createCalls(io, db);
   io.on('connection', (socket) => {
+    calls.attach(socket);
     const userId = socket.user.id;
 
     (async () => {

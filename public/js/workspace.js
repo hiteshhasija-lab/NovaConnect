@@ -5,7 +5,7 @@
   const STATUS_LABELS = { online: 'Online', away: 'Away', busy: 'Busy', dnd: 'Do not disturb', offline: 'Offline' };
 
   const state = {
-    view: 'teams',
+    view: NC.active?.type === 'dm' ? 'chat' : 'teams',
     teams: NC.teams || [],
     conversations: NC.conversations || [],
     active: NC.active || { type: 'none' },
@@ -77,6 +77,27 @@
     });
   }
 
+  const channelTools = createChannelTools({ api, escapeHtml, notify:showToastError, navigate:navigateToChannel, events:teamId=>{
+    state.calendarHiddenTeams = new Set(state.teams.filter(t=>t.id!==teamId).map(t=>t.id));
+    document.getElementById('railCalendar').click();
+  }});
+  let channelTabRequest=0, currentChannelTab='posts';
+  async function showChannelTab(tab) {
+    currentChannelTab=tab;
+    const request=++channelTabRequest, id=state.active.channel?.id;
+    if(tab==='posts') { renderMessages(state.active.messages||[]);document.getElementById('composer').classList.remove('d-none');return; }
+    closeThread();document.getElementById('composer').classList.add('d-none');
+    const list=document.getElementById('messageList');list.textContent='Loading…';
+    try {
+      const assets=[];let before='';
+      while(true) {const page=await api('/api/channels/'+id+'/assets'+before);if(request!==channelTabRequest||state.active.channel?.id!==id)return;assets.push(...page);if(page.length<100)break;before='?before='+page[page.length-1].id;}
+      list.innerHTML='<div class="channel-assets"></div>';const box=list.firstChild;
+      const filtered=assets.filter(a=>tab==='files'||String(a.mime_type).startsWith('image/'));
+      if(!filtered.length)box.textContent=tab==='photos'?'No photos shared yet.':'No files shared yet.';
+      filtered.forEach(a=>box.append(el(attachmentHtml(a))));
+    } catch(e) {if(request===channelTabRequest){list.textContent='Unable to load files.';showToastError(e)}}
+  }
+
   function findChannel(id) {
     id = Number(id);
     for (const t of state.teams) { const c = (t.channels || []).find(c => c.id === id); if (c) return { channel: c, team: t }; }
@@ -94,14 +115,40 @@
 
   // ---------------- socket ----------------
   const socket = io({ withCredentials: true });
+  const calls = window.createNovaCalls(socket, showToastError);
+  const meetings = window.createMeetings({ api, currentUser: NC.currentUser, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); } });
+  const chatHeader = window.createChatHeader({ api, currentUser: NC.currentUser, calls, navigate: navigateToDm, preferences: saveChatPreferences, removed: removeChatFromView, meetings, notify: showToastError });
+  function applyChatPreferences(id, values) {
+    const c = findConversation(id); if (c) Object.assign(c, values);
+    if (values.is_unread !== undefined) { if (values.is_unread) state.unreadDm.add(id); else state.unreadDm.delete(id); }
+    if (state.active.type === 'dm' && Number(state.active.conversation.id) === Number(id)) Object.assign(state.active.conversation, values);
+    renderSidebar();
+  }
+  async function saveChatPreferences(id, values) {
+    const prefs = await api('/api/dm/' + id + '/preferences', { method:'PATCH', body:values });
+    applyChatPreferences(id, prefs);
+  }
+  function removeChatFromView(id) {
+    if (state.active.type === 'dm' && Number(state.active.conversation.id) === Number(id)) { state.active = { type:'none' }; history.pushState({}, '', '/app'); renderAll(); }
+  }
+  socket.on('membership:changed', () => api('/api/teams').then(async teams => { state.teams = await Promise.all(teams.filter(t=>t.is_member).map(async t=>{const data=await api('/api/teams/'+t.id);return {...data.team,channels:data.channels};}));renderSidebar(); }).catch(showToastError));
+  socket.on('dm:created', () => api('/api/dm').then(list => { state.conversations = list; renderSidebar(); }).catch(showToastError));
+  socket.on('dm:preferences', p => { applyChatPreferences(p.id, p); if (p.is_hidden) removeChatFromView(p.id); });
+  document.addEventListener('keydown', e => {
+    if (state.active.type !== 'dm' || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); window.open('/app/dm/' + state.active.conversation.id, '_blank', 'noopener,noreferrer,width=1150,height=850'); }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'e' && !state.active.conversation.is_group) { e.preventDefault(); calls.share(state.active.conversation.id, state.active.participants.find(p => p.id !== NC.currentUser.id).full_name); }
+  });
   socket.on('message:new', (msg) => {
     if (state.active.type === 'channel' && msg.channel_id === state.active.channel.id) {
-      appendMessageToList(msg);
+      if (currentChannelTab === 'posts') appendMessageToList(msg);
+      else state.active.messages.push(msg);
     } else if (state.active.type === 'dm' && msg.conversation_id === state.active.conversation.id) {
       appendMessageToList(msg);
+      saveChatPreferences(msg.conversation_id, { is_unread:false }).catch(showToastError);
     } else {
       if (msg.channel_id) state.unreadChannel.add(msg.channel_id);
-      if (msg.conversation_id) state.unreadDm.add(msg.conversation_id);
+      if (msg.conversation_id && !findConversation(msg.conversation_id)?.is_muted) state.unreadDm.add(msg.conversation_id);
       renderSidebar();
     }
     bumpConversationPreview(msg);
@@ -125,7 +172,11 @@
     document.querySelectorAll('.presence-live-' + payload.userId).forEach(node => {
       node.className = node.className.replace(/presence-(online|away|busy|dnd|offline)/, 'presence-' + payload.status);
     });
-    if (state.active.type === 'dm') renderMainHeader();
+    if (state.active.type === 'dm') {
+      const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
+      const label = document.querySelector('#mainHeader .main-header-sub');
+      if (others.length === 1 && others[0].id === payload.userId && label) label.textContent = STATUS_LABELS[payload.status] || 'Offline';
+    }
   });
   socket.on('typing', (payload) => {
     const key = payload.scope + ':' + payload.id;
@@ -149,7 +200,7 @@
   function bumpConversationPreview(msg) {
     if (msg.conversation_id) {
       const c = findConversation(msg.conversation_id);
-      if (c) c.last_message = msg;
+      if (c) { c.last_message = msg; c.is_hidden = 0; }
       if (state.view === 'chat') renderSidebar();
     }
   }
@@ -293,7 +344,14 @@
     body.innerHTML = '';
     actions.innerHTML = '';
 
-    if (state.view === 'teams') {
+    if (state.view === 'people') {
+      title.textContent='People';
+      const input=el('<input class="people-search" type="search" aria-label="Search people" placeholder="Name, username or email">');
+      const results=el('<div aria-live="polite"></div>');body.append(input,results);
+      let timer,generation=0;
+      const search=async()=>{const g=++generation;try{const users=await api('/api/users/search?q='+encodeURIComponent(input.value.trim()));if(g!==generation||!results.isConnected)return;results.textContent=users.length?'':'No people found.';users.forEach(u=>{const row=el('<button type="button" class="people-result">'+avatarHtml(u)+'<span>'+escapeHtml(u.full_name)+'<small>@'+escapeHtml(u.username)+'</small></span></button>');row.onclick=()=>api('/api/dm',{method:'POST',body:{user_ids:[u.id]}}).then(({id})=>navigateToDm(id)).catch(showToastError);results.append(row)});}catch(e){showToastError(e)}};
+      input.oninput=()=>{++generation;clearTimeout(timer);timer=setTimeout(search,200)};search();
+    } else if (state.view === 'teams') {
       title.textContent = 'Teams';
       const addBtn = el('<button title="Join or create a team"><i class="bi bi-plus-lg"></i></button>');
       addBtn.addEventListener('click', openTeamsModal);
@@ -311,7 +369,7 @@
               '<i class="bi bi-chevron-right"></i>' +
               '<span class="team-icon"><i class="bi ' + escapeHtml(team.icon || 'bi-people-fill') + '"></i></span>' +
               '<span class="flex-grow-1 text-truncate">' + escapeHtml(team.name) + '</span>' +
-              '<i class="bi bi-people team-members-btn" title="Members" style="font-size:0.8rem"></i>' +
+              '<button type="button" class="team-members-btn scope-delete-btn" title="Manage team members" aria-label="Manage team members"><i class="bi bi-people"></i></button>' +
             '</div>' +
             '<div class="team-channels"></div>' +
           '</div>'
@@ -321,6 +379,7 @@
           group.classList.toggle('open');
           if (group.classList.contains('open')) state.openTeams.add(team.id); else state.openTeams.delete(team.id);
         });
+        addDeleteControl(group.querySelector('.team-group-header'), team);
         const chanBox = group.querySelector('.team-channels');
         (team.channels || []).forEach(ch => {
           const active = state.active.type === 'channel' && state.active.channel.id === ch.id;
@@ -333,6 +392,7 @@
             '</div>'
           );
           item.addEventListener('click', () => { state.unreadChannel.delete(ch.id); navigateToChannel(ch.id); });
+          addDeleteControl(item, team, ch);
           chanBox.appendChild(item);
         });
         const addChannel = el('<div class="add-item"><i class="bi bi-plus-lg"></i><span>Add channel</span></div>');
@@ -348,22 +408,22 @@
       addBtn.addEventListener('click', openNewChatModal);
       actions.appendChild(addBtn);
 
-      if (state.conversations.length === 0) {
+      if (!state.conversations.some(c => !c.is_hidden)) {
         body.appendChild(el('<div class="p-3 text-muted small">No chats yet. Use + to start one.</div>'));
       }
-      state.conversations.forEach(c => {
+      state.conversations.filter(c => !c.is_hidden).sort((a,b) => (b.is_favorite || 0) - (a.is_favorite || 0)).forEach(c => {
         const active = state.active.type === 'dm' && state.active.conversation.id === c.id;
         const other = (c.participants || [])[0];
         const status = other ? (state.presence[other.id] || other.status || 'offline') : 'offline';
         const preview = c.last_message ? (c.last_message.deleted ? 'This message was deleted' : (c.last_message.body || '📎 Attachment')) : 'No messages yet';
-        const unread = state.unreadDm.has(c.id);
+        const unread = !c.is_muted && (state.unreadDm.has(c.id) || c.is_unread);
         const item = el(
           '<div class="dm-item ' + (active ? 'active' : '') + '" data-convo-id="' + c.id + '">' +
             '<span class="avatar-wrap">' + (other ? avatarHtml(other) : '<span class="user-avatar"><i class="bi bi-people"></i></span>') +
               (c.is_group ? '' : '<span class="presence-dot presence-' + status + ' presence-live-' + (other ? other.id : '') + '"></span>') +
             '</span>' +
             '<div class="flex-grow-1 min-w-0">' +
-              '<div class="text-truncate" style="font-weight:600;font-size:0.83rem;color:var(--text)">' + escapeHtml(convoTitle(c)) + '</div>' +
+              '<div class="text-truncate" style="font-weight:600;font-size:0.83rem;color:var(--text)">' + escapeHtml(convoTitle(c)) + (c.is_favorite ? ' <i class="bi bi-heart-fill" title="Favorite"></i>' : '') + (c.is_muted ? ' <i class="bi bi-bell-slash" title="Muted"></i>' : '') + '</div>' +
               '<div class="text-truncate" style="font-size:0.72rem">' + escapeHtml(preview) + '</div>' +
             '</div>' +
             (unread ? '<span class="dm-unread-badge">•</span>' : '') +
@@ -420,7 +480,7 @@
           '<div class="activity-item ' + (n.is_read ? '' : 'unread') + '">' +
             avatarHtml({ id: n.actor_id, full_name: n.actor_name || '?' }) +
             '<div class="flex-grow-1">' +
-              '<div><strong>' + escapeHtml(n.actor_name || 'Someone') + '</strong> mentioned you' + (n.channel_name ? ' in #' + escapeHtml(n.channel_name) : '') + '</div>' +
+              '<div><strong>' + escapeHtml(n.actor_name || 'Someone') + '</strong>' + (n.type === 'meeting' ? ' invited you to a meeting' : ' mentioned you') + (n.channel_name ? ' in #' + escapeHtml(n.channel_name) : '') + '</div>' +
               '<div class="text-muted text-truncate">' + escapeHtml(n.body || '') + '</div>' +
             '</div>' +
           '</div>'
@@ -428,6 +488,7 @@
         item.addEventListener('click', () => {
           api('/api/notifications/' + n.id + '/read', { method: 'POST' }).then(loadActivity);
           if (n.channel_id) navigateToChannel(n.channel_id);
+          else if (n.type === 'meeting' && n.meeting_id) meetings.show(n.meeting_id);
           else if (n.conversation_id) navigateToDm(n.conversation_id);
         });
         body.appendChild(item);
@@ -447,6 +508,8 @@
     api('/api/channels/' + id).then(({ channel, members }) => {
       return api('/api/channels/' + id + '/messages').then(({ messages }) => {
         const teamEntry = findChannel(id);
+        ++channelTabRequest; currentChannelTab='posts';
+        if (findChannel(id)) Object.assign(findChannel(id).channel, channel);
         state.active = { type: 'channel', channel, team: teamEntry ? teamEntry.team : { id: channel.team_id }, messages, members };
         state.mentionMembers = members;
         history.pushState({}, '', '/app/channel/' + id);
@@ -456,7 +519,10 @@
   }
   function navigateToDm(id) {
     Promise.all([api('/api/dm/' + id), api('/api/dm/' + id + '/messages')]).then(([{ conversation, participants }, { messages }]) => {
+      state.view = 'chat'; closeAiPane(); closeCalendarPane();
+      document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'chat'));
       state.active = { type: 'dm', conversation, participants, messages };
+      saveChatPreferences(conversation.id, { is_unread:false, is_hidden:false }).catch(showToastError);
       state.mentionMembers = participants;
       if (!findConversation(id)) state.conversations.unshift({ ...conversation, participants: participants.filter(p => p.id !== NC.currentUser.id) });
       history.pushState({}, '', '/app/dm/' + id);
@@ -479,14 +545,11 @@
   }
 
   function renderMainHeader() {
+    chatHeader.close(false);
     const header = document.getElementById('mainHeader');
     if (state.active.type === 'channel') {
       const c = state.active.channel;
-      header.innerHTML =
-        '<div class="main-header-title"><i class="bi ' + (c.is_private ? 'bi-lock-fill' : 'bi-hash') + '"></i>' + escapeHtml(c.name) +
-        (c.description ? '<span class="main-header-sub">' + escapeHtml(c.description) + '</span>' : '') + '</div>' +
-        '<button class="btn btn-sm btn-outline-secondary" id="headerMembersBtn"><i class="bi bi-people me-1"></i>' + (state.active.members || []).length + '</button>';
-      document.getElementById('headerMembersBtn').addEventListener('click', () => openMembersModal(state.active.team.id));
+      channelTools.header(header, c, tab => showChannelTab(tab));
     } else if (state.active.type === 'dm') {
       const c = state.active.conversation;
       const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
@@ -494,6 +557,7 @@
       header.innerHTML =
         '<div class="main-header-title"><i class="bi bi-chat-dots"></i>' + escapeHtml(convoTitle({ ...c, participants: others })) +
         '<span class="main-header-sub">' + statusText + '</span></div>';
+      chatHeader.render(header, state.active);
     } else {
       header.innerHTML = '<div class="main-header-title text-muted">NovaConnect</div>';
     }
@@ -505,7 +569,7 @@
     list.innerHTML = '';
     if (messages.length === 0) {
       if (state.active.type === 'none') {
-        list.appendChild(el('<div class="empty-state"><i class="bi bi-people"></i><div>You are not on any teams yet.<br>Use the <strong>+</strong> next to Teams to join or create one.</div></div>'));
+        list.appendChild(el('<div class="empty-state"><i class="bi bi-people"></i><div>Select a chat or channel to get started.<br>Use <strong>+</strong> to start a conversation or join a team.</div></div>'));
       } else {
         list.appendChild(el('<div class="empty-state"><i class="bi bi-chat-dots"></i><div>No messages yet — say hi 👋</div></div>'));
       }
@@ -898,6 +962,39 @@
       });
     });
   }
+  function applyTeamDeletion({ teamId, channelId }) {
+    const team = state.teams.find(t => t.id === teamId);
+    const removed = channelId ? [channelId] : (team?.channels || []).map(c => c.id);
+    removed.forEach(id => state.unreadChannel.delete(id));
+    if (channelId) { if (team) team.channels = team.channels.filter(c => c.id !== channelId); }
+    else { state.teams = state.teams.filter(t => t.id !== teamId); state.openTeams.delete(teamId); }
+    if (state.active.type === 'channel' && (channelId ? state.active.channel.id === channelId : state.active.channel.team_id === teamId)) {
+      state.active = { type: 'none', messages: [] };
+      history.replaceState({}, '', '/app');
+    }
+    renderAll();
+  }
+  socket.on('team:deleted', applyTeamDeletion);
+  socket.on('channel:deleted', applyTeamDeletion);
+
+  function addDeleteControl(container, team, channel) {
+    if (!['owner', 'admin'].includes(team.my_role)) return;
+    const kind = channel ? 'channel' : 'team';
+    const button = el('<button type="button" class="scope-delete-btn" title="Delete ' + kind + '" aria-label="Delete ' + kind + '"><i class="bi bi-trash"></i></button>');
+    button.addEventListener('click', async e => {
+      e.stopPropagation();
+      const name = channel ? '#' + channel.name : team.name;
+      const consequence = channel ? 'This permanently deletes its messages and shared file records.' : 'This permanently deletes all its channels, messages, shared file records, and team calendar events.';
+      if (!window.confirm('Delete ' + kind + ' “' + name + '”? ' + consequence + ' This cannot be undone.')) return;
+      button.disabled = true;
+      try {
+        await api('/api/' + (channel ? 'channels/' + channel.id : 'teams/' + team.id), { method: 'DELETE' });
+        applyTeamDeletion({ teamId: team.id, ...(channel ? { channelId: channel.id } : {}) });
+      } catch (error) { button.disabled = false; showToastError(error); }
+    });
+    container.appendChild(button);
+  }
+
   function findTeamLocal(id) { return state.teams.find(t => t.id === id); }
 
   document.getElementById('createTeamForm').addEventListener('submit', (e) => {
@@ -977,43 +1074,7 @@
     }).catch(showToastError);
   });
 
-  const membersModalEl = document.getElementById('membersModal');
-  let membersModalTeamId = null;
-  function openMembersModal(teamId) {
-    membersModalTeamId = teamId;
-    modalOf(membersModalEl).show();
-    loadMembers();
-  }
-  function loadMembers() {
-    api('/api/teams/' + membersModalTeamId + '/members').then(members => {
-      const box = document.getElementById('membersList');
-      box.innerHTML = '';
-      members.forEach(m => {
-        const status = state.presence[m.id] || m.status || 'offline';
-        const row = el(
-          '<div class="list-group-item d-flex align-items-center gap-2">' +
-            '<span class="avatar-wrap">' + avatarHtml(m) + '<span class="presence-dot presence-' + status + ' presence-live-' + m.id + '"></span></span>' +
-            '<div class="flex-grow-1"><div>' + escapeHtml(m.full_name) + (m.id === NC.currentUser.id ? ' <span class="text-muted">(you)</span>' : '') + '</div>' +
-            '<div class="text-muted small">@' + escapeHtml(m.username) + (m.title ? ' · ' + escapeHtml(m.title) : '') + '</div></div>' +
-            '<span class="badge text-bg-secondary text-uppercase">' + m.role + '</span>' +
-            (m.role !== 'owner' ? '<button class="btn btn-sm btn-outline-danger remove-member"><i class="bi bi-person-dash"></i></button>' : '') +
-          '</div>'
-        );
-        const removeBtn = row.querySelector('.remove-member');
-        if (removeBtn) removeBtn.addEventListener('click', () => {
-          if (!confirm('Remove ' + m.full_name + ' from this team?')) return;
-          api('/api/teams/' + membersModalTeamId + '/members/' + m.id, { method: 'DELETE' }).then(loadMembers);
-        });
-        box.appendChild(row);
-      });
-    });
-  }
-  document.getElementById('addMemberForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    api('/api/teams/' + membersModalTeamId + '/members', { method: 'POST', body: { username: fd.get('username') } })
-      .then(() => { e.target.reset(); loadMembers(); }).catch(showToastError);
-  });
+  function openMembersModal(teamId) { channelTools.members('teams', teamId); }
 
   // ---------------- calendar ----------------
   function pad2(n) { return String(n).padStart(2, '0'); }
@@ -1130,6 +1191,7 @@
     state.teams.forEach(t => select.appendChild(el('<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>')));
   }
   function openEventModal(ev, dateKey) {
+    if (ev?.meeting_id) { meetings.show(ev.meeting_id); return; }
     populateEventTeamSelect();
     document.getElementById('eventFormError').classList.add('d-none');
     eventForm.reset();
@@ -1230,8 +1292,9 @@
   });
 
   // ---------------- boot ----------------
+  document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
   if (state.active.type === 'channel') { state.mentionMembers = []; api('/api/channels/' + state.active.channel.id).then(({ members }) => { state.mentionMembers = members; state.active.members = members; renderMainHeader(); }); }
-  if (state.active.type === 'dm') state.mentionMembers = state.active.participants || [];
+  if (state.active.type === 'dm') { state.mentionMembers = state.active.participants || []; const saved = findConversation(state.active.conversation.id); if (saved) Object.assign(state.active.conversation, saved); }
   if (state.active.type === 'channel' && state.active.team) state.openTeams.add(state.active.team.id);
   renderSidebar();
   renderMainHeader();

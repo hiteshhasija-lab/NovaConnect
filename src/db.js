@@ -55,7 +55,7 @@ function prepare(sql) {
   };
 }
 
-const db = { prepare, raw: (sql, params) => knexInstance.raw(sql, params) };
+const db = { transaction: fn => knexInstance.transaction(fn), prepare, raw: (sql, params) => knexInstance.raw(sql, params) };
 
 const TS_DEFAULT = "DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))";
 
@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS channel_members (
   UNIQUE(channel_id, user_id)
 );
 
+ALTER TABLE channel_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member';
+
 CREATE TABLE IF NOT EXISTS dm_conversations (
   id SERIAL PRIMARY KEY,
   is_group INTEGER NOT NULL DEFAULT 0,
@@ -128,6 +130,20 @@ CREATE TABLE IF NOT EXISTS dm_participants (
   joined_at TEXT NOT NULL ${TS_DEFAULT},
   last_read_message_id INTEGER,
   UNIQUE(conversation_id, user_id)
+);
+
+ALTER TABLE dm_participants ADD COLUMN IF NOT EXISTS is_favorite INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE dm_participants ADD COLUMN IF NOT EXISTS is_muted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE dm_participants ADD COLUMN IF NOT EXISTS is_unread INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE dm_participants ADD COLUMN IF NOT EXISTS is_hidden INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS chat_reports (
+  id SERIAL PRIMARY KEY,
+  conversation_id INTEGER NOT NULL REFERENCES dm_conversations(id) ON DELETE CASCADE,
+  reported_by INTEGER NOT NULL REFERENCES users(id),
+  category TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL ${TS_DEFAULT}
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -175,6 +191,32 @@ CREATE TABLE IF NOT EXISTS notifications (
   is_read INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL ${TS_DEFAULT}
 );
+
+CREATE TABLE IF NOT EXISTS meetings (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  timezone TEXT NOT NULL,
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL,
+  local_start TEXT NOT NULL,
+  local_end TEXT NOT NULL,
+  all_day INTEGER NOT NULL DEFAULT 0,
+  request_rsvp INTEGER NOT NULL DEFAULT 1,
+  show_as TEXT NOT NULL DEFAULT 'busy',
+  conversation_id INTEGER REFERENCES dm_conversations(id),
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  series_id TEXT NOT NULL,
+  created_at TEXT NOT NULL ${TS_DEFAULT}
+);
+CREATE TABLE IF NOT EXISTS meeting_attendees (
+  meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  response TEXT NOT NULL DEFAULT 'pending',
+  PRIMARY KEY(meeting_id,user_id)
+);
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS meeting_id INTEGER REFERENCES meetings(id) ON DELETE CASCADE;
 
 -- Each user's private conversation with the Gemini assistant (see src/routes/ai.js).
 CREATE TABLE IF NOT EXISTS ai_messages (

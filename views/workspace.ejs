@@ -12,6 +12,7 @@
       <button class="rail-btn active" data-view="teams" id="railTeams" title="Teams">
         <i class="bi bi-people-fill"></i><span>Teams</span>
       </button>
+      <button class="rail-btn" data-view="people" id="railPeople" title="People"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zM17 3a4 4 0 0 1 0 8 9 9 0 0 1 6 8v2h-4v-3a10 10 0 0 0-3-7 4 4 0 0 0 1-8z"/></svg><span>People</span></button>
       <button class="rail-btn" data-view="calendar" id="railCalendar" title="Calendar">
         <i class="bi bi-calendar3"></i><span>Calendar</span>
       </button>
@@ -299,5 +300,14 @@
   };
 </script>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<%- include('call-panel') %>
+<script src="/js/calls.js?v=2"></script>
+<link rel="stylesheet" href="/css/chat-header.css?v=1">
+<link rel="stylesheet" href="/css/meetings.css?v=1">
+<link rel="stylesheet" href="/css/compact-ui.css?v=3">
+<script src="/js/meetings.js?v=1"></script>
+<script src="/js/chat-header.js?v=1"></script>
+<link rel="stylesheet" href="/css/channel-tools.css?v=1">
+<script src="/js/channel-tools.js?v=1"></script>
 <script src="/js/workspace.js?v=<%= h.jsVersion() %>"></script>
 <%- include('partials/foot') %>

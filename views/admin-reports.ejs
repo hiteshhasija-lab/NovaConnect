@@ -1,0 +1,15 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4">
+  <h1 class="h4">Chat concerns</h1><p><a href="/admin/users">Back to users</a></p>
+  <% if (!reports.length) { %><p>No concerns have been reported.</p><% } %>
+  <% reports.forEach(report => { %>
+    <article class="card mb-3"><div class="card-body">
+      <h2 class="h6">Report #<%= report.id %> · Chat #<%= report.conversation_id %></h2>
+      <p class="text-muted"><%= report.reporter %> · <%= report.created_at %> UTC</p>
+      <p><strong><%= report.category %></strong></p>
+      <p style="white-space:pre-wrap;overflow-wrap:anywhere"><%= report.reason %></p>
+    </div></article>
+  <% }) %>
+</div>
+<%- include('partials/foot') %>

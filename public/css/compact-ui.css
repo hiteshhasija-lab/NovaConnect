@@ -1,0 +1,33 @@
+/* Scale the newly added chat and call UI once, keeping the existing app unchanged.
+   Dialogs live under body, while menus/popovers inherit the toolbar's scale. */
+.chat-tools,
+.meeting-dialog,
+.concern-dialog,
+.nc-call {
+  zoom: 0.77;
+}
+
+/* Enlarge text independently of the compact component dimensions. */
+.meeting-dialog, .concern-dialog, .nc-call { font-size:1.1rem; }
+.chat-popover { font-size:17.6px; }
+.chat-popover h2 { font-size:22px; }
+.chat-feedback, .chat-pills .chat-action { font-size:15.4px; }
+.chat-search-result strong { font-size:13.2px; }
+.meeting-header h1 { font-size:23.1px; }
+.concern-dialog h2 { font-size:30.8px; }
+.concern-body { font-size:19.8px; }
+.concern-choice small { font-size:14.3px; }
+.concern-help, .concern-privacy-help, .concern-privacy { font-size:15.4px; }
+.meeting-dialog .btn, .meeting-pills button, .meeting-people-results button,
+.concern-dialog .btn, .nc-call .btn { font-size:1.1rem; }
+.concern-dialog textarea { font-size:inherit; }
+.nc-call h2 { font-size:1.43rem; }
+.nc-call-kind { font-size:.935rem; }
+/* Compact menu rows while leaving icons and horizontal spacing intact. */
+.chat-menu-item { padding-top:6px; padding-bottom:6px; }
+.chat-menu hr { margin:3px 0; }
+@media(max-width:600px) {
+  .concern-body { font-size:17.6px; }
+  .concern-dialog h2 { font-size:25.3px; }
+}
+@media(max-width:650px) { .meeting-header h1 { font-size:18.7px; } }

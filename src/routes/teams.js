@@ -1,7 +1,7 @@
 const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { resyncUserRooms } = require('../realtime');
+const { resyncUserRooms, emitToUser } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -39,6 +39,7 @@ router.post('/api/teams', async (req, res) => {
     INSERT INTO channels (team_id, name, description, is_private, created_by) VALUES (?, 'general', 'Team-wide chat', 0, ?) RETURNING *
   `).get(team.id, req.session.user.id);
 
+  team.my_role = 'owner';
   res.status(201).json({ team, channel });
 });
 
@@ -80,6 +81,8 @@ router.get('/api/teams/:id', async (req, res) => {
     ORDER BY c.name
   `).all(teamId, userId);
 
+  const membership = await db.prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, userId);
+  team.my_role = membership.role;
   res.json({ team, channels });
 });
 
@@ -113,6 +116,8 @@ router.delete('/api/teams/:id/members/:userId', async (req, res) => {
   if (!isSelf && !(await isTeamOwner(teamId, req.session.user.id))) {
     return res.status(403).json({ error: 'Only a team owner can remove other members.' });
   }
+  const target = await db.prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, targetId);
+  if (target?.role === 'owner') return res.status(400).json({ error: 'Change this owner to a member before removing them.' });
   await db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(teamId, targetId);
   await db.prepare('DELETE FROM channel_members WHERE user_id = ? AND channel_id IN (SELECT id FROM channels WHERE team_id = ?)').run(targetId, teamId);
   await resyncUserRooms(targetId);
@@ -137,9 +142,7 @@ router.post('/api/teams/:id/channels', async (req, res) => {
   } catch (e) {
     return res.status(400).json({ error: `A channel named "#${name}" already exists in this team.` });
   }
-  if (isPrivate) {
-    await db.prepare(`INSERT INTO channel_members (channel_id, user_id) VALUES (?, ?)`).run(channel.id, userId);
-  }
+  await db.prepare(`INSERT INTO channel_members (channel_id, user_id, role) VALUES (?, ?, 'owner')`).run(channel.id, userId);
   await resyncUserRooms(userId);
   res.status(201).json(channel);
 });
@@ -164,6 +167,36 @@ router.get('/api/channels/:id', async (req, res) => {
         WHERE tm.team_id = ? ORDER BY u.full_name
       `).all(channel.team_id);
   res.json({ channel, members });
+});
+
+
+// Deletion is restricted to team owners/admins; database cascades remove children.
+router.delete('/api/teams/:id', async (req, res) => {
+  const teamId = Number(req.params.id);
+  if (!Number.isSafeInteger(teamId) || teamId < 1) return res.status(400).json({ error: 'Invalid team.' });
+  if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only team owners or admins can delete a team.' });
+  const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(teamId);
+  await db.prepare('DELETE FROM teams WHERE id = ?').run(teamId);
+  for (const member of members) {
+    emitToUser(member.user_id, 'team:deleted', { teamId });
+    await resyncUserRooms(member.user_id).catch(console.error);
+  }
+  res.json({ ok: true });
+});
+
+router.delete('/api/channels/:id', async (req, res) => {
+  const channelId = Number(req.params.id);
+  if (!Number.isSafeInteger(channelId) || channelId < 1) return res.status(400).json({ error: 'Invalid channel.' });
+  const channel = await db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+  if (!channel) return res.status(404).json({ error: 'Channel not found.' });
+  if (!(await isTeamOwner(channel.team_id, req.session.user.id))) return res.status(403).json({ error: 'Only team owners or admins can delete a channel.' });
+  const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(channel.team_id);
+  await db.prepare('DELETE FROM channels WHERE id = ?').run(channelId);
+  for (const member of members) {
+    emitToUser(member.user_id, 'channel:deleted', { teamId: channel.team_id, channelId });
+    await resyncUserRooms(member.user_id).catch(console.error);
+  }
+  res.json({ ok: true });
 });
 
 module.exports = router;

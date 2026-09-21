@@ -1,0 +1,39 @@
+window.createChannelTools = function({api,escapeHtml,notify,navigate,events}) {
+  const esc=escapeHtml;
+  const peopleSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M2 20v-3a6 6 0 0 1 12 0v3M17 4a3 3 0 0 1 0 6M20 14v6m-3-3h6"/></svg>';
+  function dialog(title,html) {
+    const d=document.createElement('dialog'); d.className='channel-dialog';
+    d.innerHTML='<header><h2>'+esc(title)+'</h2><button type="button" aria-label="Close">×</button></header><div class="channel-dialog-body">'+html+'</div>';
+    document.body.append(d);d.querySelector('header button').onclick=()=>d.close();d.addEventListener('close',()=>d.remove());d.showModal();return d;
+  }
+  async function members(kind,id) {
+    try {
+      const data=await api('/api/'+kind+'/'+id+'/membership');
+      const d=dialog('Members · '+data.name,'<p class="membership-note"></p><form class="membership-add"><label>Find a person<input type="search" placeholder="Name, username or email" autocomplete="off"></label><div class="people-results"></div></form><div class="membership-list"></div>');
+      d.querySelector('.membership-note').textContent=data.inherited?'All team members have access. Adding someone here also adds them to the team.':'Choose Member or Owner to assign access.';
+      d.querySelector('form').hidden=!data.canManage;
+      d.querySelector('form').onsubmit=e=>e.preventDefault();
+      async function save(user,role) {await api('/api/'+kind+'/'+id+'/membership',{method:'POST',body:{user_id:user.id,role}});d.close();await members(kind,id);}
+      function row(user,adding) {
+        const r=document.createElement('div');r.className='membership-row';r.innerHTML='<span><strong>'+esc(user.full_name)+'</strong><small>@'+esc(user.username)+'</small></span>';
+        if(data.canManage) {
+          const select=document.createElement('select');select.setAttribute('aria-label','Role for '+user.full_name);select.innerHTML='<option value="member">Member</option><option value="owner">Owner</option>';select.value=user.role==='owner'?'owner':'member';r.append(select);
+          const b=document.createElement('button');b.type='button';b.textContent=adding?'Add':'Save';b.onclick=async()=>{b.disabled=true;try{await save(user,select.value)}catch(e){notify(e);b.disabled=false}};r.append(b);
+        } else {const role=document.createElement('span');role.textContent=user.role;r.append(role);}
+        return r;
+      }
+      data.members.forEach(u=>d.querySelector('.membership-list').append(row(u,false)));
+      let generation=0,timer;
+      d.querySelector('input').oninput=e=>{clearTimeout(timer);const q=e.target.value.trim(),g=++generation;const box=d.querySelector('.people-results');box.replaceChildren();if(!q)return;timer=setTimeout(async()=>{try{const users=await api('/api/users/search?q='+encodeURIComponent(q));if(g!==generation||!d.isConnected)return;const matches=users.filter(u=>!data.members.some(m=>m.id===u.id));box.textContent=matches.length?'':'No matching people to add.';matches.forEach(u=>box.append(row(u,true)));}catch(e){notify(e)}},200)};
+    } catch(e){notify(e)}
+  }
+  function header(container,channel,onTab) {
+    container.innerHTML='<div class="channel-heading"><svg class="channel-tag" viewBox="0 0 32 32" aria-hidden="true"><path fill="#ffbf45" d="M2 17 17 2l12 1 1 12-15 15z"/><circle cx="23" cy="9" r="3" fill="white"/></svg><strong>'+esc(channel.name)+'</strong></div><nav class="channel-tabs" aria-label="Channel tabs">'+['Posts','Files','Photos'].map((t,i)=>'<button type="button" class="'+(!i?'selected':'')+'" aria-pressed="'+(!i)+'">'+t+'</button>').join('')+'</nav><div class="channel-header-actions"><button type="button" data-action="events"><i class="bi bi-calendar3"></i> Events</button><button type="button" data-action="members" title="Add members or owners" aria-label="Add members or owners">'+peopleSvg+'</button><button type="button" data-action="link" title="Copy channel link" aria-label="Copy channel link"><i class="bi bi-link-45deg"></i></button><button type="button" data-action="settings" title="Channel settings" aria-label="Channel settings"><i class="bi bi-gear"></i></button></div>';
+    container.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{container.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('selected',x===b);x.setAttribute('aria-pressed',String(x===b))});onTab(b.textContent.toLowerCase())});
+    container.querySelector('[data-action=members]').onclick=()=>members('channels',channel.id);
+    container.querySelector('[data-action=events]').onclick=()=>events(channel.team_id);
+    container.querySelector('[data-action=link]').onclick=async()=>{const url=location.origin+'/app/channel/'+channel.id;try{await navigator.clipboard.writeText(url);const b=container.querySelector('[data-action=link]');b.title='Link copied';b.setAttribute('aria-label','Link copied');}catch{const d=dialog('Channel link','<input readonly aria-label="Channel link">');d.querySelector('input').value=url;d.querySelector('input').select()}};
+    container.querySelector('[data-action=settings]').onclick=async()=>{try{const data=await api('/api/channels/'+channel.id+'/membership');const d=dialog('Channel settings','<form><label>Name<input name="name" required maxlength="80"></label><label>Description<textarea name="description" maxlength="1000"></textarea></label><p class="settings-info"></p><button type="submit">Save</button></form>');d.querySelector('[name=name]').value=channel.name;d.querySelector('textarea').value=channel.description||'';d.querySelector('.settings-info').textContent=channel.is_private?'Private channel':'Standard channel · all team members have access';d.querySelectorAll('input,textarea,button[type=submit]').forEach(e=>e.disabled=!data.canManage);d.querySelector('form').onsubmit=async e=>{e.preventDefault();try{await api('/api/channels/'+channel.id+'/settings',{method:'PATCH',body:{name:d.querySelector('input').value,description:d.querySelector('textarea').value}});d.close();navigate(channel.id)}catch(e){notify(e)}}}catch(e){notify(e)}};
+  }
+  return {members,header};
+};

@@ -23,7 +23,7 @@ async function myTeamsWithChannels(userId) {
 
 async function myConversations(userId) {
   const convos = await db.prepare(`
-    SELECT dc.* FROM dm_conversations dc
+    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden FROM dm_conversations dc
     JOIN dm_participants dp ON dp.conversation_id = dc.id AND dp.user_id = ?
     ORDER BY dc.id DESC
   `).all(userId);

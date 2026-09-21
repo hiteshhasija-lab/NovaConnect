@@ -1,0 +1,13 @@
+.nc-call[hidden], .nc-call [hidden] { display: none !important; }
+.nc-call { position: fixed; z-index: 1080; right: 24px; bottom: 24px; width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid #535a78; border-radius: 20px; background: #171d32; color: #f5f6ff; box-shadow: 0 20px 70px #0007; }
+.nc-call h2 { font-size: 1.3rem; margin: 6px 0; overflow-wrap: anywhere; }
+.nc-call-kind { color: #b7baf7; font-size: .85rem; }
+.nc-call-status { color: #d5daee; }
+.nc-call-media { position: relative; }
+.nc-call video { width: 100%; max-height: 45vh; object-fit: contain; background: #0c1020; border-radius: 12px; }
+.nc-call #callLocal { position: absolute; width: 28%; bottom: 12px; right: 12px; transform: scaleX(-1); border: 1px solid #8990b8; }
+.nc-call-controls, .nc-call-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.nc-call-controls { margin-top: 16px; }
+.nc-call-controls button { min-height: 42px; }
+.nc-call-controls .btn-outline-light[aria-pressed="true"] { background: #e7e9ff; color: #171d32; }
+@media (max-width: 600px) { .nc-call { right: 16px; bottom: 16px; padding: 18px; } }

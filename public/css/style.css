@@ -203,19 +203,19 @@ body:has(.workspace) { overflow: hidden; }
 .rail-btn {
   width: 58px; padding: 0.5rem 0 0.35rem; background: none; border: none; color: rgba(255,255,255,0.65);
   display: flex; flex-direction: column; align-items: center; gap: 0.15rem; border-radius: 0.6rem;
-  font-size: 0.62rem; cursor: pointer; position: relative;
+  font-size: 0.744rem; cursor: pointer; position: relative;
 }
-.rail-btn i { font-size: 1.5rem; }
-.rail-btn svg { width: 1.5rem; height: 1.5rem; }
+.rail-btn i { font-size: 1.65rem; }
+.rail-btn svg { width: 1.65rem; height: 1.65rem; }
 .rail-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
 .rail-btn.active { background: rgba(255,255,255,0.14); color: #fff; }
 .rail-badge {
-  position: absolute; top: 2px; right: 8px; background: #d1494f; color: #fff; font-size: 0.55rem;
+  position: absolute; top: 2px; right: 8px; background: #d1494f; color: #fff; font-size: 0.66rem;
   min-width: 15px; height: 15px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
 .rail-bottom { display: flex; justify-content: center; }
 .rail-avatar-btn { background: none; border: none; padding: 0; position: relative; cursor: pointer; }
-.rail-avatar-btn .user-avatar { width: 2.3rem; height: 2.3rem; font-size: 0.85rem; }
+.rail-avatar-btn .user-avatar { width: 2.3rem; height: 2.3rem; font-size: 1.02rem; }
 .presence-dot {
   width: 0.65rem; height: 0.65rem; border-radius: 50%; display: inline-block; background: #8a92a6;
   border: 2px solid var(--brand-dark); position: absolute; bottom: -1px; right: -1px;
@@ -448,3 +448,7 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
   .thread-panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 10; box-shadow: -8px 0 24px rgba(0,0,0,0.2); }
   .sidebar { position: absolute; left: 72px; top: 0; bottom: 0; z-index: 9; box-shadow: 8px 0 24px rgba(0,0,0,0.2); }
 }
+
+.scope-delete-btn { margin-left:auto; flex-shrink:0; border:0; border-radius:4px; background:transparent; color:var(--text-muted); padding:4px 6px; line-height:1; }
+.scope-delete-btn:hover, .scope-delete-btn:focus-visible { color:#c93645; background:var(--surface-2); }
+.scope-delete-btn:focus-visible { outline:2px solid currentColor; }

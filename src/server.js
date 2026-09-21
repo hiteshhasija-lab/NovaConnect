@@ -70,12 +70,14 @@ app.use((req, res, next) => {
 
 app.use('/', authRoutes);
 app.use('/app', appRoutes);
+app.use('/', require('./routes/membership'));
 app.use('/', teamRoutes);
 app.use('/', messageRoutes);
 app.use('/', dmRoutes);
 app.use('/', userRoutes);
 app.use('/', aiRoutes);
 app.use('/', calendarRoutes);
+app.use('/', require('./routes/meetings'));
 app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
 
@@ -95,21 +97,37 @@ realtime.attach(server, sessionMiddleware);
 
 initDb()
   .then(() => {
-    server.listen(PORT, HOST, () => {
+    const servers = [];
+
+    servers.push(server.listen(PORT, HOST, () => {
       console.log(`NovaConnect running at http://${HOST}:${PORT}`);
       console.log('Seed logins: admin/admin123 (admin), jdoe/member123, bsmith/member123, mchen/member123, rpatel/member123');
-    });
+    }));
 
     if (fs.existsSync(TLS_KEY_PATH) && fs.existsSync(TLS_CERT_PATH)) {
       const tlsOptions = { key: fs.readFileSync(TLS_KEY_PATH), cert: fs.readFileSync(TLS_CERT_PATH) };
       const httpsServer = https.createServer(tlsOptions, app);
       realtime.attach(httpsServer, sessionMiddleware);
-      httpsServer.listen(HTTPS_PORT, HOST, () => {
+      servers.push(httpsServer.listen(HTTPS_PORT, HOST, () => {
         console.log(`NovaConnect also running securely at https://${HOST}:${HTTPS_PORT}`);
-      });
+      }));
     } else {
       console.log(`No TLS certificate found at ${TLS_CERT_PATH} — HTTPS not started.`);
     }
+
+    // Running as PID 1 in a container: an unhandled SIGTERM is silently ignored rather
+    // than terminating the process (the kernel's default signal disposition doesn't apply
+    // to PID 1 without an explicit handler), which otherwise forces every container stop
+    // to wait out the full timeout and fall back to SIGKILL.
+    const shutdown = () => {
+      console.log('Shutting down...');
+      Promise.all(servers.map(s => new Promise(resolve => s.close(resolve))))
+        .then(() => process.exit(0))
+        .catch(() => process.exit(1));
+      setTimeout(() => process.exit(1), 5000).unref();
+    };
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
   })
   .catch((err) => {
     console.error('Failed to initialize database:', err);

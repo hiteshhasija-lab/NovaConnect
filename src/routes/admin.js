@@ -5,6 +5,11 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const router = createAsyncRouter();
 router.use(requireAuth, requireRole('admin'));
 
+router.get('/reports', async (req, res) => {
+  const reports = await db.prepare(`SELECT r.*, u.full_name AS reporter FROM chat_reports r JOIN users u ON u.id = r.reported_by ORDER BY r.id DESC LIMIT 200`).all();
+  res.render('admin-reports', { title: 'Chat concerns', reports });
+});
+
 router.get('/users', async (req, res) => {
   const users = await db.prepare(`
     SELECT id, username, full_name, email, title, role, status, active, created_at FROM users ORDER BY full_name

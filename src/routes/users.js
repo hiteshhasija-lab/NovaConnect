@@ -6,12 +6,12 @@ const router = createAsyncRouter();
 router.use(requireAuth);
 
 router.get('/api/users/search', async (req, res) => {
-  const q = `%${(req.query.q || '').trim()}%`;
+  const q = `%${String(req.query.q || '').trim().slice(0, 200)}%`;
   const rows = await db.prepare(`
-    SELECT id, full_name, username, title, status FROM users
-    WHERE active = 1 AND id != ? AND (full_name ILIKE ? OR username ILIKE ?)
+    SELECT id, full_name, username, email, title, status FROM users
+    WHERE active = 1 AND id != ? AND (full_name ILIKE ? OR username ILIKE ? OR email ILIKE ?)
     ORDER BY full_name LIMIT 10
-  `).all(req.session.user.id, q, q);
+  `).all(req.session.user.id, q, q, q);
   res.json(rows);
 });
 

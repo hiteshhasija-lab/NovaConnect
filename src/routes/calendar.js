@@ -30,7 +30,11 @@ router.get('/api/calendar/events', async (req, res) => {
     ORDER BY e.start_at ASC
   `).all(req.session.user.id, start + ' 00:00:00', end + ' 00:00:00');
 
-  res.json({ events: rows });
+  const meetings = await db.prepare(`SELECT m.*, m.id AS meeting_id, 'Meeting' AS team_name, 'bi-calendar-event' AS team_icon, NULL AS team_id
+    FROM meetings m JOIN meeting_attendees a ON a.meeting_id=m.id
+    WHERE a.user_id=? AND a.response != 'declined' AND m.start_at < ? AND m.end_at >= ? ORDER BY m.start_at`)
+    .all(req.session.user.id, end + ' 23:59:59', start + ' 00:00:00');
+  res.json({ events: [...rows, ...meetings.map(m => ({...m,id:'meeting-'+m.id}))] });
 });
 
 router.post('/api/calendar/events', async (req, res) => {

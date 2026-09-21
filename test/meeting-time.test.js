@@ -1,0 +1,5 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {occurrences}=require('../src/meeting-time');
+const base={timezone:'America/Chicago',start_local:'2026-10-25T09:00',end_local:'2026-10-25T09:30',recurrence:'weekly',count:3};
+test('weekly meetings preserve local time across daylight saving changes',()=>{const d=occurrences(base);assert.equal(d[0].start_at,'2026-10-25 14:00:00');assert.equal(d[1].start_at,'2026-11-01 15:00:00');assert.equal(d[2].local_start,'2026-11-08T09:00');});
+test('invalid dates, DST gaps, zones and intervals are rejected',()=>{for(const update of [{start_local:'2026-02-30T09:00'},{timezone:'nonsense'},{start_local:'2026-03-08T02:30',end_local:'2026-03-08T03:30'},{end_local:'2026-10-24T09:30'},{recurrence:'infinite'},{count:10000}])assert.throws(()=>occurrences({...base,...update}));});
+test('all-day wall dates and nonrepeating events produce bounded occurrences',()=>{const d=occurrences({...base,start_local:'2026-11-01T00:00',end_local:'2026-11-02T00:00',recurrence:'none'});assert.equal(d.length,1);assert.equal(d[0].end_at,'2026-11-02 06:00:00');});
