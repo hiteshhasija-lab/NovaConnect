@@ -615,6 +615,8 @@
     }
     let html = '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') html += decomApprovalCardHtml(msg.metadata);
+    if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') html += decomConfirmDestroyCardHtml(msg.metadata);
+    if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') html += decomSkipManualTasksCardHtml(msg.metadata);
     (msg.attachments || []).forEach(a => { html += attachmentHtml(a); });
     html += reactionsHtml(msg);
     if (!isThreadReply) {
@@ -625,6 +627,8 @@
     box.innerHTML = html;
     if (!isThreadReply) box.querySelector('.thread-link').addEventListener('click', () => openThread(msg.id));
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') wireDecomApprovalCard(box, msg);
+    if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') wireDecomConfirmDestroyCard(box, msg);
+    if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') wireDecomSkipManualTasksCard(box, msg);
   }
 
   function decomApprovalCardHtml(meta) {
@@ -654,6 +658,66 @@
     };
     card.querySelector('.decom-approve-btn').addEventListener('click', () => act('approve'));
     card.querySelector('.decom-reject-btn').addEventListener('click', () => act('reject'));
+  }
+
+  // Deliberately styled apart from the approve/reject card (stronger warning treatment, a
+  // single button, no "safe-looking" green) — this is the second, irreversible checkpoint,
+  // not a routine approval.
+  function decomConfirmDestroyCardHtml(meta) {
+    if (meta.status !== 'pending') {
+      return '<div class="decom-card decom-card-destroyed"><i class="bi bi-check-circle-fill"></i> Destroyed</div>';
+    }
+    return (
+      '<div class="decom-card decom-card-danger">' +
+        '<div class="decom-card-title"><i class="bi bi-exclamation-triangle-fill"></i> ' + escapeHtml(meta.changeNumber) + ' — soak period elapsed for ' + escapeHtml(meta.ciName || 'this VM') + '</div>' +
+        '<div class="decom-card-warning">This permanently destroys the VM and releases its storage. This cannot be undone.</div>' +
+        '<div class="decom-card-actions">' +
+          '<button type="button" class="btn btn-sm btn-danger decom-confirm-destroy-btn">Confirm Destroy</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireDecomConfirmDestroyCard(box, msg) {
+    const card = box.querySelector('.decom-card-danger');
+    if (!card) return;
+    const btn = card.querySelector('.decom-confirm-destroy-btn');
+    btn.addEventListener('click', () => {
+      if (!confirm('Permanently destroy ' + (msg.metadata.ciName || 'this VM') + '? This cannot be undone.')) return;
+      btn.disabled = true;
+      api('/api/decom/' + msg.metadata.changeId + '/confirm-destroy', { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
+        .catch(e => { btn.disabled = false; showToastError(e); });
+    });
+  }
+
+  // The 3 pre-checks with no real automation behind them in this app — a neutral (not
+  // danger-styled) card, since skipping here just records "not automated, handled manually or
+  // not applicable," not an irreversible action.
+  function decomSkipManualTasksCardHtml(meta) {
+    if (meta.status !== 'pending') {
+      return '<div class="decom-card decom-card-skipped"><i class="bi bi-check-circle-fill"></i> Marked as handled / skipped</div>';
+    }
+    const items = (meta.tasks || []).map(t => '<li>' + escapeHtml(t) + '</li>').join('');
+    return (
+      '<div class="decom-card decom-card-neutral">' +
+        '<div class="decom-card-title">Not automated in NovaDesk:</div>' +
+        '<ul class="decom-card-list">' + items + '</ul>' +
+        '<div class="decom-card-actions">' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary decom-skip-tasks-btn">Skip (not automated)</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireDecomSkipManualTasksCard(box, msg) {
+    const card = box.querySelector('.decom-card-neutral');
+    if (!card) return;
+    const btn = card.querySelector('.decom-skip-tasks-btn');
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      api('/api/decom/' + msg.metadata.changeId + '/skip-manual-tasks', { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
+        .catch(e => { btn.disabled = false; showToastError(e); });
+    });
   }
 
   function startEdit(row, msg) {

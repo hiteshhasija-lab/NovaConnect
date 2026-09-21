@@ -303,6 +303,13 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 .decom-card-approved, .decom-card-rejected { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; font-weight: 600; }
 .decom-card-approved { color: #1e9e62; background: rgba(30,158,98,0.12); }
 .decom-card-rejected { color: #c0392b; background: rgba(192,57,43,0.12); }
+.decom-card-danger { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.35); padding: 0.6rem 0.75rem; }
+.decom-card-danger .decom-card-title { color: #c0392b; display: flex; align-items: center; gap: 0.4rem; }
+.decom-card-warning { font-size: 0.78rem; color: var(--text-secondary, #666); margin: 0.3rem 0 0.5rem; }
+.decom-card-destroyed { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; font-weight: 600; color: #c0392b; background: rgba(192,57,43,0.12); }
+.decom-card-neutral { background: var(--surface-2); border: 1px solid var(--border); padding: 0.6rem 0.75rem; }
+.decom-card-list { margin: 0.3rem 0 0.5rem; padding-left: 1.1rem; color: var(--text-secondary, #666); font-size: 0.8rem; }
+.decom-card-skipped { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; font-weight: 600; color: var(--text-secondary, #666); background: var(--surface-2); }
 .msg-attachment { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.4rem 0.7rem; margin-top: 0.3rem; font-size: 0.8rem; text-decoration: none; color: var(--text); }
 .msg-attachment:hover { border-color: var(--brand); }
 .msg-attachment-img { max-width: 280px; max-height: 220px; border-radius: 0.6rem; margin-top: 0.4rem; display: block; border: 1px solid var(--border); }

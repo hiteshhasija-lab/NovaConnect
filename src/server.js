@@ -22,6 +22,7 @@ const profileRoutes = require('./routes/profile');
 const adminRoutes = require('./routes/admin');
 const aiRoutes = require('./routes/ai');
 const calendarRoutes = require('./routes/calendar');
+const integrationsInRoutes = require('./routes/integrationsIn');
 
 // A single unexpected rejection (e.g. a transient DB outage hit from outside an Express
 // request/asyncRouter, such as a socket listener) must not take the whole process — and every
@@ -80,6 +81,7 @@ app.use('/', calendarRoutes);
 app.use('/', require('./routes/meetings'));
 app.use('/', require('./routes/meet'));
 app.use('/', require('./routes/decom'));
+app.use('/api/integrations', integrationsInRoutes);
 app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
 
