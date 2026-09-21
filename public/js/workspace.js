@@ -1,8 +1,8 @@
 (function () {
   'use strict';
   const NC = window.__NC__;
-  const AVATAR_PALETTE = ['#6b6fd6', '#3a9188', '#c1783e', '#b6538a', '#4e83c4', '#7a7a45', '#a15a9e'];
-  const STATUS_LABELS = { online: 'Online', away: 'Away', busy: 'Busy', dnd: 'Do not disturb', offline: 'Offline' };
+  const AVATAR_PALETTE = ['#0f766e', '#155e75', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
+  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
 
   const state = {
     view: NC.active?.type === 'dm' ? 'chat' : 'teams',
@@ -77,7 +77,7 @@
     });
   }
 
-  const channelTools = createChannelTools({ api, escapeHtml, notify:showToastError, navigate:navigateToChannel, events:teamId=>{
+  const channelTools = createChannelTools({ api, escapeHtml, presence:id=>state.presence[id], notify:showToastError, navigate:navigateToChannel, events:teamId=>{
     state.calendarHiddenTeams = new Set(state.teams.filter(t=>t.id!==teamId).map(t=>t.id));
     document.getElementById('railCalendar').click();
   }});
@@ -116,8 +116,10 @@
   // ---------------- socket ----------------
   const socket = io({ withCredentials: true });
   const calls = window.createNovaCalls(socket, showToastError);
-  const meetings = window.createMeetings({ api, currentUser: NC.currentUser, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); } });
+  const meetings = window.createMeetings({ api, currentUser: NC.currentUser, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); if (state.view === 'meet') meetHub.refresh(); api('/api/dm').then(list=>{state.conversations=list;if(state.view==='chat')renderSidebar();}).catch(showToastError); } });
+  const meetHub=createMeetHub({api,meetings,escapeHtml,calendar:()=>document.getElementById('railCalendar').click()});
   const chatHeader = window.createChatHeader({ api, currentUser: NC.currentUser, calls, navigate: navigateToDm, preferences: saveChatPreferences, removed: removeChatFromView, meetings, notify: showToastError });
+  const chatList=createChatList({escapeHtml,avatarHtml,currentUser:NC.currentUser,presence:id=>state.presence[id],onOpen:navigateToDm,onNew:openNewChatModal,onMeet:()=>document.getElementById('railMeet').click(),onMenu:async(button,c)=>{try{const active=await api('/api/dm/'+c.id);if(button.isConnected)chatHeader.menu(button,active);}catch(e){showToastError(e)}}});
   function applyChatPreferences(id, values) {
     const c = findConversation(id); if (c) Object.assign(c, values);
     if (values.is_unread !== undefined) { if (values.is_unread) state.unreadDm.add(id); else state.unreadDm.delete(id); }
@@ -169,8 +171,10 @@
   });
   socket.on('presence:update', (payload) => {
     state.presence[payload.userId] = payload.status;
+    if(payload.userId===NC.currentUser.id){const dot=document.getElementById('myPresenceDot');dot.className='presence-dot presence-'+payload.status;dot.title=STATUS_LABELS[payload.status]||'Offline';}
     document.querySelectorAll('.presence-live-' + payload.userId).forEach(node => {
-      node.className = node.className.replace(/presence-(online|away|busy|dnd|offline)/, 'presence-' + payload.status);
+      node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline)/, 'presence-' + payload.status);
+      if(node.classList.contains('member-presence')||node.classList.contains('people-presence')) { node.title=STATUS_LABELS[payload.status]||'Offline';node.setAttribute('aria-label',node.title); }
     });
     if (state.active.type === 'dm') {
       const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
@@ -228,7 +232,9 @@
       state.view = btn.dataset.view;
       closeAiPane();
       closeCalendarPane();
-      if (state.view === 'ai') { openAiPane(); }
+      meetHub.close();
+      if (state.view === 'meet') { closeThread();document.getElementById('sidebar').classList.add('d-none');for(const id of ['mainHeader','messageList','composer'])document.getElementById(id).classList.add('d-none');meetHub.open(); }
+      else if (state.view === 'ai') { openAiPane(); }
       else if (state.view === 'calendar') { openCalendarPane(); renderSidebar(); }
       else { renderSidebar(); }
     });
@@ -349,7 +355,7 @@
       const input=el('<input class="people-search" type="search" aria-label="Search people" placeholder="Name, username or email">');
       const results=el('<div aria-live="polite"></div>');body.append(input,results);
       let timer,generation=0;
-      const search=async()=>{const g=++generation;try{const users=await api('/api/users/search?q='+encodeURIComponent(input.value.trim()));if(g!==generation||!results.isConnected)return;results.textContent=users.length?'':'No people found.';users.forEach(u=>{const row=el('<button type="button" class="people-result">'+avatarHtml(u)+'<span>'+escapeHtml(u.full_name)+'<small>@'+escapeHtml(u.username)+'</small></span></button>');row.onclick=()=>api('/api/dm',{method:'POST',body:{user_ids:[u.id]}}).then(({id})=>navigateToDm(id)).catch(showToastError);results.append(row)});}catch(e){showToastError(e)}};
+      const search=async()=>{const g=++generation;try{const users=await api('/api/users/search?q='+encodeURIComponent(input.value.trim()));if(g!==generation||!results.isConnected)return;results.textContent=users.length?'':'No people found.';users.forEach(u=>{const row=el('<button type="button" class="people-result">'+avatarHtml(u)+'<span class="people-presence presence-'+(state.presence[u.id]||u.status||'offline')+' presence-live-'+u.id+'" role="img" aria-label="'+escapeHtml(STATUS_LABELS[state.presence[u.id]||u.status]||'Appear offline')+'" title="'+escapeHtml(STATUS_LABELS[state.presence[u.id]||u.status]||'Appear offline')+'"></span><span>'+escapeHtml(u.full_name)+'<small>@'+escapeHtml(u.username)+'</small></span></button>');row.onclick=()=>api('/api/dm',{method:'POST',body:{user_ids:[u.id]}}).then(({id})=>navigateToDm(id)).catch(showToastError);results.append(row)});}catch(e){showToastError(e)}};
       input.oninput=()=>{++generation;clearTimeout(timer);timer=setTimeout(search,200)};search();
     } else if (state.view === 'teams') {
       title.textContent = 'Teams';
@@ -403,35 +409,7 @@
     }
 
     if (state.view === 'chat') {
-      title.textContent = 'Chat';
-      const addBtn = el('<button title="New chat"><i class="bi bi-plus-lg"></i></button>');
-      addBtn.addEventListener('click', openNewChatModal);
-      actions.appendChild(addBtn);
-
-      if (!state.conversations.some(c => !c.is_hidden)) {
-        body.appendChild(el('<div class="p-3 text-muted small">No chats yet. Use + to start one.</div>'));
-      }
-      state.conversations.filter(c => !c.is_hidden).sort((a,b) => (b.is_favorite || 0) - (a.is_favorite || 0)).forEach(c => {
-        const active = state.active.type === 'dm' && state.active.conversation.id === c.id;
-        const other = (c.participants || [])[0];
-        const status = other ? (state.presence[other.id] || other.status || 'offline') : 'offline';
-        const preview = c.last_message ? (c.last_message.deleted ? 'This message was deleted' : (c.last_message.body || '📎 Attachment')) : 'No messages yet';
-        const unread = !c.is_muted && (state.unreadDm.has(c.id) || c.is_unread);
-        const item = el(
-          '<div class="dm-item ' + (active ? 'active' : '') + '" data-convo-id="' + c.id + '">' +
-            '<span class="avatar-wrap">' + (other ? avatarHtml(other) : '<span class="user-avatar"><i class="bi bi-people"></i></span>') +
-              (c.is_group ? '' : '<span class="presence-dot presence-' + status + ' presence-live-' + (other ? other.id : '') + '"></span>') +
-            '</span>' +
-            '<div class="flex-grow-1 min-w-0">' +
-              '<div class="text-truncate" style="font-weight:600;font-size:0.83rem;color:var(--text)">' + escapeHtml(convoTitle(c)) + (c.is_favorite ? ' <i class="bi bi-heart-fill" title="Favorite"></i>' : '') + (c.is_muted ? ' <i class="bi bi-bell-slash" title="Muted"></i>' : '') + '</div>' +
-              '<div class="text-truncate" style="font-size:0.72rem">' + escapeHtml(preview) + '</div>' +
-            '</div>' +
-            (unread ? '<span class="dm-unread-badge">•</span>' : '') +
-          '</div>'
-        );
-        item.addEventListener('click', () => { state.unreadDm.delete(c.id); navigateToDm(c.id); });
-        body.appendChild(item);
-      });
+      chatList.render({title,actions,body,conversations:state.conversations,activeId:state.active.type==='dm'?state.active.conversation.id:null,unread:state.unreadDm});
     }
 
     if (state.view === 'activity') {
@@ -519,7 +497,7 @@
   }
   function navigateToDm(id) {
     Promise.all([api('/api/dm/' + id), api('/api/dm/' + id + '/messages')]).then(([{ conversation, participants }, { messages }]) => {
-      state.view = 'chat'; closeAiPane(); closeCalendarPane();
+      state.view = 'chat'; meetHub.close(); closeAiPane(); closeCalendarPane();
       document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'chat'));
       state.active = { type: 'dm', conversation, participants, messages };
       saveChatPreferences(conversation.id, { is_unread:false, is_hidden:false }).catch(showToastError);
@@ -1311,7 +1289,7 @@
       const status = opt.dataset.status;
       socket.emit('presence:set', { status });
       const dot = document.getElementById('myPresenceDot');
-      dot.className = 'presence-dot presence-' + status;
+      dot.className = 'presence-dot presence-' + (status==='reset'?'online':status);
     });
   });
   document.getElementById('toggleThemeBtn').addEventListener('click', (e) => {

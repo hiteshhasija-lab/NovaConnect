@@ -1,0 +1,11 @@
+<%- include('partials/head') %>
+<link rel="stylesheet" href="/css/meet.css?v=1">
+<main class="meet-room" data-code="<%= link.code %>">
+<header><h1><%= link.title %></h1><a href="/app">Back to NovaConnect</a></header>
+<p>Meeting ID: <%= link.code %> · Up to six participants</p>
+<div class="meet-room-controls"><label><input id="meetMic" type="checkbox" checked> Microphone</label><label><input id="meetCamera" type="checkbox" checked> Camera</label><button class="btn btn-primary" id="meetEnter">Join meeting</button><button class="btn btn-danger" id="meetLeave" hidden>Leave meeting</button></div>
+<p id="meetStatus" role="status">Choose your microphone and camera settings, then join.</p>
+<div class="meet-videos" id="meetVideos"></div>
+</main>
+<script src="/socket.io/socket.io.js"></script><script src="/js/meet-room.js?v=1"></script>
+<%- include('partials/foot') %>

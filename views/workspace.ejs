@@ -12,6 +12,7 @@
       <button class="rail-btn active" data-view="teams" id="railTeams" title="Teams">
         <i class="bi bi-people-fill"></i><span>Teams</span>
       </button>
+      <button class="rail-btn" data-view="meet" id="railMeet" title="Meet"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="1" y="5" width="14" height="14" rx="4"/><path d="m16 9 5-3q2-1 2 1v10q0 2-2 1l-5-3z"/></svg><span>Meet</span></button>
       <button class="rail-btn" data-view="people" id="railPeople" title="People"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zM17 3a4 4 0 0 1 0 8 9 9 0 0 1 6 8v2h-4v-3a10 10 0 0 0-3-7 4 4 0 0 0 1-8z"/></svg><span>People</span></button>
       <button class="rail-btn" data-view="calendar" id="railCalendar" title="Calendar">
         <i class="bi bi-calendar3"></i><span>Calendar</span>
@@ -28,10 +29,13 @@
         </button>
         <ul class="dropdown-menu user-menu">
           <li><h6 class="dropdown-header"><%= currentUser.full_name %></h6></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online"></span> Online</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away"></span> Away</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy"></span> Busy</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd"></span> Do not disturb</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online" aria-hidden="true"></span> Available</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy" aria-hidden="true"></span> Busy</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd" aria-hidden="true"></span> Do not disturb</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="brb"><span class="presence-dot presence-brb" aria-hidden="true"></span> Be right back</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away" aria-hidden="true"></span> Appear away</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="offline"><span class="presence-dot presence-offline" aria-hidden="true"></span> Appear offline</a></li>
+          <li><a class="dropdown-item presence-option" href="#" data-status="reset"><span class="presence-dot presence-reset" aria-hidden="true"></span> Reset status</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="/profile"><i class="bi bi-person me-2"></i>My Profile</a></li>
           <% if (currentUser.role === 'admin') { %><li><a class="dropdown-item" href="/admin/users"><i class="bi bi-people me-2"></i>Manage Users</a></li><% } %>
@@ -72,6 +76,7 @@
       <div class="rewrite-popover d-none" id="rewritePopover"></div>
     </div>
 
+    <section class="meet-pane d-none" id="meetPane" aria-label="Meet"></section>
     <div class="ai-pane d-none" id="aiPane">
       <div class="main-header">
         <div class="main-header-title"><%- include('partials/gemini-mark') %>Gemini<span class="main-header-sub">Private assistant — only you can see this</span></div>
@@ -302,13 +307,17 @@
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <%- include('call-panel') %>
 <script src="/js/calls.js?v=2"></script>
-<link rel="stylesheet" href="/css/chat-header.css?v=1">
-<link rel="stylesheet" href="/css/meetings.css?v=1">
+<link rel="stylesheet" href="/css/chat-header.css?v=2">
+<link rel="stylesheet" href="/css/meetings.css?v=2">
 <link rel="stylesheet" href="/css/compact-ui.css?v=3">
-<script src="/js/meetings.js?v=1"></script>
-<script src="/js/chat-header.js?v=1"></script>
-<link rel="stylesheet" href="/css/channel-tools.css?v=1">
-<link rel="stylesheet" href="/css/ui-density.css?v=1">
-<script src="/js/channel-tools.js?v=1"></script>
+<script src="/js/meetings.js?v=2"></script>
+<script src="/js/chat-header.js?v=2"></script>
+<link rel="stylesheet" href="/css/channel-tools.css?v=2">
+<link rel="stylesheet" href="/css/ui-density.css?v=7">
+<script src="/js/channel-tools.js?v=5"></script>
+<link rel="stylesheet" href="/css/meet.css?v=2">
+<script src="/js/meet-hub.js?v=1"></script>
+<link rel="stylesheet" href="/css/chat-list.css?v=1">
+<script src="/js/chat-list.js?v=1"></script>
 <script src="/js/workspace.js?v=<%= h.jsVersion() %>"></script>
 <%- include('partials/foot') %>

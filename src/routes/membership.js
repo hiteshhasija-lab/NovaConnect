@@ -25,9 +25,9 @@ for(const kind of ['teams','channels']) {
     const result = await db.transaction(async trx=>{
       const c = await context(trx,kind,Number(req.params.id),req.session.user.id);
       let members;
-      if(c.channel?.is_private) members = await trx('channel_members as m').join('users as u','u.id','m.user_id').where('m.channel_id',c.channel.id).select('u.id','u.full_name','u.username','m.role');
+      if(c.channel?.is_private) members = await trx('channel_members as m').join('users as u','u.id','m.user_id').where('m.channel_id',c.channel.id).select('u.id','u.full_name','u.username','u.status','m.role');
       else {
-        members = await trx('team_members as m').join('users as u','u.id','m.user_id').where('m.team_id',c.teamId).select('u.id','u.full_name','u.username','m.role');
+        members = await trx('team_members as m').join('users as u','u.id','m.user_id').where('m.team_id',c.teamId).select('u.id','u.full_name','u.username','u.status','m.role');
         if(c.channel) {
           const owners = await trx('channel_members').where({channel_id:c.channel.id,role:'owner'});
           members = members.map(m=>({...m,role:owners.some(o=>o.user_id===m.id)?'owner':'member'}));

@@ -27,9 +27,7 @@ async function roomsForUser(userId) {
 
 async function broadcastPresence(userId, status) {
   if (!io) return;
-  const { channelRooms, dmRooms } = await roomsForUser(userId);
-  const payload = { userId, status };
-  [...channelRooms, ...dmRooms].forEach(room => io.to(room).emit('presence:update', payload));
+  io.emit('presence:update', { userId, status });
 }
 
 function attach(server, sessionMiddleware) {
@@ -59,8 +57,10 @@ function attach(server, sessionMiddleware) {
   // an unhandled rejection that crashes the whole process (taking every connected user down
   // with it) the moment the database hiccups. Every listener body below is guarded accordingly.
   const calls = createCalls(io, db);
+  const meet = require('./meet-signaling').createMeetSignaling(io,db);
   io.on('connection', (socket) => {
     calls.attach(socket);
+    meet.attach(socket);
     const userId = socket.user.id;
 
     (async () => {
@@ -78,10 +78,13 @@ function attach(server, sessionMiddleware) {
       socket.join(`user:${userId}`);
 
       if (wasOffline) {
-        const row = await db.prepare('SELECT status FROM users WHERE id = ?').get(userId);
-        const nextStatus = (!row || row.status === 'offline') ? 'online' : row.status;
+        const row = await db.prepare('SELECT status, presence_preference FROM users WHERE id = ?').get(userId);
+        const nextStatus = row?.presence_preference || 'online';
         await db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run(nextStatus, nowStr(), userId);
         await broadcastPresence(userId, nextStatus);
+      } else {
+        const row = await db.prepare('SELECT status FROM users WHERE id = ?').get(userId);
+        socket.emit('presence:update', { userId, status: row?.status || 'online' });
       }
     })().catch((err) => console.error('socket connection setup failed:', err.message));
 
@@ -92,10 +95,10 @@ function attach(server, sessionMiddleware) {
     });
 
     socket.on('presence:set', ({ status }) => {
-      const allowed = ['online', 'away', 'busy', 'dnd'];
+      const allowed = ['online', 'away', 'brb', 'busy', 'dnd', 'offline', 'reset'];
       if (!allowed.includes(status)) return;
-      db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId)
-        .then(() => broadcastPresence(userId, status))
+      db.prepare('UPDATE users SET status = ?, presence_preference = ? WHERE id = ?').run(status === 'reset' ? 'online' : status, status === 'reset' ? null : status, userId)
+        .then(() => broadcastPresence(userId, status === 'reset' ? 'online' : status))
         .catch((err) => console.error('presence:set failed:', err.message));
     });
 

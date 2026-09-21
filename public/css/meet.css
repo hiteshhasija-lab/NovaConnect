@@ -1,0 +1,13 @@
+.meet-pane { flex:1;overflow:auto;background:var(--surface); }
+.meet-content { max-width:1100px;margin:0 auto;padding:36px 28px; }
+.meet-content h1 { font-size:1.8rem;margin:0 0 30px; }
+.meet-content h2 { font-size:1.15rem;margin:0; }
+.meet-top-actions { display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:36px; }
+.meet-top-actions button { min-height:36px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:4.62px 15.4px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px; }
+.meet-top-actions .meet-create { background:var(--brand);color:white;border-color:var(--brand); }.meet-schedule i { color:#dc3bad; }.meet-join i { color:#2688df; }
+.meet-links { margin-top:22px; }.meet-empty { border:1px solid var(--border);border-radius:12px;padding:24px; }.meet-empty>span { font-size:28px; }.meet-empty p { font-weight:600;margin:10px 0 26px; }
+.meet-learn,.meet-calendar,.meet-details { background:none;border:0;color:var(--text);padding:0;text-align:left; }.meet-learn { color:var(--brand); }
+.meet-section-title { display:flex;justify-content:space-between;gap:16px;align-items:center;margin:32px 0 20px; }
+.meet-link-row { display:flex;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--border);padding:12px 0; }.meet-link-row>div,.meet-link-row>.meet-details { flex:1; }.meet-link-row small { display:block;color:var(--text-muted);overflow-wrap:anywhere; }.meet-link-row a { text-decoration:none;white-space:nowrap; }
+.meet-room { max-width:1200px;margin:auto;padding:24px; }.meet-room header { display:flex;justify-content:space-between;gap:16px; }.meet-room h1 { font-size:1.5rem; }.meet-room-controls { display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:20px 0; }.meet-videos { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px; }.meet-video { background:#171d32;color:white;border-radius:10px;padding:10px; }.meet-video video { width:100%;max-height:380px;background:#0c1020; }.meet-video p { margin:4px 0; }.meet-room button { min-height:36px; }
+@media(max-width:750px){.meet-top-actions{grid-template-columns:1fr}.meet-content{padding:24px 16px}.meet-section-title{align-items:flex-start;flex-direction:column}}

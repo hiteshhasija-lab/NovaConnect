@@ -3,7 +3,7 @@
 .channel-tag { width:30px;height:30px;flex-shrink:0; }
 .channel-tabs { display:flex;gap:18px;align-self:stretch;margin-left:20px; }
 .channel-tabs button { background:none;border:0;border-bottom:4px solid transparent;padding:12px 0;color:var(--text);font-size:1.1rem; }
-.channel-tabs button.selected { border-color:#625bce;font-weight:600; }
+.channel-tabs button.selected { border-color:var(--brand);font-weight:600; }
 .channel-header-actions { margin-left:auto;display:flex;align-items:center; }
 .channel-header-actions button { background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;min-height:40px; }
 .channel-header-actions button:first-child { margin-right:10px;border-radius:5px; }

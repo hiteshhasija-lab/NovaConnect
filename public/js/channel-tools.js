@@ -1,4 +1,4 @@
-window.createChannelTools = function({api,escapeHtml,notify,navigate,events}) {
+window.createChannelTools = function({api,escapeHtml,notify,navigate,events,presence=()=>null}) {
   const esc=escapeHtml;
   const peopleSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M2 20v-3a6 6 0 0 1 12 0v3M17 4a3 3 0 0 1 0 6M20 14v6m-3-3h6"/></svg>';
   function dialog(title,html) {
@@ -10,15 +10,35 @@ window.createChannelTools = function({api,escapeHtml,notify,navigate,events}) {
     try {
       const data=await api('/api/'+kind+'/'+id+'/membership');
       const d=dialog('Members · '+data.name,'<p class="membership-note"></p><form class="membership-add"><label>Find a person<input type="search" placeholder="Name, username or email" autocomplete="off"></label><div class="people-results"></div></form><div class="membership-list"></div>');
+      d.classList.add('membership-dialog');
       d.querySelector('.membership-note').textContent=data.inherited?'All team members have access. Adding someone here also adds them to the team.':'Choose Member or Owner to assign access.';
       d.querySelector('form').hidden=!data.canManage;
       d.querySelector('form').onsubmit=e=>e.preventDefault();
-      async function save(user,role) {await api('/api/'+kind+'/'+id+'/membership',{method:'POST',body:{user_id:user.id,role}});d.close();await members(kind,id);}
+      const feedback=document.createElement('p');feedback.className='membership-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');d.querySelector('.membership-list').before(feedback);
+      async function save(user,role) {await api('/api/'+kind+'/'+id+'/membership',{method:'POST',body:{user_id:user.id,role}});}
+
       function row(user,adding) {
         const r=document.createElement('div');r.className='membership-row';r.innerHTML='<span><strong>'+esc(user.full_name)+'</strong><small>@'+esc(user.username)+'</small></span>';
+        const status=presence(user.id)||user.status||'offline';
+        const labels={ online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
+        const safeStatus=labels[status]?status:'offline';
+        const dot=document.createElement('span');dot.className='member-presence presence-'+safeStatus+' presence-live-'+user.id;dot.setAttribute('role','img');dot.setAttribute('aria-label',labels[safeStatus]);dot.title=labels[safeStatus];r.querySelector('span').prepend(dot);
         if(data.canManage) {
           const select=document.createElement('select');select.setAttribute('aria-label','Role for '+user.full_name);select.innerHTML='<option value="member">Member</option><option value="owner">Owner</option>';select.value=user.role==='owner'?'owner':'member';r.append(select);
-          const b=document.createElement('button');b.type='button';b.textContent=adding?'Add':'Save';b.onclick=async()=>{b.disabled=true;try{await save(user,select.value)}catch(e){notify(e);b.disabled=false}};r.append(b);
+          const b=document.createElement('button');b.type='button';b.textContent=adding?'Add':'Save';b.onclick=async()=>{
+            const role=select.value;
+            if(!window.confirm((adding?'Add ':'Change ')+user.full_name+' to '+role+' in '+data.name+'?')) return;
+            b.disabled=true;select.disabled=true;feedback.textContent='Saving…';
+            try {
+              await save(user,role);user.role=role;
+              feedback.textContent=user.full_name+' '+(adding?'added':'updated')+' as '+role+'.';
+              if(adding){data.members.push(user);d.querySelector('.membership-list').append(r);adding=false;}
+              b.textContent='Save';
+              const current=await api('/api/'+kind+'/'+id+'/membership').catch(()=>null);
+              if(current&&!current.canManage){d.querySelector('form').hidden=true;d.querySelectorAll('.membership-row select,.membership-row button').forEach(e=>e.disabled=true);return;}
+            }catch(e){feedback.textContent='Could not save: '+e.message;notify(e)}
+            finally{if(!d.querySelector('form').hidden){b.disabled=false;select.disabled=false;}}
+          };r.append(b);
         } else {const role=document.createElement('span');role.textContent=user.role;r.append(role);}
         return r;
       }

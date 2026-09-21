@@ -31,7 +31,7 @@
       d.querySelector('h1').textContent=title; d.addEventListener('cancel',e=>{e.preventDefault();close();}); document.body.appendChild(d); dialog=d; d.showModal(); return d;
     }
     function button(text,primary,fn) { const b=document.createElement('button');b.type='button';b.className='chat-action'+(primary?' chat-action-primary':'');b.textContent=text;b.onclick=fn;return b; }
-    function open(active) {
+    function open(active = {participants:[],conversation:{id:null}}) {
       const d=shell('New meeting'), content=d.querySelector('.meeting-content');
       content.innerHTML=`<form class="meeting-form">
         <div class="meeting-zone"><label>Time zone: <select name="timezone" aria-label="Time zone"></select></label></div>
@@ -110,6 +110,7 @@
         const {meeting:m,attendees}=await api('/api/meetings/'+id);if(dialog!==d)return;
         content.replaceChildren();const body=document.createElement('div');body.className='meeting-fields';
         const h=document.createElement('h2');h.textContent=m.title;body.appendChild(h);
+        if(m.meet_code&&/^[a-f0-9]{24}$/.test(m.meet_code)){const join=document.createElement('a');join.className='chat-action chat-action-primary';join.textContent='Join meeting';join.href='/app/meet/'+m.meet_code;body.append(join);}
         for(const text of [m.local_start.replace('T',' ')+' → '+m.local_end.replace('T',' ')+' ('+m.timezone+')', 'Organizer: '+m.organizer, 'Location: '+(m.location||'Not specified'), 'Show as: '+(m.show_as||'busy'), 'Attendees: '+attendees.map(a=>a.full_name+' — '+a.response).join(', ')]) {const p=document.createElement('p');p.textContent=text;body.appendChild(p);}
         const details=document.createElement('div');details.className='meeting-richtext';details.innerHTML=safeDetails(m.details);body.appendChild(details);
         const feedback=document.createElement('p');feedback.setAttribute('role','status');body.appendChild(feedback);

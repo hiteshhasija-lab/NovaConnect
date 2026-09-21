@@ -94,3 +94,6 @@ Validation: `node --test test/*.test.js`. An isolated PostgreSQL database and Ch
 
 ### Interface spacing standard
 New controls use the compact three-dot menu as their reference. Shared sizing and spacing tokens live in `public/css/ui-density.css`; implementation guidance is in `AGENTS.md`. Single-line controls use a 36px minimum height, with content-driven growth for multi-line rows.
+
+### Meet hub
+The Meet sidebar opens reusable meeting links, standalone scheduling, join by ID/link, and upcoming invitations. Signed-in active users with a link may enter a room. Rooms support up to six participants using peer-to-peer WebRTC; microphone and camera access begins only after joining. The same `WEBRTC_ICE_SERVERS` configuration used by calls supplies TURN/STUN for rooms. Without TURN, connections across some networks may fail. Anonymous guests, recording, and large conferences are not supported.

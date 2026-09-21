@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS users (
   last_seen_at TEXT
 );
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS presence_preference TEXT;
+
 CREATE TABLE IF NOT EXISTS teams (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -194,6 +196,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL ${TS_DEFAULT}
 );
 
+CREATE TABLE IF NOT EXISTS meet_links (
+ code TEXT PRIMARY KEY,title TEXT NOT NULL,created_by INTEGER NOT NULL REFERENCES users(id),active INTEGER NOT NULL DEFAULT 1,
+ created_at TEXT NOT NULL ${TS_DEFAULT}
+);
 CREATE TABLE IF NOT EXISTS meetings (
   id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
@@ -212,6 +218,8 @@ CREATE TABLE IF NOT EXISTS meetings (
   series_id TEXT NOT NULL,
   created_at TEXT NOT NULL ${TS_DEFAULT}
 );
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS meet_code TEXT REFERENCES meet_links(code);
+
 CREATE TABLE IF NOT EXISTS meeting_attendees (
   meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id),

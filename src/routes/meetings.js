@@ -1,5 +1,5 @@
 const createAsyncRouter = require('../asyncRouter');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes } = require('node:crypto');
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { emitToUser } = require('../realtime');
@@ -14,9 +14,12 @@ router.post('/api/meetings', async (req,res) => {
   if (typeof b.details !== 'string' || b.details.length > 20000 || typeof b.location !== 'string' || b.location.length > 500) return res.status(400).json({ error:'Meeting details or location are too long.' });
   if (typeof b.all_day !== 'boolean' || typeof b.request_rsvp !== 'boolean') return res.status(400).json({ error:'Invalid meeting options.' });
   if (!['busy','free'].includes(b.show_as)) return res.status(400).json({ error:'Invalid availability.' });
-  const conversationId = Number(b.conversation_id);
-  const membership = await db.prepare('SELECT 1 FROM dm_participants WHERE conversation_id = ? AND user_id = ?').get(conversationId,userId);
-  if (!membership) return res.status(403).json({ error:'You are not part of this conversation.' });
+  const conversationId = b.conversation_id == null ? null : Number(b.conversation_id);
+  if(conversationId!==null){
+    if(!Number.isSafeInteger(conversationId))return res.status(400).json({error:'Invalid conversation.'});
+    const membership=await db.prepare('SELECT 1 FROM dm_participants WHERE conversation_id=? AND user_id=?').get(conversationId,userId);
+    if(!membership)return res.status(403).json({error:'You are not part of this conversation.'});
+  }
   const attendees = [...new Set([userId,...b.attendee_ids])];
   const people = await db.prepare(`SELECT id FROM users WHERE active = 1 AND id IN (${attendees.map(()=>'?').join(',')})`).all(...attendees);
   if (people.length !== attendees.length) return res.status(400).json({ error:'An attendee is no longer available.' });
@@ -26,8 +29,10 @@ router.post('/api/meetings', async (req,res) => {
   const series = randomUUID();
   const saved = await db.transaction(async trx => {
     const ids = [];
+    const meetCode=randomBytes(12).toString('hex');
+    await trx('meet_links').insert({code:meetCode,title,created_by:userId});
     for (const date of dates) {
-      const [m] = await trx('meetings').insert({ title, details:b.details, location:b.location, timezone:b.timezone, all_day:b.all_day ? 1:0, request_rsvp:b.request_rsvp ? 1:0, show_as:b.show_as, created_by:userId, conversation_id:conversationId, series_id:series, ...date }).returning('id');
+      const [m] = await trx('meetings').insert({ title, details:b.details, location:b.location, timezone:b.timezone, all_day:b.all_day ? 1:0, request_rsvp:b.request_rsvp ? 1:0, show_as:b.show_as, created_by:userId, meet_code:meetCode, conversation_id:conversationId, series_id:series, ...date }).returning('id');
       ids.push(m.id);
       await trx('meeting_attendees').insert(attendees.map(id=>({meeting_id:m.id,user_id:id,response:id===userId?'accepted':'pending'})));
     }

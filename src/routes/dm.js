@@ -13,7 +13,7 @@ router.use(requireAuth);
 router.get('/api/dm', async (req, res) => {
   const userId = req.session.user.id;
   const convos = await db.prepare(`
-    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden FROM dm_conversations dc
+    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc
     JOIN dm_participants dp ON dp.conversation_id = dc.id AND dp.user_id = ?
     ORDER BY dc.id DESC
   `).all(userId);
@@ -72,7 +72,7 @@ router.post('/api/dm', async (req, res) => {
 async function loadConversationForUser(conversationId, userId) {
   const inConvo = await db.prepare('SELECT 1 FROM dm_participants WHERE conversation_id = ? AND user_id = ?').get(conversationId, userId);
   if (!inConvo) return null;
-  return db.prepare('SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden FROM dm_conversations dc JOIN dm_participants dp ON dp.conversation_id = dc.id WHERE dc.id = ? AND dp.user_id = ?').get(conversationId, userId);
+  return db.prepare('SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc JOIN dm_participants dp ON dp.conversation_id = dc.id WHERE dc.id = ? AND dp.user_id = ?').get(conversationId, userId);
 }
 
 router.patch('/api/dm/:id/preferences', async (req, res) => {

@@ -31,7 +31,8 @@
       panel.innerHTML = '<h2></h2><div class="chat-pills"></div><input class="chat-entry" autocomplete="off"><p class="chat-feedback" role="status"></p><div class="chat-results"></div><div class="chat-popover-actions"></div>';
       panel.querySelector('h2').textContent = title;
       const input = panel.querySelector('input'); input.placeholder = inputPlaceholder; input.setAttribute('aria-label', inputPlaceholder);
-      b.closest('.chat-tools').appendChild(panel);
+      const host=b.closest('.chat-tools');
+      if(host)host.appendChild(panel);else{document.body.appendChild(panel);panel.classList.add('chat-row-popup');}
       b.setAttribute('aria-expanded', 'true');
       open = { panel, button: b, input, generation: 0 };
       input.focus(); return open;
@@ -147,6 +148,7 @@
         await preferences(c.id, { is_hidden: true });
         removed(c.id);
       });
+      if(p.panel.classList.contains('chat-row-popup')){const rect=b.getBoundingClientRect();p.panel.style.left=Math.max(8,Math.min(rect.left,innerWidth-270))/.77+'px';p.panel.style.top=Math.max(8,Math.min(rect.bottom,innerHeight-p.panel.getBoundingClientRect().height-8))/.77+'px';}
       p.panel.onkeydown = e => {
         const items = [...p.panel.querySelectorAll('button')]; const index = items.indexOf(document.activeElement);
         if (['ArrowDown','ArrowUp','Home','End'].includes(e.key)) {
@@ -182,7 +184,7 @@
       };
       document.body.appendChild(d);d.showModal();
     }
-    return { close, render(header, active) {
+    return { menu, close, render(header, active) {
       const tools = document.createElement('div'); tools.className = 'chat-tools'; tools.setAttribute('aria-label', 'Chat actions');
       const others = active.participants.filter(u => u.id !== currentUser.id);
       if (!active.conversation.is_group && others.length === 1) {

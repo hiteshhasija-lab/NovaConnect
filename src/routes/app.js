@@ -23,7 +23,7 @@ async function myTeamsWithChannels(userId) {
 
 async function myConversations(userId) {
   const convos = await db.prepare(`
-    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden FROM dm_conversations dc
+    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc
     JOIN dm_participants dp ON dp.conversation_id = dc.id AND dp.user_id = ?
     ORDER BY dc.id DESC
   `).all(userId);
@@ -33,7 +33,7 @@ async function myConversations(userId) {
       WHERE dp.conversation_id = ? AND dp.user_id != ?
     `).all(c.id, userId);
     c.last_message = await db.prepare(`
-      SELECT * FROM messages WHERE conversation_id = ? AND parent_message_id IS NULL ORDER BY id DESC LIMIT 1
+      SELECT m.*,u.full_name AS author_name FROM messages m LEFT JOIN users u ON u.id=m.user_id WHERE m.conversation_id = ? AND m.parent_message_id IS NULL ORDER BY m.id DESC LIMIT 1
     `).get(c.id) || null;
   }
   return convos;
@@ -101,6 +101,12 @@ router.get('/dm/:id', async (req, res) => {
   const messages = await hydrateMessages(rows.reverse(), userId);
 
   await renderShell(req, res, { type: 'dm', conversation, participants, messages });
+});
+
+router.get('/meet/:code', async(req,res)=>{
+ const link=await db.prepare('SELECT code,title FROM meet_links WHERE code=? AND active=1').get(req.params.code);
+ if(!link)return res.status(404).render('error',{title:'Meeting unavailable',message:'This meeting link does not exist.'});
+ res.render('meet-room',{title:link.title,link});
 });
 
 module.exports = router;

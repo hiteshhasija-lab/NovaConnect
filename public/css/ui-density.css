@@ -42,3 +42,115 @@
 .people-search { margin:var(--nc-item-gap); width:calc(100% - 2 * var(--nc-item-gap)); }
 .channel-assets { gap:var(--nc-item-gap);padding:var(--nc-section-gap); }
 @media(max-width:900px) { .channel-tabs { margin-left:0; } }
+
+/* Match the rendered three-dot menu; scoped to People and channel headers. */
+:root { --nc-menu-font:13.552px; --nc-menu-icon:17.71px; }
+#mainHeader:has(.channel-heading) {
+  padding:var(--nc-space-y) var(--nc-space-x);
+  gap:var(--nc-item-gap);
+  min-height:calc(var(--nc-control-height) + 2 * var(--nc-space-y));
+}
+#mainHeader .channel-heading,
+#mainHeader .channel-tabs button,
+#mainHeader .channel-header-actions button {
+  font-size:var(--nc-menu-font);font-weight:400;line-height:1.5;
+  color:var(--text);
+}
+#mainHeader .channel-heading { gap:var(--nc-item-gap); }
+#mainHeader .channel-heading strong { font-weight:400; }
+#mainHeader .channel-heading svg,
+#mainHeader .channel-header-actions svg {
+  width:var(--nc-menu-icon);height:var(--nc-menu-icon);flex-shrink:0;
+}
+#mainHeader .channel-header-actions i { font-size:var(--nc-menu-icon);line-height:1; }
+#mainHeader .channel-tabs { gap:var(--nc-item-gap);margin-left:0; }
+#mainHeader .channel-tabs button,
+#mainHeader .channel-header-actions button {
+  min-height:var(--nc-control-height);
+  padding:var(--nc-space-y) var(--nc-space-x);
+  border-radius:5px;
+}
+#mainHeader .channel-tabs button.selected { font-weight:400; }
+#mainHeader .channel-header-actions { gap:var(--nc-item-gap); }
+#mainHeader .channel-header-actions button { border:0;background:transparent; }
+#mainHeader .channel-header-actions button:first-child { margin-right:0; }
+#mainHeader :is(.channel-tabs,.channel-header-actions) button:hover { background:var(--surface-2); }
+#mainHeader :is(.channel-tabs,.channel-header-actions) button:focus-visible { outline:2px solid var(--brand);outline-offset:2px; }
+.people-search,.people-result { font-size:var(--nc-menu-font);line-height:1.5;font-weight:400; }
+.people-result { min-height:var(--nc-control-height);padding:var(--nc-space-y) var(--nc-space-x);gap:var(--nc-item-gap); }
+.people-result .user-avatar { width:var(--nc-menu-icon);height:var(--nc-menu-icon);font-size:8px;flex-shrink:0; }
+.people-result > span:last-child { display:flex;align-items:baseline;gap:var(--nc-item-gap);min-width:0;overflow-wrap:anywhere;flex-wrap:wrap; }
+.people-result small { display:inline;font-size:inherit; }
+.people-search { padding:var(--nc-space-y) var(--nc-space-x);min-height:var(--nc-control-height); }
+#railPeople { min-height:var(--nc-control-height);padding-top:var(--nc-space-y);padding-bottom:var(--nc-space-y);gap:var(--nc-space-y); }
+#railPeople svg { width:var(--nc-menu-icon);height:var(--nc-menu-icon); }
+@media(max-width:900px) { #mainHeader .channel-header-actions { flex-wrap:wrap; } }
+
+/* Members card: the same compact rhythm as the three-dot menu. */
+.membership-dialog header { padding:var(--nc-space-y) var(--nc-space-x);gap:var(--nc-item-gap); }
+.membership-dialog header button { width:var(--nc-control-height);height:var(--nc-control-height);padding:0;flex-shrink:0;line-height:1; }
+.membership-dialog .channel-dialog-body { padding:var(--nc-section-gap); }
+.membership-dialog .membership-note { margin:0 0 var(--nc-item-gap); }
+.membership-dialog label { margin:0 0 var(--nc-item-gap); }
+.membership-dialog input { margin-top:var(--nc-space-y); }
+.membership-dialog :is(input,select,.membership-row button) {
+  box-sizing:border-box;min-height:var(--nc-control-height);
+  padding:var(--nc-space-y) var(--nc-space-x);line-height:1.5;
+}
+.membership-dialog .membership-row {
+  min-height:var(--nc-control-height);padding:0 var(--nc-space-x);
+  gap:var(--nc-item-gap);border-bottom:0;box-shadow:inset 0 -1px var(--border);
+}
+.membership-dialog .membership-row > span:first-child { display:flex;align-items:baseline;gap:var(--nc-item-gap);flex-wrap:wrap; }
+.membership-dialog .membership-row small { display:inline; }
+.membership-dialog .membership-row :is(select,button) { flex-shrink:0; }
+@media(max-width:500px) {
+  .membership-dialog .membership-row { flex-wrap:wrap;padding-top:var(--nc-space-y);padding-bottom:var(--nc-space-y); }
+  .membership-dialog .membership-row > span:first-child { flex-basis:100%; }
+}
+
+/* Restore original menu-matched action typography and icons. */
+#mainHeader .channel-header-actions button { min-height:var(--nc-control-height);font-size:var(--nc-menu-font);padding:var(--nc-space-y) calc(var(--nc-space-x) * .72);gap:var(--nc-item-gap); }
+#mainHeader .channel-header-actions svg { width:var(--nc-menu-icon);height:var(--nc-menu-icon); }
+#mainHeader .channel-header-actions i { font-size:var(--nc-menu-icon); }
+
+/* Further tighten the four actions, independently of the other header tabs. */
+#mainHeader .channel-header-actions { gap:4px; }
+/* Settings and membership cards: 20% less control height and spacing. */
+.channel-dialog, .people-search, .people-result {
+  --nc-control-height:28.8px;
+  --nc-space-y:3.696px;
+  --nc-space-x:12.32px;
+  --nc-item-gap:9.856px;
+  --nc-section-gap:12.32px;
+}
+.channel-dialog :is(input,select,textarea,.membership-row button,button[type=submit]) {
+  min-height:var(--nc-control-height);line-height:1.3;
+  padding:var(--nc-space-y) var(--nc-space-x);
+}
+.channel-dialog header button { width:28.8px;height:28.8px;padding:0;line-height:1; }
+.channel-dialog .settings-info { margin-bottom:var(--nc-item-gap); }
+.people-result,.people-search { line-height:1.3; }
+.people-result .user-avatar { width:calc(var(--nc-menu-icon) * .8);height:calc(var(--nc-menu-icon) * .8); }
+
+/* People and Members: another 20% tighter; use chat message typography. */
+.membership-dialog,.people-search,.people-result {
+  --nc-control-height:23.04px;--nc-space-y:2.9568px;--nc-space-x:9.856px;
+  --nc-item-gap:7.8848px;--nc-section-gap:9.856px;
+  font-family:inherit;font-size:.87rem;line-height:1.45;
+}
+.membership-dialog :is(input,select,.membership-row button,.membership-row small),
+.people-result small { font-family:inherit;font-size:inherit;line-height:1.2; }
+.membership-dialog .membership-row strong { font-weight:400; }
+.membership-dialog .membership-row :is(select,button) { padding-top:1.8px;padding-bottom:1.8px; }
+.people-result,.people-search { line-height:1.2; }
+.membership-dialog header button { width:23.04px;height:23.04px; }
+.membership-feedback:empty { display:none; }
+.membership-feedback { margin:0 0 var(--nc-item-gap);color:var(--text); }
+
+/* Membership rows: 20% taller with live presence indicators. */
+.membership-dialog { --nc-control-height:27.648px; }
+.membership-dialog .member-presence {
+  display:inline-block;flex:0 0 9px;width:9px;height:9px;min-width:9px;
+  border-radius:50%;box-shadow:0 0 0 1px var(--surface);align-self:center;
+}
