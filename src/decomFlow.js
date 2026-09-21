@@ -2,7 +2,13 @@ const { db, nowStr } = require('./db');
 const { emitToChannel } = require('./realtime');
 const { hydrateOne } = require('./messageUtils');
 
-const NOVADESK_BASE_URL = process.env.NOVADESK_BASE_URL || 'http://10.0.0.101';
+// host.containers.internal, not NovaDesk's raw pod IP (10.0.0.101): that IP also happens to
+// carry this host's default gateway (enp10s0), which hits an asymmetric pasta hairpin-NAT
+// edge case — peer-pod-to-peer-pod calls targeting the gateway-carrying interface get
+// ECONNREFUSED, while the same call to a non-gateway peer IP (10.0.0.102) works fine, and a
+// plain "reach the host" call via host.containers.internal works fine in both directions.
+// Confirmed empirically 2026-09-21; do not swap this back to a raw peer IP.
+const NOVADESK_BASE_URL = process.env.NOVADESK_BASE_URL || 'http://host.containers.internal';
 const SYNC_API_KEY = process.env.SYNC_API_KEY || '';
 
 // Plain HTTP, not HTTPS: this call never leaves the VM (NovaDesk and NovaConnect are
