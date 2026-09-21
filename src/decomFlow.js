@@ -29,11 +29,14 @@ async function callNovaDesk(path, body) {
 // uptime (Gemini's own "high demand" 503s were causing real, confusing failures here). Every
 // real-world message in the decom channel has followed the same "decommission <hostname>"
 // shape, so a plain, local, instant regex match covers it — case-insensitive, tolerant of a
-// leading "please"/"can you" etc. since it just looks for the word anywhere. The token after
-// it must contain a digit (a lookahead, not just part of the character class) — every real
-// hostname seen in practice has one (TESTVM01, PRD-WEB-01), and requiring it avoids false
-// positives on ordinary English words in a sentence that happens to mention "decommission".
-const DECOM_PATTERN = /\bdecommission(?:ing)?\b\s*:?\s*((?=[A-Za-z0-9._-]*[0-9])[A-Za-z0-9][A-Za-z0-9._-]*)/i;
+// leading "please"/"can you" etc. since it just looks for the word anywhere.
+//
+// Originally also required the hostname token to contain a digit, on the assumption every real
+// hostname would have one (TESTVM01, PRD-WEB-01) — dropped 2026-09-21 after live testing showed
+// two of the real ESXi lab VMs (WIN-TEST, LINUX-TEST) don't. "decommission" itself is unusual
+// enough as a deliberate word, in a channel dedicated to exactly this, to be signal enough on
+// its own without the digit requirement.
+const DECOM_PATTERN = /\bdecommission(?:ing)?\b\s*:?\s*([A-Za-z0-9][A-Za-z0-9._-]*)/i;
 
 function extractDecomIntent(text) {
   const match = text.match(DECOM_PATTERN);
