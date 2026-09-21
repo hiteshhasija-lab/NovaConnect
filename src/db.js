@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 // Postgres returns COUNT()/SUM() as bigint and AVG() as numeric, both of which
 // node-postgres parses as STRINGS by default (bigint can exceed Number.MAX_SAFE_INTEGER).
@@ -158,6 +159,7 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL ${TS_DEFAULT},
   updated_at TEXT NOT NULL ${TS_DEFAULT}
 );
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS metadata TEXT;
 
 CREATE TABLE IF NOT EXISTS message_reactions (
   id SERIAL PRIMARY KEY,
@@ -322,9 +324,38 @@ async function seedIfEmpty() {
   await insertDmMessage.run(dmId, ids.admin, "Hey Jane — can you review the on-call rotation doc when you get a sec?", offsetStr(0, -6), offsetStr(0, -6));
 }
 
+// Idempotent — runs on every boot (unlike seedIfEmpty, which only fires on a brand-new
+// database), so the decommission-workflow's bot user and its trigger channel exist
+// regardless of whether this is a fresh install or an existing production database.
+async function ensureDecomWorkflowSetup() {
+  const bot = await db.prepare('SELECT id FROM users WHERE username = ?').get('novadesk-bot');
+  if (!bot) {
+    await db.prepare(`
+      INSERT INTO users (username, password_hash, full_name, email, role, title, status, active)
+      VALUES ('novadesk-bot', ?, 'NovaDesk', NULL, 'member', 'Automated notifications from NovaDesk ITSM', 'online', 1)
+    `).run(bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10));
+  }
+
+  let team = await db.prepare("SELECT id FROM teams WHERE name = 'IT Operations'").get();
+  if (!team) {
+    const admin = await db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
+    team = await db.prepare(`
+      INSERT INTO teams (name, description, icon, created_by) VALUES ('IT Operations', 'Everything infrastructure, support, and on-call.', 'bi-hdd-network-fill', ?) RETURNING id
+    `).get(admin ? admin.id : null);
+  }
+  const channel = await db.prepare('SELECT id FROM channels WHERE team_id = ? AND name = ?').get(team.id, 'server-decom');
+  if (!channel) {
+    const admin = await db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get();
+    await db.prepare(`
+      INSERT INTO channels (team_id, name, description, is_private, created_by) VALUES (?, 'server-decom', 'Say "decommission <hostname>" to start an automated server decommission.', 0, ?)
+    `).run(team.id, admin ? admin.id : null);
+  }
+}
+
 async function initDb() {
   await initSchema();
   await seedIfEmpty();
+  await ensureDecomWorkflowSetup();
 }
 
 module.exports = { db, initDb, nowStr, offsetStr };

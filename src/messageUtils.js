@@ -1,5 +1,10 @@
 const { db } = require('./db');
 
+function parseMetadata(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 // Attaches author, grouped reactions, attachments, and (for top-level messages) a thread
 // reply count/last-reply time to a flat list of message rows, in the shape the chat UI expects.
 async function hydrateMessages(rows, currentUserId) {
@@ -44,6 +49,7 @@ async function hydrateMessages(rows, currentUserId) {
     conversation_id: r.conversation_id,
     parent_message_id: r.parent_message_id,
     body: r.body,
+    metadata: parseMetadata(r.metadata),
     edited: !!r.edited,
     deleted: !!r.deleted,
     created_at: r.created_at,

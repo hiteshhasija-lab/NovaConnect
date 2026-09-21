@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
 const { upload, uploadRoot } = require('../upload');
+const { handleDecomTrigger } = require('../decomFlow');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -88,6 +89,10 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
   const message = await hydrateOne(row, req.session.user.id);
   emitToChannel(channel.id, parentId ? 'thread:message' : 'message:new', message);
   res.status(201).json(message);
+
+  if (channel.name === 'server-decom' && !parentId && body) {
+    handleDecomTrigger(channel.id, req.session.user.id, body).catch(() => {});
+  }
 });
 
 router.get('/api/messages/:id/thread', async (req, res) => {

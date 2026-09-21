@@ -78,6 +78,7 @@ app.use('/', userRoutes);
 app.use('/', aiRoutes);
 app.use('/', calendarRoutes);
 app.use('/', require('./routes/meetings'));
+app.use('/', require('./routes/decom'));
 app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
 

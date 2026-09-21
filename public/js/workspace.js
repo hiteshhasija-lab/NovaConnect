@@ -636,6 +636,7 @@
       return;
     }
     let html = '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
+    if (msg.metadata && msg.metadata.cardType === 'decom_approval') html += decomApprovalCardHtml(msg.metadata);
     (msg.attachments || []).forEach(a => { html += attachmentHtml(a); });
     html += reactionsHtml(msg);
     if (!isThreadReply) {
@@ -645,6 +646,36 @@
     }
     box.innerHTML = html;
     if (!isThreadReply) box.querySelector('.thread-link').addEventListener('click', () => openThread(msg.id));
+    if (msg.metadata && msg.metadata.cardType === 'decom_approval') wireDecomApprovalCard(box, msg);
+  }
+
+  function decomApprovalCardHtml(meta) {
+    if (meta.status !== 'pending') {
+      const label = meta.status === 'approved' ? 'Approved' : 'Rejected';
+      return '<div class="decom-card decom-card-' + meta.status + '"><i class="bi ' + (meta.status === 'approved' ? 'bi-check-circle-fill' : 'bi-x-circle-fill') + '"></i> ' + label + '</div>';
+    }
+    return (
+      '<div class="decom-card decom-card-pending">' +
+        '<div class="decom-card-title">' + escapeHtml(meta.changeNumber) + ' — awaiting approval</div>' +
+        '<div class="decom-card-actions">' +
+          '<button type="button" class="btn btn-sm btn-success decom-approve-btn">Approve</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-danger decom-reject-btn">Reject</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireDecomApprovalCard(box, msg) {
+    const card = box.querySelector('.decom-card-pending');
+    if (!card) return;
+    const setBusy = (busy) => card.querySelectorAll('button').forEach(b => { b.disabled = busy; });
+    const act = (action) => {
+      setBusy(true);
+      api('/api/decom/' + msg.metadata.changeId + '/' + action, { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
+        .catch(e => { setBusy(false); showToastError(e); });
+    };
+    card.querySelector('.decom-approve-btn').addEventListener('click', () => act('approve'));
+    card.querySelector('.decom-reject-btn').addEventListener('click', () => act('reject'));
   }
 
   function startEdit(row, msg) {

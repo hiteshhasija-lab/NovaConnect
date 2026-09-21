@@ -116,3 +116,5 @@ router.post('/api/ai/clear', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.callGemini = callGemini;
+module.exports.GEMINI_API_KEY = GEMINI_API_KEY;

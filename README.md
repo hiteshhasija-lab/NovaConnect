@@ -91,3 +91,6 @@ The More menu provides:
 Database initialization applies additive participant-preference columns and creates `meetings`, `meeting_attendees` and `chat_reports`; notifications gain a meeting reference. Back up the database before deploying. The previous application can run with these extra tables/columns left in place during an image rollback.
 
 Validation: `node --test test/*.test.js`. An isolated PostgreSQL database and Chrome sessions were used to verify UI actions, access control, persistence, search, group membership, meeting notifications/calendar/RSVP and administrator reports. Simulated browser media tests verified audio/video and screen sharing; real-device/cross-network validation still depends on browser permissions and relay configuration.
+
+### Interface spacing standard
+New controls use the compact three-dot menu as their reference. Shared sizing and spacing tokens live in `public/css/ui-density.css`; implementation guidance is in `AGENTS.md`. Single-line controls use a 36px minimum height, with content-driven growth for multi-line rows.
