@@ -25,7 +25,15 @@ async function resolveCardMessage(messageId, status) {
   emitToChannel(row.channel_id, 'message:update', message);
 }
 
-router.post('/api/decom/:changeId/approve', async (req, res) => {
+// All routes below are relative — this router is mounted at app.use('/api/decom', ...) in
+// server.js, not '/'. Mounting a router with its own router.use(requireAuth) gate at '/' was
+// the exact bug behind the earlier NovaDesk outage (see server-decom-workflow memory) — it
+// silently intercepts every request reaching the app, including unrelated routers mounted
+// afterward. That's precisely what happened here: this router being mounted at '/' with full
+// '/api/decom/...' paths was catching requests meant for the separate
+// '/api/integrations/novadesk/decom-updates' router mounted later in server.js, rejecting them
+// with 401 "Not signed in." before they ever reached it. Fixed 2026-09-21.
+router.post('/:changeId/approve', async (req, res) => {
   const channelId = req.body.channel_id;
   if (!channelId) return res.status(400).json({ error: 'channel_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
@@ -46,7 +54,7 @@ router.post('/api/decom/:changeId/approve', async (req, res) => {
   }
 });
 
-router.post('/api/decom/:changeId/reject', async (req, res) => {
+router.post('/:changeId/reject', async (req, res) => {
   const channelId = req.body.channel_id;
   if (!channelId) return res.status(400).json({ error: 'channel_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
@@ -71,7 +79,7 @@ router.post('/api/decom/:changeId/reject', async (req, res) => {
 // as approve/reject above, deliberately not collapsed into a shared helper with them since the
 // backend call, message copy, and resulting card status ('destroyed', not 'approved'/'rejected')
 // all differ enough that sharing would just add indirection.
-router.post('/api/decom/:changeId/confirm-destroy', async (req, res) => {
+router.post('/:changeId/confirm-destroy', async (req, res) => {
   const channelId = req.body.channel_id;
   if (!channelId) return res.status(400).json({ error: 'channel_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
@@ -90,7 +98,7 @@ router.post('/api/decom/:changeId/confirm-destroy', async (req, res) => {
 // The 3 non-automated pre-checks (backup/monitoring/DNS) — a lightweight relay, same shape as
 // confirm-destroy above: no separate follow-up message needed, the card resolving in place is
 // the confirmation.
-router.post('/api/decom/:changeId/skip-manual-tasks', async (req, res) => {
+router.post('/:changeId/skip-manual-tasks', async (req, res) => {
   const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.user.id);
 
   try {

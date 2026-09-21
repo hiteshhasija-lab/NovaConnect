@@ -53,6 +53,16 @@ app.use(express.json());
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Registered before session/attachUser and before every other router below, on purpose: nearly
+// every router mounted at '/' further down has its own blanket router.use(requireAuth) with no
+// path restriction, which — because Express middleware runs in registration order regardless of
+// whether a later route actually matches — would otherwise intercept this Bearer-secured,
+// session-less service-to-service route first and reject it with "Not signed in." before it
+// ever reached here. Confirmed live 2026-09-21: that's exactly what was happening. Registering
+// this first, ahead of all of them, is simpler and safer than auditing/fixing every other
+// router's mount path individually.
+app.use('/api/integrations', integrationsInRoutes);
+
 const sessionMiddleware = session({
   store: new FileStore({ path: path.join(__dirname, '..', 'data', 'sessions'), logFn: () => {} }),
   secret: process.env.SESSION_SECRET || 'novaconnect-dev-secret-change-me',
@@ -80,8 +90,7 @@ app.use('/', aiRoutes);
 app.use('/', calendarRoutes);
 app.use('/', require('./routes/meetings'));
 app.use('/', require('./routes/meet'));
-app.use('/', require('./routes/decom'));
-app.use('/api/integrations', integrationsInRoutes);
+app.use('/api/decom', require('./routes/decom'));
 app.use('/profile', profileRoutes);
 app.use('/admin', adminRoutes);
 
