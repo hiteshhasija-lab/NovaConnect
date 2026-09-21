@@ -66,7 +66,7 @@ function initials(fullName) {
 
 // Deterministic avatar color from a user id, drawn from a small fixed palette
 // so avatars stay readable in both themes instead of any random hue.
-const AVATAR_PALETTE = ['#0f766e', '#155e75', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
+const AVATAR_PALETTE = ['#0755d9', '#009edb', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
 function avatarColor(userId) {
   const n = Number(userId) || 0;
   return AVATAR_PALETTE[n % AVATAR_PALETTE.length];

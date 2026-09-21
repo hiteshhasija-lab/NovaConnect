@@ -6,4 +6,4 @@ Preserve approved font sizes unless the user asks to change them. Multi-line row
 
 The app-wide density rollout was reverted by the user. Keep subsequent menu-matching adjustments scoped to People and the channel header unless explicitly asked otherwise. Their typography and icon sizes match the rendered menu (13.552px text and 17.71px icons); preserve responsive wrapping.
 
-Use the teal/slate theme from `public/css/theme-teal.css` for future UI work. Reuse brand variables instead of hard-coded purple accents. People rail icon and label must match the standard rail sizing.
+Use the blue/cyan logo-matched theme from `public/css/theme-blue-cyan.css` for future UI work. Reuse brand variables instead of hard-coded purple accents. People rail icon and label must match the standard rail sizing.

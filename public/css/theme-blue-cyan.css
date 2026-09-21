@@ -1,0 +1,41 @@
+/* NovaConnect: blue/cyan brand, slate neutrals, consistent light and dark surfaces. */
+:root {
+ --brand:#0755d9;--brand-dark:#073b94;--brand-rgb:7,85,217;--brand-dark-rgb:7,59,148;
+ --bg:#f3f7fc;--surface:#fff;--surface-2:#e6f3fc;--border:#d6e3f0;--text:#182c48;--text-muted:#5f718b;
+ --glow-1:rgba(0,174,239,.16);--glow-2:rgba(0,102,255,.12);--glow-3:rgba(0,207,235,.10);
+ --brand-action:#0755d9;--brand-action-hover:#0644b0;
+ --bs-primary:#0755d9;--bs-primary-rgb:7,85,217;--bs-link-color:#0755d9;--bs-link-hover-color:#0644b0;
+}
+[data-bs-theme="dark"] {
+ --brand:#50d5ff;--brand-dark:#073b94;--brand-rgb:80,213,255;--brand-dark-rgb:7,59,148;
+ --bg:#0c1729;--surface:#14243b;--surface-2:#203550;--border:#314d6d;--text:#e5f1ff;--text-muted:#a4b9d2;
+ --surface-glass:rgba(20,36,59,.9);--surface-glass-dense:rgba(20,36,59,.96);
+ --glow-1:rgba(0,174,239,.12);--glow-2:rgba(0,102,255,.10);--glow-3:rgba(0,207,235,.08);
+ --bs-primary:#50d5ff;--bs-primary-rgb:80,213,255;--bs-link-color:#50d5ff;--bs-link-hover-color:#99eaff;
+}
+.rail { background:linear-gradient(180deg,#0755d9 0%,#08479e 45%,#071d48 100%); }
+[data-bs-theme="dark"] .rail { background:linear-gradient(180deg,#082e70,#07162f); }
+.rail-btn { color:#c4e6ff; }.rail-btn.active { background:rgba(80,213,255,.18);color:#fff; }
+.btn-primary,.login-btn-primary { --bs-btn-bg:#0755d9;--bs-btn-border-color:#0755d9;--bs-btn-hover-bg:#0644b0;--bs-btn-hover-border-color:#0644b0;--bs-btn-active-bg:#073b94;--bs-btn-active-border-color:#073b94;--bs-btn-disabled-bg:#0755d9;--bs-btn-disabled-border-color:#0755d9;--bs-btn-color:#fff;--bs-btn-hover-color:#fff;--bs-btn-active-color:#fff;--bs-btn-focus-shadow-rgb:7,85,217; }
+.btn-outline-primary { --bs-btn-color:var(--brand);--bs-btn-border-color:var(--brand);--bs-btn-hover-bg:#0755d9;--bs-btn-hover-border-color:#0755d9;--bs-btn-hover-color:white;--bs-btn-active-bg:#0644b0;--bs-btn-active-border-color:#0644b0;--bs-btn-active-color:white; }
+.chat-action-primary,.meet-top-actions .meet-create,.meeting-mark,.composer-send-btn { background:var(--brand-action);color:white;border-color:var(--brand-action); }
+.login-btn-primary { background:#0755d9;color:white;box-shadow:0 4px 14px #0755d933; }
+.login-btn-primary:hover { background:#0644b0;color:white; }
+.form-control:focus,.form-select:focus { border-color:var(--brand);box-shadow:0 0 0 .2rem rgba(var(--brand-rgb),.18); }
+.form-check-input:checked { background-color:var(--brand-action);border-color:var(--brand-action); }
+.dropdown-item.active,.dropdown-item:active { background:var(--brand-action);color:white; }
+.text-primary { color:var(--brand)!important; }.bg-primary,.text-bg-primary { background-color:var(--brand-action)!important;color:white!important; }
+.section-title { color:var(--brand); }
+.user-avatar { background:linear-gradient(135deg,#0755d9,#009edb); }
+.meet-schedule i,.meet-join i { color:var(--brand); }
+.nc-call,.meet-video { background:#14243b;border-color:#41618b; }.nc-call-kind { color:#99eaff; }.nc-call-status { color:#c8dfff; }
+.nc-call video,.meet-video video { background:#091426; }.nc-call-controls .btn-outline-light[aria-pressed="true"] { background:#d3f5ff;color:#073b94; }
+#railPeople { font-size:.744rem;min-height:0;padding:.5rem 0 .35rem;gap:.15rem; }
+#railPeople svg { width:1.65rem;height:1.65rem; }
+
+/* Preserve the original login background image defined in style.css. */
+.login-card { background:rgba(12,26,48,.9);box-shadow:0 16px 48px #0005;border-color:#337fbd; }
+.login-title { background:linear-gradient(135deg,#fff,#99eaff);background-clip:text;-webkit-background-clip:text; }
+.rewrite-popover-label svg,.ai-empty-mark svg { color:var(--brand); }
+.rewrite-style-chip:hover,.ai-suggestion-chip:hover { border-color:var(--brand);color:var(--brand); }
+.ai-empty-title,.ai-msg-avatar { background:linear-gradient(135deg,#0755d9,#009edb); }

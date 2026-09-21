@@ -88,7 +88,7 @@ a { color: var(--brand); }
 .navbar-version { margin-left: 2px; margin-top: 1px; font-size: 0.6rem; font-weight: 400; line-height: 1; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.55); }
 .user-avatar {
   width: 2rem; height: 2rem; border-radius: 50%;
-  background: linear-gradient(135deg, #0f766e, #155e75);
+  background: linear-gradient(135deg, #0755d9, #009edb);
   color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 0.75rem; font-weight: 700; flex: none;
@@ -166,9 +166,9 @@ body:has(.workspace) { overflow: hidden; }
 .login-field:has(.login-field-toggle) .form-control { padding-right: 2.6rem; }
 .login-remember-label { color: rgba(255,255,255,0.75); font-size: 0.88rem; }
 .login-card .form-check-input { background-color: rgba(255,255,255,0.06); border-color: rgba(94,234,212,0.35); }
-.login-card .form-check-input:checked { background-color: #0f766e; border-color: #0f766e; }
+.login-card .form-check-input:checked { background-color: #0755d9; border-color: #0755d9; }
 .login-btn-primary {
-  background: linear-gradient(135deg, #0f766e, #4fb8c4); border: none; border-radius: 2rem;
+  background: linear-gradient(135deg, #0755d9, #00cfeb); border: none; border-radius: 2rem;
   color: #0c2023; font-weight: 700; box-shadow: 0 10px 30px rgba(111,115,214,0.4), 0 0 24px rgba(79,184,196,0.3);
 }
 .login-btn-primary:hover { filter: brightness(1.08); color: #0c2023; }

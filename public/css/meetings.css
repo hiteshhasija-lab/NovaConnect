@@ -37,5 +37,5 @@
 .meeting-switch input { appearance:none; width:38px; height:22px; border:1px solid var(--text-muted,#777); border-radius:16px; background:var(--surface,#fff); position:relative; cursor:pointer; }
 .meeting-switch input::before { content:''; position:absolute; left:3px; top:3px; width:14px; height:14px; border-radius:50%; background:var(--text-muted,#777); transition:transform .15s; }
 .meeting-switch input:checked { background:var(--brand);border-color:var(--brand); }.meeting-switch input:checked::before { background:white;transform:translateX(16px); }
-.meeting-switch input:focus-visible { outline:2px solid var(--brand,#0f766e);outline-offset:2px; }
+.meeting-switch input:focus-visible { outline:2px solid var(--brand,#0755d9);outline-offset:2px; }
 .meeting-row summary { list-style:none; }.meeting-row summary::-webkit-details-marker { display:none; }

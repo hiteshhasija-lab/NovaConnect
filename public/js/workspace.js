@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const NC = window.__NC__;
-  const AVATAR_PALETTE = ['#0f766e', '#155e75', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
+  const AVATAR_PALETTE = ['#0755d9', '#009edb', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
   const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
 
   const state = {
