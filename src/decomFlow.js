@@ -34,28 +34,42 @@ function getGemini() {
   return { callGemini: ai.callGemini, apiKey: ai.GEMINI_API_KEY };
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Returns { hostname } for a decommission request, null if the message genuinely isn't
+// one, or throws if Gemini itself couldn't be reached/answer (distinct from "not a match")
+// so the caller can tell a real transient failure apart from silence being the right call.
 async function extractDecomIntent(text) {
   const { callGemini, apiKey } = getGemini();
   if (!apiKey) return null;
-  try {
-    const reply = await callGemini([{
-      role: 'user',
-      body: 'Extract whether this chat message is a request to decommission a server, and if so, its hostname. ' +
-        'Reply with ONLY raw JSON, no markdown fences, no explanation, in exactly this shape: ' +
-        '{"intent":"decommission","hostname":"..."} if it is a decommission request, or {"intent":null} otherwise.\n\n' +
-        `Message: "${text}"`
-    }]);
-    const match = reply.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]);
-    if (parsed.intent === 'decommission' && parsed.hostname) {
-      return { hostname: String(parsed.hostname).trim() };
+
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const reply = await callGemini([{
+        role: 'user',
+        body: 'Extract whether this chat message is a request to decommission a server, and if so, its hostname. ' +
+          'Reply with ONLY raw JSON, no markdown fences, no explanation, in exactly this shape: ' +
+          '{"intent":"decommission","hostname":"..."} if it is a decommission request, or {"intent":null} otherwise.\n\n' +
+          `Message: "${text}"`
+      }]);
+      const match = reply.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]);
+      if (parsed.intent === 'decommission' && parsed.hostname) {
+        return { hostname: String(parsed.hostname).trim() };
+      }
+      return null;
+    } catch (e) {
+      lastError = e;
+      // Gemini's own "high demand" 503s are explicitly transient — one short retry
+      // absorbs most of them instead of surfacing an error for something self-resolving.
+      if (attempt === 1 && /50[0-9]/.test(e.message)) { await sleep(1500); continue; }
+      break;
     }
-    return null;
-  } catch (e) {
-    console.error('Decom intent extraction failed:', e.message);
-    return null;
   }
+  console.error('Decom intent extraction failed:', lastError.message);
+  throw lastError;
 }
 
 async function postBotMessage(channelId, body, metadata) {
@@ -73,7 +87,16 @@ async function postBotMessage(channelId, body, metadata) {
 // Gemini/NovaDesk hiccup here must not affect the human's own message send.
 async function handleDecomTrigger(channelId, userId, text) {
   try {
-    const intent = await extractDecomIntent(text);
+    let intent;
+    try {
+      intent = await extractDecomIntent(text);
+    } catch (e) {
+      // A genuine Gemini failure (as opposed to Gemini correctly saying "not a
+      // decommission request") must not fail silently — silence looks identical to
+      // "nothing happened" and hides that the request needs to just be retried.
+      await postBotMessage(channelId, `⚠️ Couldn't process that message — Gemini is temporarily unavailable (${e.message}). Try again in a moment.`);
+      return;
+    }
     if (!intent) return;
 
     const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
