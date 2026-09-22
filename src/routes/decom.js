@@ -16,7 +16,7 @@ async function resolveCardMessage(messageId, status) {
   if (!row || !row.metadata) return;
   let meta;
   try { meta = JSON.parse(row.metadata); } catch { return; }
-  if (meta.cardType !== 'decom_approval' && meta.cardType !== 'decom_confirm_destroy' && meta.cardType !== 'decom_skip_manual_tasks') return;
+  if (meta.cardType !== 'decom_approval' && meta.cardType !== 'decom_confirm_destroy' && meta.cardType !== 'decom_skip_manual_tasks' && meta.cardType !== 'decom_precheck_task') return;
   meta.status = status;
   const updated = await db.prepare(`
     UPDATE messages SET metadata = ?, updated_at = ? WHERE id = ? RETURNING *
@@ -107,6 +107,27 @@ router.post('/:changeId/skip-manual-tasks', async (req, res) => {
     });
     await resolveCardMessage(req.body.message_id, 'skipped');
     res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Individual pre-check confirmation prompt action: Complete or Skip.
+router.post('/:changeId/precheck-task', async (req, res) => {
+  const channelId = req.body.channel_id;
+  const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.user.id);
+  const action = req.body.action; // 'complete' or 'skip'
+
+  try {
+    await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/precheck-task`, {
+      action,
+      task_description: req.body.task_description,
+      task_id: req.body.task_id,
+      actor_username: user.username
+    });
+    const status = action === 'complete' ? 'completed' : 'skipped';
+    await resolveCardMessage(req.body.message_id, status);
+    res.json({ ok: true, status });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

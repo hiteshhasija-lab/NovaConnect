@@ -620,6 +620,7 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') html += decomApprovalCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') html += decomConfirmDestroyCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') html += decomSkipManualTasksCardHtml(msg.metadata);
+    if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') html += decomPrecheckTaskCardHtml(msg.metadata);
     (msg.attachments || []).forEach(a => { html += attachmentHtml(a); });
     html += reactionsHtml(msg);
     if (!isThreadReply) {
@@ -632,6 +633,7 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') wireDecomApprovalCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') wireDecomConfirmDestroyCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') wireDecomSkipManualTasksCard(box, msg);
+    if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') wireDecomPrecheckTaskCard(box, msg);
   }
 
   function decomApprovalCardHtml(meta) {
@@ -721,6 +723,55 @@
       api('/api/decom/' + msg.metadata.changeId + '/skip-manual-tasks', { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
         .catch(e => { btn.disabled = false; showToastError(e); });
     });
+  }
+
+  function decomPrecheckTaskCardHtml(meta) {
+    if (meta.status === 'completed' || meta.status === 'done') {
+      return '<div class="decom-card decom-card-completed"><i class="bi bi-check-circle-fill"></i> Completed</div>';
+    }
+    if (meta.status === 'skipped') {
+      return '<div class="decom-card decom-card-skipped"><i class="bi bi-dash-circle-fill"></i> Skipped</div>';
+    }
+    const taskName = escapeHtml(meta.taskDescription || meta.taskNumber || 'Pre-decommission check');
+    return (
+      '<div class="decom-card decom-card-neutral">' +
+        '<div class="decom-card-title">' + taskName + ' (not automated):</div>' +
+        '<div class="decom-card-actions mt-2">' +
+          '<button type="button" class="btn btn-sm btn-success decom-task-complete-btn">Completed</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary decom-task-skip-btn">Skip</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireDecomPrecheckTaskCard(box, msg) {
+    const card = box.querySelector('.decom-card-neutral');
+    if (!card) return;
+    const completeBtn = card.querySelector('.decom-task-complete-btn');
+    const skipBtn = card.querySelector('.decom-task-skip-btn');
+    if (!completeBtn || !skipBtn) return;
+
+    const act = (action) => {
+      completeBtn.disabled = true;
+      skipBtn.disabled = true;
+      api('/api/decom/' + msg.metadata.changeId + '/precheck-task', {
+        method: 'POST',
+        body: {
+          action,
+          task_description: msg.metadata.taskDescription,
+          task_id: msg.metadata.taskId,
+          channel_id: msg.channel_id,
+          message_id: msg.id
+        }
+      }).catch(e => {
+        completeBtn.disabled = false;
+        skipBtn.disabled = false;
+        showToastError(e);
+      });
+    };
+
+    completeBtn.addEventListener('click', () => act('complete'));
+    skipBtn.addEventListener('click', () => act('skip'));
   }
 
   function startEdit(row, msg) {

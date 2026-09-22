@@ -305,8 +305,8 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 .decom-card-pending { background: var(--surface-2); border: 1px solid var(--border); padding: 0.6rem 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
 .decom-card-title { font-weight: 600; color: var(--text); }
 .decom-card-actions { display: flex; gap: 0.5rem; }
-.decom-card-approved, .decom-card-rejected { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; font-weight: 600; }
-.decom-card-approved { color: #1e9e62; background: rgba(30,158,98,0.12); }
+.decom-card-approved, .decom-card-completed, .decom-card-rejected { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; font-weight: 600; }
+.decom-card-approved, .decom-card-completed { color: #1e9e62; background: rgba(30,158,98,0.12); }
 .decom-card-rejected { color: #c0392b; background: rgba(192,57,43,0.12); }
 .decom-card-danger { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.35); padding: 0.6rem 0.75rem; }
 .decom-card-danger .decom-card-title { color: #c0392b; display: flex; align-items: center; gap: 0.4rem; }
