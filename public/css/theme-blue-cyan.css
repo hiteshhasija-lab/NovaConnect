@@ -39,3 +39,6 @@
 .rewrite-popover-label svg,.ai-empty-mark svg { color:var(--brand); }
 .rewrite-style-chip:hover,.ai-suggestion-chip:hover { border-color:var(--brand);color:var(--brand); }
 .ai-empty-title,.ai-msg-avatar { background:linear-gradient(135deg,#0755d9,#009edb); }
+
+/* Neutral profile avatar in the navigation rail, in both color modes. */
+.rail-avatar-btn > .user-avatar { background:#e5e5e5; color:#424242; }

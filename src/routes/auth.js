@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { loginDestination } = require('../loginDestination');
 const { db } = require('../db');
 const createAsyncRouter = require('../asyncRouter');
 
@@ -21,7 +22,7 @@ router.post('/login', async (req, res) => {
   }
   req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role };
   if (req.body.remember) req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
-  const dest = req.session.returnTo || '/app';
+  const dest = loginDestination(req.session.returnTo) || '/app';
   delete req.session.returnTo;
   res.redirect(dest);
 });

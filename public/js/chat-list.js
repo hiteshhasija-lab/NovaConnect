@@ -1,6 +1,6 @@
 window.createChatList=function({escapeHtml:esc,avatarHtml,currentUser,onOpen,onNew,onMeet,onMenu,presence}){
  let query='',searchOpen=false,collapsed=false;const filters=new Set();
- function render({title,actions,body,conversations,activeId,unread}){
+ function render({draft=false,title,actions,body,conversations,activeId,unread}){
   const focused=document.activeElement?.id==='chatListSearch',cursor=focused?document.activeElement.selectionStart:null;
   title.textContent='Chat';actions.replaceChildren();body.replaceChildren();
   function action(name,icon,fn){const b=document.createElement('button');b.type='button';b.title=name;b.setAttribute('aria-label',name);b.innerHTML='<i aria-hidden="true" class="bi bi-'+icon+'"></i>';b.onclick=fn;actions.append(b);return b}
@@ -12,8 +12,9 @@ window.createChatList=function({escapeHtml:esc,avatarHtml,currentUser,onOpen,onN
   const heading=document.createElement('button');heading.type='button';heading.className='chat-list-heading';heading.onclick=()=>{collapsed=!collapsed;draw()};body.append(heading);
   const list=document.createElement('div');list.className='chat-list-rows';body.append(list);
   function draw(){heading.textContent=(collapsed?'›':'⌄')+' Chats';heading.setAttribute('aria-expanded',String(!collapsed));list.hidden=collapsed;list.replaceChildren();
+   if(draft){const row=document.createElement('button');row.type='button';row.className='chat-list-draft';row.innerHTML='<i class="bi bi-chat-text" aria-hidden="true"></i><span>New message</span>';row.setAttribute('aria-current','true');row.onclick=onNew;list.append(row);}
    const rows=conversations.filter(c=>!c.is_hidden&&(!filters.has('unread')||(unread.has(c.id)||c.is_unread))&&(!filters.has('unmuted')||!c.is_muted)&&(!filters.has('meeting')||c.is_meeting_chat)&&(!query||[c.name,...(c.participants||[]).map(u=>u.full_name+' '+u.username),c.last_message?.body].join(' ').toLowerCase().includes(query.toLowerCase()))).sort((a,b)=>(b.is_favorite||0)-(a.is_favorite||0)||String(b.last_message?.created_at||b.created_at||'').localeCompare(String(a.last_message?.created_at||a.created_at||'')));
-   if(!rows.length){list.textContent=query||filters.size?'No chats match these filters.':'No chats yet. Start a new chat.';return}
+   if(!rows.length&&!draft){list.textContent=query||filters.size?'No chats match these filters.':'No chats yet. Start a new chat.';return}
    for(const c of rows){const other=c.participants?.[0],name=c.name||(c.participants||[]).map(u=>u.full_name).join(', ')||'Conversation',status=other?(presence(other.id)||other.status||'offline'):'offline',m=c.last_message;
     const preview=m?(m.deleted?'This message was deleted':(m.user_id===currentUser.id?'You: ':m.author_name?m.author_name+': ':'')+(m.body||'Attachment')):'No messages yet';
     const when=m?.created_at||c.created_at;const date=when?new Date(when.replace(' ','T')+'Z'):null;const stamp=date&&!isNaN(date)?date.toLocaleDateString(undefined,{month:'numeric',day:'numeric',...(date.getFullYear()!==new Date().getFullYear()?{year:'2-digit'}:{})}):'';

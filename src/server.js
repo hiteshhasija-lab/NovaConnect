@@ -51,6 +51,7 @@ app.get('/health', async (req, res) => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(methodOverride('_method'));
+app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'img', 'logo-mark.png')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Registered before session/attachUser and before every other router below, on purpose: nearly

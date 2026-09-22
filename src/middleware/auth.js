@@ -1,9 +1,11 @@
 const { db } = require('../db');
+const { loginDestination } = require('../loginDestination');
 
 async function requireAuth(req, res, next) {
   if (!req.session.user) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not signed in.' });
-    req.session.returnTo = req.originalUrl;
+    const destination = req.method === 'GET' && loginDestination(req.originalUrl);
+    if (destination) req.session.returnTo = destination;
     return res.redirect('/login');
   }
 

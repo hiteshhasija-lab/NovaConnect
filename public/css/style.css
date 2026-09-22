@@ -225,6 +225,8 @@ body:has(.workspace) { overflow: hidden; }
 .presence-busy, .presence-dnd { background: #d1494f; }
 .presence-offline { background: #8a92a6; }
 li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
+/* Keep the profile status legible at the sidebar avatar size. */
+.rail-avatar-btn > .presence-dot { width: 1rem; height: 1rem; bottom: -2px; right: -2px; border-width: 2px; }
 
 .sidebar { width: 280px; flex: none; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
 .sidebar-header {

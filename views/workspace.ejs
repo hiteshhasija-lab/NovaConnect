@@ -24,7 +24,7 @@
     <div class="rail-bottom">
       <div class="dropdown dropup">
         <button class="rail-avatar-btn" data-bs-toggle="dropdown" aria-expanded="false" title="<%= currentUser.full_name %>">
-          <span class="user-avatar" style="background:<%= h.avatarColor(currentUser.id) %>"><%= h.initials(currentUser.full_name) %></span>
+          <span class="user-avatar"><%= h.initials(currentUser.full_name) %></span>
           <span class="presence-dot presence-online" id="myPresenceDot"></span>
         </button>
         <ul class="dropdown-menu user-menu">
@@ -189,26 +189,6 @@
   </div>
 </div>
 
-<!-- New Chat modal -->
-<div class="modal fade" id="newChatModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-chat-dots-fill me-2"></i>New Chat</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="text" id="newChatSearch" class="form-control mb-2" placeholder="Search people by name or username…">
-        <div id="newChatSelected" class="d-flex flex-wrap gap-1 mb-2"></div>
-        <div id="newChatResults" class="list-group"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-primary w-100" id="startChatBtn" disabled>Start chat</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Team Members modal -->
 <div class="modal fade" id="membersModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -319,5 +299,7 @@
 <script src="/js/meet-hub.js?v=1"></script>
 <link rel="stylesheet" href="/css/chat-list.css?v=1">
 <script src="/js/chat-list.js?v=1"></script>
+<link rel="stylesheet" href="/css/new-chat.css?v=1">
+<script src="/js/new-chat.js?v=1"></script>
 <script src="/js/workspace.js?v=<%= h.jsVersion() %>"></script>
 <%- include('partials/foot') %>

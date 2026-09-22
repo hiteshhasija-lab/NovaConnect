@@ -229,6 +229,7 @@
     btn.addEventListener('click', () => {
       document.querySelectorAll('.rail-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      newChat.close();
       state.view = btn.dataset.view;
       closeAiPane();
       closeCalendarPane();
@@ -409,7 +410,7 @@
     }
 
     if (state.view === 'chat') {
-      chatList.render({title,actions,body,conversations:state.conversations,activeId:state.active.type==='dm'?state.active.conversation.id:null,unread:state.unreadDm});
+      chatList.render({draft:document.querySelector('.main-pane').classList.contains('draft-open'),title,actions,body,conversations:state.conversations,activeId:state.active.type==='dm'?state.active.conversation.id:null,unread:state.unreadDm});
     }
 
     if (state.view === 'activity') {
@@ -483,6 +484,7 @@
 
   // ---------------- navigation ----------------
   function navigateToChannel(id) {
+    newChat.close();
     api('/api/channels/' + id).then(({ channel, members }) => {
       return api('/api/channels/' + id + '/messages').then(({ messages }) => {
         const teamEntry = findChannel(id);
@@ -496,6 +498,7 @@
     }).catch(showToastError);
   }
   function navigateToDm(id) {
+    newChat.close();
     Promise.all([api('/api/dm/' + id), api('/api/dm/' + id + '/messages')]).then(([{ conversation, participants }, { messages }]) => {
       state.view = 'chat'; meetHub.close(); closeAiPane(); closeCalendarPane();
       document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'chat'));
@@ -1099,53 +1102,12 @@
       }).catch(showToastError);
   });
 
-  const newChatModalEl = document.getElementById('newChatModal');
-  let newChatSelected = [];
-  function openNewChatModal() {
-    newChatSelected = [];
-    document.getElementById('newChatSelected').innerHTML = '';
-    document.getElementById('newChatResults').innerHTML = '';
-    document.getElementById('newChatSearch').value = '';
-    document.getElementById('startChatBtn').disabled = true;
-    modalOf(newChatModalEl).show();
-  }
-  let searchDebounce;
-  document.getElementById('newChatSearch').addEventListener('input', (e) => {
-    clearTimeout(searchDebounce);
-    const q = e.target.value.trim();
-    searchDebounce = setTimeout(() => {
-      if (!q) { document.getElementById('newChatResults').innerHTML = ''; return; }
-      api('/api/users/search?q=' + encodeURIComponent(q)).then(users => {
-        const box = document.getElementById('newChatResults');
-        box.innerHTML = '';
-        users.filter(u => !newChatSelected.some(s => s.id === u.id)).forEach(u => {
-          const row = el('<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2">' + avatarHtml(u) + '<span>' + escapeHtml(u.full_name) + ' <span class="text-muted">@' + escapeHtml(u.username) + '</span></span></button>');
-          row.addEventListener('click', () => {
-            newChatSelected.push(u);
-            renderNewChatSelected();
-            box.innerHTML = '';
-          });
-          box.appendChild(row);
-        });
-      });
-    }, 200);
+  const newChat = window.createNewChat({ api, escapeHtml, avatarHtml,
+    onOpen() { state.view='chat'; closeThread(); meetHub.close(); closeAiPane(); closeCalendarPane(); document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',b.dataset.view==='chat')); renderSidebar(); },
+    onClose() { renderSidebar(); },
+    onSent: navigateToDm
   });
-  function renderNewChatSelected() {
-    const box = document.getElementById('newChatSelected');
-    box.innerHTML = '';
-    newChatSelected.forEach(u => {
-      const pill = el('<span class="user-pill">' + avatarHtml(u) + escapeHtml(u.full_name) + '<button>&times;</button></span>');
-      pill.querySelector('button').addEventListener('click', () => { newChatSelected = newChatSelected.filter(s => s.id !== u.id); renderNewChatSelected(); });
-      box.appendChild(pill);
-    });
-    document.getElementById('startChatBtn').disabled = newChatSelected.length === 0;
-  }
-  document.getElementById('startChatBtn').addEventListener('click', () => {
-    api('/api/dm', { method: 'POST', body: { user_ids: newChatSelected.map(u => u.id) } }).then(({ id }) => {
-      modalOf(newChatModalEl).hide();
-      navigateToDm(id);
-    }).catch(showToastError);
-  });
+  function openNewChatModal() { newChat.open(); }
 
   function openMembersModal(teamId) { channelTools.members('teams', teamId); }
 
