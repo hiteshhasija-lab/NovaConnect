@@ -129,7 +129,10 @@ body:has(.workspace) { overflow: hidden; }
   background-size: 100% 100%;
 }
 .login-content { position: relative; z-index: 1; width: 100%; max-width: 1300px; display: flex; align-items: center; justify-content: center; padding: 0 1.5rem; }
-@media (min-width: 992px) { .login-content { justify-content: flex-end; padding: 0 0 0 4rem; } }
+@media (min-width: 992px) {
+  .login-wrapper { padding: 2rem 0; }
+  .login-content { justify-content: flex-end; padding: 0 1in 0 4rem; max-width: none; }
+}
 .login-card {
   position: relative; z-index: 1; width: 100%; transform: translateY(-12px);
   flex: 0 0 370px; max-width: 370px;
