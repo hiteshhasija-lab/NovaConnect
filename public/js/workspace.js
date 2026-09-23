@@ -40,6 +40,46 @@
   }
   function toDate(s) { return new Date(s.replace(' ', 'T') + 'Z'); }
   function fmtTime(s) { return toDate(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+
+  // A short two-tone chime via the Web Audio API — no audio file needed. Browsers block audio
+  // until the user has interacted with the page at least once; that's expected and fine here,
+  // since by the time a message notification would fire the user has already loaded/clicked
+  // around the app.
+  function playNotificationSound() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const now = ctx.currentTime;
+      [880, 660].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, now + i * 0.12);
+        gain.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.18);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + i * 0.12);
+        osc.stop(now + i * 0.12 + 0.2);
+      });
+      setTimeout(() => ctx.close(), 600);
+    } catch (e) { /* audio not available — not worth surfacing to the user */ }
+  }
+
+  // Blinks the user's own avatar button (bottom-left rail), like MS Teams flashing the taskbar
+  // icon on a new message — draws the eye without needing the window focused or a specific
+  // chat open.
+  let profileBlinkTimer = null;
+  function blinkProfile() {
+    const btn = document.querySelector('.rail-avatar-btn');
+    if (!btn) return;
+    btn.classList.remove('profile-blink');
+    void btn.offsetWidth; // restart the animation if it's already mid-blink from a prior message
+    btn.classList.add('profile-blink');
+    clearTimeout(profileBlinkTimer);
+    profileBlinkTimer = setTimeout(() => btn.classList.remove('profile-blink'), 4000);
+  }
   function fmtDayLabel(s) {
     const d = toDate(s), now = new Date();
     const sameDay = (a, b) => a.toDateString() === b.toDateString();
@@ -142,6 +182,10 @@
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'e' && !state.active.conversation.is_group) { e.preventDefault(); calls.share(state.active.conversation.id, state.active.participants.find(p => p.id !== NC.currentUser.id).full_name); }
   });
   socket.on('message:new', (msg) => {
+    if (msg.author && msg.author.id !== NC.currentUser.id) {
+      playNotificationSound();
+      blinkProfile();
+    }
     if (state.active.type === 'channel' && msg.channel_id === state.active.channel.id) {
       hideThinkingBubble();
       if (currentChannelTab === 'posts') appendMessageToList(msg);

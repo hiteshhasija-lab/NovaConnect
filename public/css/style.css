@@ -231,6 +231,13 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 /* Keep the profile status legible at the sidebar avatar size. */
 .rail-avatar-btn > .presence-dot { width: 1rem; height: 1rem; bottom: -2px; right: -2px; border-width: 2px; }
 
+/* Flashes on a new message from someone else, like MS Teams flashing the taskbar icon. */
+.rail-avatar-btn.profile-blink .user-avatar { animation: profile-blink-pulse 0.7s ease-in-out 4; }
+@keyframes profile-blink-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--brand-rgb), 0); }
+  50% { box-shadow: 0 0 0 0.3rem rgba(var(--brand-rgb), 0.55); }
+}
+
 .sidebar { width: 280px; flex: none; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
 .sidebar-header {
   padding: 0.9rem 1rem 0.6rem; font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; justify-content: space-between;
@@ -287,8 +294,7 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 .msg-row:hover { background: var(--surface-2); }
 .msg-row.grouped { padding-top: 0.05rem; }
 .msg-row.grouped .msg-avatar-slot { visibility: hidden; }
-.msg-row.grouped:hover .msg-time-inline { visibility: visible; }
-.msg-time-inline { visibility: hidden; font-size: 0.65rem; color: var(--text-muted); width: 2.4rem; flex: none; text-align: right; padding-top: 0.2rem; }
+.msg-time-inline { font-size: 0.65rem; color: var(--text-muted); width: 2.4rem; flex: none; text-align: right; padding-top: 0.2rem; }
 .msg-avatar-slot { width: 2.4rem; flex: none; }
 .msg-avatar-slot .user-avatar { width: 2.1rem; height: 2.1rem; font-size: 0.75rem; }
 .msg-body-col { flex: 1; min-width: 0; }
