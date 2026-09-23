@@ -3,10 +3,17 @@ const { requireAuth } = require('../middleware/auth');
 const { callNovaDesk, postBotMessage } = require('../decomFlow');
 const { db, nowStr } = require('../db');
 const { hydrateOne } = require('../messageUtils');
-const { emitToChannel } = require('../realtime');
+const { emitToChannel, emitToConversation } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
+
+// { channelId } for a card posted in server-decom, { conversationId } for a card posted in a
+// DM with novadesk-bot — whichever the client sent back (msg.channel_id/msg.conversation_id
+// round-tripped from the card it clicked).
+function targetFromBody(req) {
+  return { channelId: req.body.channel_id, conversationId: req.body.conversation_id };
+}
 
 // Marks the original approval-card message as resolved (not just posting a follow-up),
 // so a page refresh doesn't show stale, already-acted-on Approve/Reject buttons.
@@ -22,7 +29,8 @@ async function resolveCardMessage(messageId, status) {
     UPDATE messages SET metadata = ?, updated_at = ? WHERE id = ? RETURNING *
   `).get(JSON.stringify(meta), nowStr(), messageId);
   const message = await hydrateOne(updated, null);
-  emitToChannel(row.channel_id, 'message:update', message);
+  if (row.channel_id) emitToChannel(row.channel_id, 'message:update', message);
+  else emitToConversation(row.conversation_id, 'message:update', message);
 }
 
 // All routes below are relative — this router is mounted at app.use('/api/decom', ...) in
@@ -34,8 +42,8 @@ async function resolveCardMessage(messageId, status) {
 // '/api/integrations/novadesk/decom-updates' router mounted later in server.js, rejecting them
 // with 401 "Not signed in." before they ever reached it. Fixed 2026-09-21.
 router.post('/:changeId/approve', async (req, res) => {
-  const channelId = req.body.channel_id;
-  if (!channelId) return res.status(400).json({ error: 'channel_id is required.' });
+  const target = targetFromBody(req);
+  if (!target.channelId && !target.conversationId) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
   try {
@@ -44,7 +52,7 @@ router.post('/:changeId/approve', async (req, res) => {
     });
     await resolveCardMessage(req.body.message_id, 'approved');
     await postBotMessage(
-      channelId,
+      target,
       `✅ ${change.number} approved by ${user.full_name}. Scheduled for decommission.`,
       { cardType: 'decom_status', changeId: change.id, changeNumber: change.number, status: 'approved' }
     );
@@ -55,8 +63,8 @@ router.post('/:changeId/approve', async (req, res) => {
 });
 
 router.post('/:changeId/reject', async (req, res) => {
-  const channelId = req.body.channel_id;
-  if (!channelId) return res.status(400).json({ error: 'channel_id is required.' });
+  const target = targetFromBody(req);
+  if (!target.channelId && !target.conversationId) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
   try {
@@ -65,7 +73,7 @@ router.post('/:changeId/reject', async (req, res) => {
     });
     await resolveCardMessage(req.body.message_id, 'rejected');
     await postBotMessage(
-      channelId,
+      target,
       `❌ ${change.number} rejected by ${user.full_name}.`,
       { cardType: 'decom_status', changeId: change.id, changeNumber: change.number, status: 'rejected' }
     );
@@ -80,8 +88,7 @@ router.post('/:changeId/reject', async (req, res) => {
 // backend call, message copy, and resulting card status ('destroyed', not 'approved'/'rejected')
 // all differ enough that sharing would just add indirection.
 router.post('/:changeId/confirm-destroy', async (req, res) => {
-  const channelId = req.body.channel_id;
-  if (!channelId) return res.status(400).json({ error: 'channel_id is required.' });
+  if (!req.body.channel_id && !req.body.conversation_id) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
   try {
@@ -114,7 +121,6 @@ router.post('/:changeId/skip-manual-tasks', async (req, res) => {
 
 // Individual pre-check confirmation prompt action: Complete or Skip.
 router.post('/:changeId/precheck-task', async (req, res) => {
-  const channelId = req.body.channel_id;
   const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.user.id);
   const action = req.body.action; // 'complete' or 'skip'
 

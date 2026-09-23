@@ -91,7 +91,7 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
   res.status(201).json(message);
 
   if (channel.name === 'server-decom' && !parentId && body) {
-    handleDecomTrigger(channel.id, req.session.user.id, body).catch(() => {});
+    handleDecomTrigger({ channelId: channel.id }, req.session.user.id, body).catch(() => {});
   }
 });
 

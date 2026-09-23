@@ -1,7 +1,7 @@
 const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { hydrateOne } = require('../messageUtils');
-const { emitToChannel } = require('../realtime');
+const { emitToChannel, emitToConversation } = require('../realtime');
 
 const router = createAsyncRouter();
 
@@ -20,19 +20,22 @@ function requireSyncAuth(req, res, next) {
 router.use(requireSyncAuth);
 
 // POST /api/integrations/novadesk/decom-updates
-// body: { channel_id, body, metadata }
+// body: { channel_id, conversation_id, body, metadata } — exactly one of channel_id/
+// conversation_id, matching whichever surface (server-decom channel, or a DM with
+// novadesk-bot) the originating Change was created from.
 router.post('/novadesk/decom-updates', async (req, res) => {
-  const { channel_id, body, metadata } = req.body;
-  if (!channel_id) return res.status(400).json({ error: 'channel_id is required.' });
+  const { channel_id, conversation_id, body, metadata } = req.body;
+  if (!channel_id && !conversation_id) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   if (!body) return res.status(400).json({ error: 'body is required.' });
 
   const bot = await db.prepare("SELECT id FROM users WHERE username = 'novadesk-bot'").get();
   const row = await db.prepare(`
-    INSERT INTO messages (channel_id, user_id, body, metadata, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?) RETURNING *
-  `).get(channel_id, bot ? bot.id : null, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
+    INSERT INTO messages (channel_id, conversation_id, user_id, body, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+  `).get(channel_id || null, conversation_id || null, bot ? bot.id : null, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
   const message = await hydrateOne(row, null);
-  emitToChannel(channel_id, 'message:new', message);
+  if (channel_id) emitToChannel(channel_id, 'message:new', message);
+  else emitToConversation(conversation_id, 'message:new', message);
 
   res.status(201).json({ ok: true, messageId: message.id });
 });

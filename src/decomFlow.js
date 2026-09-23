@@ -1,5 +1,5 @@
 const { db, nowStr } = require('./db');
-const { emitToChannel } = require('./realtime');
+const { emitToChannel, emitToConversation } = require('./realtime');
 const { hydrateOne } = require('./messageUtils');
 
 // host.containers.internal, not NovaDesk's raw pod IP (10.0.0.101): that IP also happens to
@@ -44,20 +44,26 @@ function extractDecomIntent(text) {
   return { hostname: match[1] };
 }
 
-async function postBotMessage(channelId, body, metadata) {
+// `target` is { channelId } for the server-decom channel path, or { conversationId } for a
+// direct message to novadesk-bot — exactly one is set, mirroring the messages table's own
+// channel_id/conversation_id convention. Every decom message (approval card, precheck cards,
+// status updates) flows through this one function, so generalizing it here is what makes the
+// whole pipeline work from either surface with no per-message-type changes elsewhere.
+async function postBotMessage(target, body, metadata) {
   const bot = await db.prepare("SELECT id FROM users WHERE username = 'novadesk-bot'").get();
   const row = await db.prepare(`
-    INSERT INTO messages (channel_id, user_id, body, metadata, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?) RETURNING *
-  `).get(channelId, bot ? bot.id : null, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
+    INSERT INTO messages (channel_id, conversation_id, user_id, body, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+  `).get(target.channelId || null, target.conversationId || null, bot ? bot.id : null, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
   const message = await hydrateOne(row, null);
-  emitToChannel(channelId, 'message:new', message);
+  if (target.channelId) emitToChannel(target.channelId, 'message:new', message);
+  else emitToConversation(target.conversationId, 'message:new', message);
   return message;
 }
 
 // Fire-and-forget from the message-post route — never let this throw upstream, since a
 // NovaDesk hiccup here must not affect the human's own message send.
-async function handleDecomTrigger(channelId, userId, text) {
+async function handleDecomTrigger(target, userId, text) {
   try {
     const intent = extractDecomIntent(text);
     if (!intent) return;
@@ -67,17 +73,18 @@ async function handleDecomTrigger(channelId, userId, text) {
     try {
       result = await callNovaDesk('/api/integrations/novaconnect/decommission-requests', {
         hostname: intent.hostname,
-        novaconnect_channel_id: channelId,
+        novaconnect_channel_id: target.channelId,
+        novaconnect_conversation_id: target.conversationId,
         requested_by_username: user ? user.username : null
       });
     } catch (e) {
-      await postBotMessage(channelId, `⚠️ Couldn't start decommissioning "${intent.hostname}": ${e.message}`);
+      await postBotMessage(target, `⚠️ Couldn't start decommissioning "${intent.hostname}": ${e.message}`);
       return;
     }
 
     const { change, ci, esxiHost } = result;
     await postBotMessage(
-      channelId,
+      target,
       `🖥️ Found ${ci.name} (${ci.ci_number}) — runs on ${esxiHost.name}. Created ${change.number}: ${change.short_description}. Needs admin approval before anything happens.`,
       { cardType: 'decom_approval', changeId: change.id, changeNumber: change.number, ciName: ci.name, status: 'pending' }
     );

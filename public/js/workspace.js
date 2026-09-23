@@ -658,7 +658,7 @@
     const setBusy = (busy) => card.querySelectorAll('button').forEach(b => { b.disabled = busy; });
     const act = (action) => {
       setBusy(true);
-      api('/api/decom/' + msg.metadata.changeId + '/' + action, { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
+      api('/api/decom/' + msg.metadata.changeId + '/' + action, { method: 'POST', body: { channel_id: msg.channel_id, conversation_id: msg.conversation_id, message_id: msg.id } })
         .catch(e => { setBusy(false); showToastError(e); });
     };
     card.querySelector('.decom-approve-btn').addEventListener('click', () => act('approve'));
@@ -690,7 +690,7 @@
     btn.addEventListener('click', () => {
       if (!confirm('Permanently destroy ' + (msg.metadata.ciName || 'this VM') + '? This cannot be undone.')) return;
       btn.disabled = true;
-      api('/api/decom/' + msg.metadata.changeId + '/confirm-destroy', { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
+      api('/api/decom/' + msg.metadata.changeId + '/confirm-destroy', { method: 'POST', body: { channel_id: msg.channel_id, conversation_id: msg.conversation_id, message_id: msg.id } })
         .catch(e => { btn.disabled = false; showToastError(e); });
     });
   }
@@ -720,7 +720,7 @@
     const btn = card.querySelector('.decom-skip-tasks-btn');
     btn.addEventListener('click', () => {
       btn.disabled = true;
-      api('/api/decom/' + msg.metadata.changeId + '/skip-manual-tasks', { method: 'POST', body: { channel_id: msg.channel_id, message_id: msg.id } })
+      api('/api/decom/' + msg.metadata.changeId + '/skip-manual-tasks', { method: 'POST', body: { channel_id: msg.channel_id, conversation_id: msg.conversation_id, message_id: msg.id } })
         .catch(e => { btn.disabled = false; showToastError(e); });
     });
   }
@@ -761,6 +761,7 @@
           task_description: msg.metadata.taskDescription,
           task_id: msg.metadata.taskId,
           channel_id: msg.channel_id,
+          conversation_id: msg.conversation_id,
           message_id: msg.id
         }
       }).catch(e => {
