@@ -791,7 +791,6 @@
           row('Tracker', 'Row ' + escapeHtml(String(meta.trackerRow)) + ' appended') +
           row('Elapsed', escapeHtml(meta.elapsedSim) + ' (sim) · ' + escapeHtml(meta.elapsedReal) + ' (real)') +
         '</div>' +
-        '<div class="decom-summary-footer">Ask me for a decom summary any time.</div>' +
       '</div>'
     );
   }

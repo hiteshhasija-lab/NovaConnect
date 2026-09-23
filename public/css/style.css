@@ -322,7 +322,6 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 .decom-summary-row + .decom-summary-row { border-top: 1px solid var(--border); }
 .decom-summary-label { color: var(--text-secondary, #666); flex-shrink: 0; }
 .decom-summary-value { color: var(--text); text-align: right; }
-.decom-summary-footer { margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary, #666); }
 .msg-attachment { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.4rem 0.7rem; margin-top: 0.3rem; font-size: 0.8rem; text-decoration: none; color: var(--text); }
 .msg-attachment:hover { border-color: var(--brand); }
 .msg-attachment-img { max-width: 280px; max-height: 220px; border-radius: 0.6rem; margin-top: 0.4rem; display: block; border: 1px solid var(--border); }
