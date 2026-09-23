@@ -51,11 +51,13 @@ router.post('/:changeId/reject', async (req, res) => {
   }
 });
 
-// The second checkpoint's action route — same relay-to-NovaDesk-then-resolve-the-card shape
-// as approve/reject above, deliberately not collapsed into a shared helper with them since the
-// backend call, message copy, and resulting card status ('destroyed', not 'approved'/'rejected')
-// all differ enough that sharing would just add indirection. NovaDesk itself pushes the final
-// completion message once destroy actually finishes, so no postBotMessage call here.
+// The second checkpoint's action route. NovaDesk's own confirm-destroy handler now resolves
+// the decom_confirm_destroy card itself (same reasoning as approve/reject/precheck-task above)
+// — this was found missing when a confirm-destroy driven directly through NovaDesk's endpoint
+// (bypassing this route entirely) left the card stuck showing "Confirm Destroy" with live
+// buttons even though the VM had genuinely been destroyed. This route no longer duplicates
+// that resolve. NovaDesk itself pushes the final completion message once destroy actually
+// finishes, so no postBotMessage call here either.
 router.post('/:changeId/confirm-destroy', async (req, res) => {
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
@@ -63,7 +65,6 @@ router.post('/:changeId/confirm-destroy', async (req, res) => {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/confirm-destroy`, {
       confirmed_by_username: user.username
     });
-    await resolveDecomCardByMessageId(req.body.message_id, 'destroyed');
     res.json({ ok: true, change });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -71,7 +72,9 @@ router.post('/:changeId/confirm-destroy', async (req, res) => {
 });
 
 // Cancel option next to Confirm Destroy — backs out at the last checkpoint instead of
-// proceeding. NovaDesk pushes its own "cancelled, powered back on" status message once done.
+// proceeding. NovaDesk's own cancel-destroy handler now resolves the card itself too (same
+// fix as confirm-destroy above), and pushes its own "cancelled, powered back on" status
+// message once done.
 router.post('/:changeId/cancel-destroy', async (req, res) => {
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
@@ -79,7 +82,6 @@ router.post('/:changeId/cancel-destroy', async (req, res) => {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/cancel-destroy`, {
       cancelled_by_username: user.username
     });
-    await resolveDecomCardByMessageId(req.body.message_id, 'cancelled');
     res.json({ ok: true, change });
   } catch (e) {
     res.status(400).json({ error: e.message });
