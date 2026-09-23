@@ -315,6 +315,14 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 .decom-card-neutral { background: var(--surface-2); border: 1px solid var(--border); padding: 0.6rem 0.75rem; }
 .decom-card-list { margin: 0.3rem 0 0.5rem; padding-left: 1.1rem; color: var(--text-secondary, #666); font-size: 0.8rem; }
 .decom-card-skipped { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.7rem; font-weight: 600; color: var(--text-secondary, #666); background: var(--surface-2); }
+.decom-card-summary { background: var(--surface-2); border: 1px solid var(--border); padding: 0.75rem 0.85rem; max-width: 380px; }
+.decom-card-summary .decom-card-title { color: var(--brand); font-size: 0.95rem; margin-bottom: 0.5rem; }
+.decom-summary-box { background: var(--surface); border-radius: 0.6rem; padding: 0.5rem 0.7rem; }
+.decom-summary-row { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.3rem 0; font-size: 0.8rem; }
+.decom-summary-row + .decom-summary-row { border-top: 1px solid var(--border); }
+.decom-summary-label { color: var(--text-secondary, #666); flex-shrink: 0; }
+.decom-summary-value { color: var(--text); text-align: right; }
+.decom-summary-footer { margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary, #666); }
 .msg-attachment { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.4rem 0.7rem; margin-top: 0.3rem; font-size: 0.8rem; text-decoration: none; color: var(--text); }
 .msg-attachment:hover { border-color: var(--brand); }
 .msg-attachment-img { max-width: 280px; max-height: 220px; border-radius: 0.6rem; margin-top: 0.4rem; display: block; border: 1px solid var(--border); }

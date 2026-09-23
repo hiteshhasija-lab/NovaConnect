@@ -621,6 +621,7 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') html += decomConfirmDestroyCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') html += decomSkipManualTasksCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') html += decomPrecheckTaskCardHtml(msg.metadata);
+    if (msg.metadata && msg.metadata.cardType === 'decom_summary') html += decomSummaryCardHtml(msg.metadata);
     (msg.attachments || []).forEach(a => { html += attachmentHtml(a); });
     html += reactionsHtml(msg);
     if (!isThreadReply) {
@@ -773,6 +774,26 @@
 
     completeBtn.addEventListener('click', () => act('complete'));
     skipBtn.addEventListener('click', () => act('skip'));
+  }
+
+  // Terminal, non-interactive — no wiring function, just a formatted read-out of what
+  // happened. All values come from NovaDesk (real elapsed time, real reclaimed specs, the
+  // actual tracker row appended), not fabricated here.
+  function decomSummaryCardHtml(meta) {
+    const row = (label, value) => '<div class="decom-summary-row"><span class="decom-summary-label">' + escapeHtml(label) + '</span><span class="decom-summary-value">' + value + '</span></div>';
+    return (
+      '<div class="decom-card decom-card-summary">' +
+        '<div class="decom-card-title">🎉 ' + escapeHtml(meta.ciName || '') + ' decommissioned end-to-end.</div>' +
+        '<div class="decom-summary-box">' +
+          row('Change', escapeHtml(meta.changeNumber) + ' — ' + escapeHtml(meta.changeStatus)) +
+          row('CMDB', escapeHtml(meta.cmdbStatus)) +
+          row('Reclaimed', escapeHtml(meta.reclaimed)) +
+          row('Tracker', 'Row ' + escapeHtml(String(meta.trackerRow)) + ' appended') +
+          row('Elapsed', escapeHtml(meta.elapsedSim) + ' (sim) · ' + escapeHtml(meta.elapsedReal) + ' (real)') +
+        '</div>' +
+        '<div class="decom-summary-footer">Ask me for a decom summary any time.</div>' +
+      '</div>'
+    );
   }
 
   function startEdit(row, msg) {

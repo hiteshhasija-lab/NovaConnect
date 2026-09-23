@@ -61,6 +61,10 @@ async function postBotMessage(target, body, metadata) {
   return message;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Fire-and-forget from the message-post route — never let this throw upstream, since a
 // NovaDesk hiccup here must not affect the human's own message send.
 async function handleDecomTrigger(target, userId, text) {
@@ -69,6 +73,10 @@ async function handleDecomTrigger(target, userId, text) {
     if (!intent) return;
 
     const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
+
+    await postBotMessage(target, `🔍 Searching CI in the CMDB for "${intent.hostname}"...`);
+    await sleep(5000);
+
     let result;
     try {
       result = await callNovaDesk('/api/integrations/novaconnect/decommission-requests', {
