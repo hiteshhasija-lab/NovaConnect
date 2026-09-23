@@ -833,7 +833,7 @@
     const row = (label, value) => '<div class="decom-summary-row"><span class="decom-summary-label">' + escapeHtml(label) + '</span><span class="decom-summary-value">' + value + '</span></div>';
     return (
       '<div class="decom-card decom-card-summary">' +
-        '<div class="decom-card-title">🎉 ' + escapeHtml(meta.ciName || '') + ' decommissioned end-to-end.</div>' +
+        '<div class="decom-card-title">🎉 ' + escapeHtml(meta.ciName || '') + ' decommissioned.</div>' +
         '<div class="decom-summary-box">' +
           row('Change', escapeHtml(meta.changeNumber) + ' — ' + escapeHtml(meta.changeStatus)) +
           row('CMDB', escapeHtml(meta.cmdbStatus)) +
