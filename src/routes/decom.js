@@ -15,6 +15,13 @@ router.use(requireAuth);
 // '/api/decom/...' paths was catching requests meant for the separate
 // '/api/integrations/novadesk/decom-updates' router mounted later in server.js, rejecting them
 // with 401 "Not signed in." before they ever reached it. Fixed 2026-09-21.
+// NovaDesk's own approve handler now resolves the approval card and posts the "✅ approved by
+// X" confirmation itself, as the very first thing it does after the DB write — before posting
+// the precheck cards. That's deliberate: this whole relay blocks on callNovaDesk, so if this
+// route did that resolve+post itself (as it used to), it would only happen *after* NovaDesk's
+// entire approve handler already finished, landing dead last in the visible order — after the
+// precheck cards — even though "approved" is logically the first thing that happens. So this
+// route no longer duplicates that; it just relays and returns.
 router.post('/:changeId/approve', async (req, res) => {
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
@@ -22,14 +29,6 @@ router.post('/:changeId/approve', async (req, res) => {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/approve`, {
       approved_by_username: user.username
     });
-    // Resolves every copy of the approval card (DM and/or server-decom broadcast), not just
-    // whichever one was clicked — same for every resolve call below.
-    await resolveDecomCardByMessageId(req.body.message_id, 'approved');
-    await postBotMessage(
-      decomTargetsFromChange(change),
-      `✅ ${change.number} approved by ${user.full_name}. Scheduled for decommission.`,
-      { cardType: 'decom_status', changeId: change.id, changeNumber: change.number, status: 'approved' }
-    );
     res.json({ ok: true, change });
   } catch (e) {
     res.status(400).json({ error: e.message });

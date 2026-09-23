@@ -41,6 +41,22 @@ router.post('/novadesk/decom-updates', async (req, res) => {
   res.status(201).json({ ok: true, messageId: message.id });
 });
 
+// POST /api/integrations/novadesk/decom-thinking
+// body: { channel_id, conversation_id, thinking } — live-only signal for the 5-7s gaps where
+// real work is happening server-side (ESXi power-off, ESXi destroy) but nothing has been posted
+// as a message yet. Never persisted to the messages table — just relayed straight to whoever has
+// that channel/DM open, via the same 'bot:thinking' event decomFlow.js emits locally for the
+// CI-lookup gap, so the client only needs one listener regardless of which side triggered it.
+router.post('/novadesk/decom-thinking', async (req, res) => {
+  const { channel_id, conversation_id, thinking } = req.body;
+  if (!channel_id && !conversation_id) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
+
+  if (channel_id) emitToChannel(channel_id, 'bot:thinking', { scope: 'channel', id: Number(channel_id), thinking: !!thinking });
+  else emitToConversation(conversation_id, 'bot:thinking', { scope: 'dm', id: Number(conversation_id), thinking: !!thinking });
+
+  res.json({ ok: true });
+});
+
 // POST /api/integrations/novadesk/decom-updates/resolve
 // body: { changeId, cardType, taskId, status } — lets a status change made directly in NovaDesk
 // (the Change Tasks toggle button, not a click on a card here) resolve every copy of the

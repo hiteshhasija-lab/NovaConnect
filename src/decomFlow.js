@@ -83,6 +83,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Same live-only "thinking" signal NovaDesk pushes over HTTP for its own delays (power-off,
+// destroy) — here it's a direct emit since this runs in-process, no round trip needed.
+function setThinking(targets, thinking) {
+  const list = Array.isArray(targets) ? targets : [targets];
+  for (const t of list) {
+    if (t.channelId) emitToChannel(t.channelId, 'bot:thinking', { scope: 'channel', id: Number(t.channelId), thinking: !!thinking });
+    else if (t.conversationId) emitToConversation(t.conversationId, 'bot:thinking', { scope: 'dm', id: Number(t.conversationId), thinking: !!thinking });
+  }
+}
+
 // Fire-and-forget from the message-post route — never let this throw upstream, since a
 // NovaDesk hiccup here must not affect the human's own message send.
 async function handleDecomTrigger(target, userId, text) {
@@ -106,10 +116,11 @@ async function handleDecomTrigger(target, userId, text) {
     }
 
     await postBotMessage(targets, `🔍 Searching CI in the CMDB for "${intent.hostname}"...`);
-    await sleep(5000);
+    setThinking(targets, true);
 
     let result;
     try {
+      await sleep(5000);
       result = await callNovaDesk('/api/integrations/novaconnect/decommission-requests', {
         hostname: intent.hostname,
         novaconnect_channel_id: target.channelId || broadcastChannelId,
@@ -119,6 +130,8 @@ async function handleDecomTrigger(target, userId, text) {
     } catch (e) {
       await postBotMessage(targets, `⚠️ Couldn't start decommissioning "${intent.hostname}": ${e.message}`);
       return;
+    } finally {
+      setThinking(targets, false);
     }
 
     const { change, ci, esxiHost } = result;

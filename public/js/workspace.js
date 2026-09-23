@@ -143,9 +143,11 @@
   });
   socket.on('message:new', (msg) => {
     if (state.active.type === 'channel' && msg.channel_id === state.active.channel.id) {
+      hideThinkingBubble();
       if (currentChannelTab === 'posts') appendMessageToList(msg);
       else state.active.messages.push(msg);
     } else if (state.active.type === 'dm' && msg.conversation_id === state.active.conversation.id) {
+      hideThinkingBubble();
       appendMessageToList(msg);
       saveChatPreferences(msg.conversation_id, { is_unread:false }).catch(showToastError);
     } else {
@@ -199,6 +201,40 @@
     if (names.length === 0) { box.classList.add('d-none'); box.textContent = ''; return; }
     box.classList.remove('d-none');
     box.textContent = names.join(', ') + (names.length === 1 ? ' is typing…' : ' are typing…');
+  }
+
+  // Bouncing three-dot bubble for the decom bot's own 5-7s server-side gaps (CI lookup, ESXi
+  // power-off, ESXi destroy) — distinct from the italic "X is typing…" line above, since this
+  // represents the bot doing real work rather than a human composing a message. Appended into
+  // the message list itself (like a transient last row), not persisted, so it never lingers in
+  // history once the corresponding 'thinking: false' arrives.
+  let thinkingHideTimer = null;
+  socket.on('bot:thinking', (payload) => {
+    const isActive = (state.active.type === 'channel' && payload.scope === 'channel' && state.active.channel.id === payload.id)
+      || (state.active.type === 'dm' && payload.scope === 'dm' && state.active.conversation.id === payload.id);
+    if (!isActive) return;
+    clearTimeout(thinkingHideTimer);
+    if (payload.thinking) {
+      showThinkingBubble();
+      // Safety net only — every real caller always follows up with a 'thinking: false' (in a
+      // try/finally), but this guarantees the bubble can't get stuck forever if that signal is
+      // ever lost (e.g. a crash mid-request).
+      thinkingHideTimer = setTimeout(hideThinkingBubble, 30000);
+    } else {
+      hideThinkingBubble();
+    }
+  });
+
+  function showThinkingBubble() {
+    hideThinkingBubble();
+    const list = document.getElementById('messageList');
+    const row = el('<div class="thinking-bubble" id="botThinkingBubble"><div class="thinking-dots"><span></span><span></span><span></span></div></div>');
+    list.appendChild(row);
+    list.scrollTop = list.scrollHeight;
+  }
+  function hideThinkingBubble() {
+    const row = document.getElementById('botThinkingBubble');
+    if (row) row.remove();
   }
 
   function bumpConversationPreview(msg) {
