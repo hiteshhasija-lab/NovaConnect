@@ -117,6 +117,9 @@ async function handleDecomTrigger(target, userId, text) {
         // postBotMessage's dual-post. Relay a copy into the channel so members there see what
         // was actually asked for, not just the bot's derived responses.
         await postBotMessage({ channelId: decomChannel.id }, `💬 ${user ? user.full_name : 'Someone'} asked (via DM): "${text}"`);
+        setThinking(targets, true);
+        await sleep(5000);
+        setThinking(targets, false);
       }
     }
 
