@@ -1,6 +1,6 @@
 const createAsyncRouter = require('../asyncRouter');
 const { requireAuth } = require('../middleware/auth');
-const { callNovaDesk, postBotMessage, decomTargetsFromChange } = require('../decomFlow');
+const { callNovaDesk } = require('../decomFlow');
 const { resolveDecomCardByMessageId } = require('../decomCards');
 const { db } = require('../db');
 
@@ -35,6 +35,9 @@ router.post('/:changeId/approve', async (req, res) => {
   }
 });
 
+// NovaDesk's own reject handler now resolves the approval card and posts the "❌ rejected"
+// confirmation itself (same reasoning as approve above), since a Change can also be rejected
+// directly from NovaDesk's own UI, not only from here.
 router.post('/:changeId/reject', async (req, res) => {
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
@@ -42,12 +45,6 @@ router.post('/:changeId/reject', async (req, res) => {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/reject`, {
       rejected_by_username: user.username
     });
-    await resolveDecomCardByMessageId(req.body.message_id, 'rejected');
-    await postBotMessage(
-      decomTargetsFromChange(change),
-      `❌ ${change.number} rejected by ${user.full_name}.`,
-      { cardType: 'decom_status', changeId: change.id, changeNumber: change.number, status: 'rejected' }
-    );
     res.json({ ok: true, change });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -106,7 +103,10 @@ router.post('/:changeId/skip-manual-tasks', async (req, res) => {
   }
 });
 
-// Individual pre-check confirmation prompt action: Complete or Skip.
+// Individual pre-check confirmation prompt action: Complete or Skip. NovaDesk's precheck-task
+// handler now resolves this card itself, before it (possibly) triggers power-down if this was
+// the last of the 3 — same ordering reasoning as approve/reject above. This route no longer
+// duplicates that resolve.
 router.post('/:changeId/precheck-task', async (req, res) => {
   const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.user.id);
   const action = req.body.action; // 'complete' or 'skip'
@@ -119,7 +119,6 @@ router.post('/:changeId/precheck-task', async (req, res) => {
       actor_username: user.username
     });
     const status = action === 'complete' ? 'completed' : 'skipped';
-    await resolveDecomCardByMessageId(req.body.message_id, status);
     res.json({ ok: true, status });
   } catch (e) {
     res.status(400).json({ error: e.message });

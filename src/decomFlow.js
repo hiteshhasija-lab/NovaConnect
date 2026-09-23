@@ -100,7 +100,7 @@ async function handleDecomTrigger(target, userId, text) {
     const intent = extractDecomIntent(text);
     if (!intent) return;
 
-    const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(userId);
 
     // A DM-originated request also broadcasts into server-decom, so channel members see live
     // status and (being admins) can act on it too — not just whoever DM'd the bot. A
@@ -112,6 +112,11 @@ async function handleDecomTrigger(target, userId, text) {
       if (decomChannel) {
         broadcastChannelId = decomChannel.id;
         targets = [target, { channelId: decomChannel.id }];
+        // The human's own trigger message only landed in the DM — it was posted through the
+        // normal message-send route before this handler even ran, so it never went through
+        // postBotMessage's dual-post. Relay a copy into the channel so members there see what
+        // was actually asked for, not just the bot's derived responses.
+        await postBotMessage({ channelId: decomChannel.id }, `💬 ${user ? user.full_name : 'Someone'} asked (via DM): "${text}"`);
       }
     }
 
