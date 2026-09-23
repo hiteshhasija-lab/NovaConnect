@@ -1,37 +1,11 @@
 const createAsyncRouter = require('../asyncRouter');
 const { requireAuth } = require('../middleware/auth');
-const { callNovaDesk, postBotMessage } = require('../decomFlow');
-const { db, nowStr } = require('../db');
-const { hydrateOne } = require('../messageUtils');
-const { emitToChannel, emitToConversation } = require('../realtime');
+const { callNovaDesk, postBotMessage, decomTargetsFromChange } = require('../decomFlow');
+const { resolveDecomCardByMessageId } = require('../decomCards');
+const { db } = require('../db');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
-
-// { channelId } for a card posted in server-decom, { conversationId } for a card posted in a
-// DM with novadesk-bot — whichever the client sent back (msg.channel_id/msg.conversation_id
-// round-tripped from the card it clicked).
-function targetFromBody(req) {
-  return { channelId: req.body.channel_id, conversationId: req.body.conversation_id };
-}
-
-// Marks the original approval-card message as resolved (not just posting a follow-up),
-// so a page refresh doesn't show stale, already-acted-on Approve/Reject buttons.
-async function resolveCardMessage(messageId, status) {
-  if (!messageId) return;
-  const row = await db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
-  if (!row || !row.metadata) return;
-  let meta;
-  try { meta = JSON.parse(row.metadata); } catch { return; }
-  if (meta.cardType !== 'decom_approval' && meta.cardType !== 'decom_confirm_destroy' && meta.cardType !== 'decom_skip_manual_tasks' && meta.cardType !== 'decom_precheck_task') return;
-  meta.status = status;
-  const updated = await db.prepare(`
-    UPDATE messages SET metadata = ?, updated_at = ? WHERE id = ? RETURNING *
-  `).get(JSON.stringify(meta), nowStr(), messageId);
-  const message = await hydrateOne(updated, null);
-  if (row.channel_id) emitToChannel(row.channel_id, 'message:update', message);
-  else emitToConversation(row.conversation_id, 'message:update', message);
-}
 
 // All routes below are relative — this router is mounted at app.use('/api/decom', ...) in
 // server.js, not '/'. Mounting a router with its own router.use(requireAuth) gate at '/' was
@@ -42,17 +16,17 @@ async function resolveCardMessage(messageId, status) {
 // '/api/integrations/novadesk/decom-updates' router mounted later in server.js, rejecting them
 // with 401 "Not signed in." before they ever reached it. Fixed 2026-09-21.
 router.post('/:changeId/approve', async (req, res) => {
-  const target = targetFromBody(req);
-  if (!target.channelId && !target.conversationId) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/approve`, {
       approved_by_username: user.username
     });
-    await resolveCardMessage(req.body.message_id, 'approved');
+    // Resolves every copy of the approval card (DM and/or server-decom broadcast), not just
+    // whichever one was clicked — same for every resolve call below.
+    await resolveDecomCardByMessageId(req.body.message_id, 'approved');
     await postBotMessage(
-      target,
+      decomTargetsFromChange(change),
       `✅ ${change.number} approved by ${user.full_name}. Scheduled for decommission.`,
       { cardType: 'decom_status', changeId: change.id, changeNumber: change.number, status: 'approved' }
     );
@@ -63,17 +37,15 @@ router.post('/:changeId/approve', async (req, res) => {
 });
 
 router.post('/:changeId/reject', async (req, res) => {
-  const target = targetFromBody(req);
-  if (!target.channelId && !target.conversationId) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/reject`, {
       rejected_by_username: user.username
     });
-    await resolveCardMessage(req.body.message_id, 'rejected');
+    await resolveDecomCardByMessageId(req.body.message_id, 'rejected');
     await postBotMessage(
-      target,
+      decomTargetsFromChange(change),
       `❌ ${change.number} rejected by ${user.full_name}.`,
       { cardType: 'decom_status', changeId: change.id, changeNumber: change.number, status: 'rejected' }
     );
@@ -86,16 +58,32 @@ router.post('/:changeId/reject', async (req, res) => {
 // The second checkpoint's action route — same relay-to-NovaDesk-then-resolve-the-card shape
 // as approve/reject above, deliberately not collapsed into a shared helper with them since the
 // backend call, message copy, and resulting card status ('destroyed', not 'approved'/'rejected')
-// all differ enough that sharing would just add indirection.
+// all differ enough that sharing would just add indirection. NovaDesk itself pushes the final
+// completion message once destroy actually finishes, so no postBotMessage call here.
 router.post('/:changeId/confirm-destroy', async (req, res) => {
-  if (!req.body.channel_id && !req.body.conversation_id) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
   const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
 
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/confirm-destroy`, {
       confirmed_by_username: user.username
     });
-    await resolveCardMessage(req.body.message_id, 'destroyed');
+    await resolveDecomCardByMessageId(req.body.message_id, 'destroyed');
+    res.json({ ok: true, change });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Cancel option next to Confirm Destroy — backs out at the last checkpoint instead of
+// proceeding. NovaDesk pushes its own "cancelled, powered back on" status message once done.
+router.post('/:changeId/cancel-destroy', async (req, res) => {
+  const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(req.session.user.id);
+
+  try {
+    const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/cancel-destroy`, {
+      cancelled_by_username: user.username
+    });
+    await resolveDecomCardByMessageId(req.body.message_id, 'cancelled');
     res.json({ ok: true, change });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -112,7 +100,7 @@ router.post('/:changeId/skip-manual-tasks', async (req, res) => {
     await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/skip-manual-tasks`, {
       skipped_by_username: user.username
     });
-    await resolveCardMessage(req.body.message_id, 'skipped');
+    await resolveDecomCardByMessageId(req.body.message_id, 'skipped');
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -132,7 +120,7 @@ router.post('/:changeId/precheck-task', async (req, res) => {
       actor_username: user.username
     });
     const status = action === 'complete' ? 'completed' : 'skipped';
-    await resolveCardMessage(req.body.message_id, status);
+    await resolveDecomCardByMessageId(req.body.message_id, status);
     res.json({ ok: true, status });
   } catch (e) {
     res.status(400).json({ error: e.message });

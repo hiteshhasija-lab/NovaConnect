@@ -44,21 +44,39 @@ function extractDecomIntent(text) {
   return { hostname: match[1] };
 }
 
-// `target` is { channelId } for the server-decom channel path, or { conversationId } for a
-// direct message to novadesk-bot — exactly one is set, mirroring the messages table's own
-// channel_id/conversation_id convention. Every decom message (approval card, precheck cards,
-// status updates) flows through this one function, so generalizing it here is what makes the
-// whole pipeline work from either surface with no per-message-type changes elsewhere.
+async function findServerDecomChannel() {
+  return db.prepare("SELECT id FROM channels WHERE name = 'server-decom'").get();
+}
+
+// `target` is { channelId } | { conversationId }, OR an array of those — a DM-originated
+// request also broadcasts into server-decom (see handleDecomTrigger), so every decom message
+// from that point on has two destinations, not one. Every decom message flows through this one
+// function, so generalizing it here is what makes the whole pipeline multi-target everywhere.
 async function postBotMessage(target, body, metadata) {
+  const targets = Array.isArray(target) ? target : [target];
   const bot = await db.prepare("SELECT id FROM users WHERE username = 'novadesk-bot'").get();
-  const row = await db.prepare(`
-    INSERT INTO messages (channel_id, conversation_id, user_id, body, metadata, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
-  `).get(target.channelId || null, target.conversationId || null, bot ? bot.id : null, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
-  const message = await hydrateOne(row, null);
-  if (target.channelId) emitToChannel(target.channelId, 'message:new', message);
-  else emitToConversation(target.conversationId, 'message:new', message);
-  return message;
+  let last = null;
+  for (const t of targets) {
+    const row = await db.prepare(`
+      INSERT INTO messages (channel_id, conversation_id, user_id, body, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+    `).get(t.channelId || null, t.conversationId || null, bot ? bot.id : null, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
+    const message = await hydrateOne(row, null);
+    if (t.channelId) emitToChannel(t.channelId, 'message:new', message);
+    else emitToConversation(t.conversationId, 'message:new', message);
+    last = message;
+  }
+  return last;
+}
+
+// Mirrors NovaDesk's own decomTargets(change) — used by decom.js so a follow-up message after
+// an action (approve/reject/confirm-destroy/etc.) goes to every surface the Change is tied to,
+// regardless of which copy of the card was actually clicked.
+function decomTargetsFromChange(change) {
+  const targets = [];
+  if (change.novaconnect_conversation_id) targets.push({ conversationId: change.novaconnect_conversation_id });
+  if (change.novaconnect_channel_id) targets.push({ channelId: change.novaconnect_channel_id });
+  return targets;
 }
 
 function sleep(ms) {
@@ -74,25 +92,38 @@ async function handleDecomTrigger(target, userId, text) {
 
     const user = await db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
 
-    await postBotMessage(target, `🔍 Searching CI in the CMDB for "${intent.hostname}"...`);
+    // A DM-originated request also broadcasts into server-decom, so channel members see live
+    // status and (being admins) can act on it too — not just whoever DM'd the bot. A
+    // channel-originated request has no DM to add on top of, so it stays single-target.
+    let targets = [target];
+    let broadcastChannelId = null;
+    if (target.conversationId) {
+      const decomChannel = await findServerDecomChannel();
+      if (decomChannel) {
+        broadcastChannelId = decomChannel.id;
+        targets = [target, { channelId: decomChannel.id }];
+      }
+    }
+
+    await postBotMessage(targets, `🔍 Searching CI in the CMDB for "${intent.hostname}"...`);
     await sleep(5000);
 
     let result;
     try {
       result = await callNovaDesk('/api/integrations/novaconnect/decommission-requests', {
         hostname: intent.hostname,
-        novaconnect_channel_id: target.channelId,
+        novaconnect_channel_id: target.channelId || broadcastChannelId,
         novaconnect_conversation_id: target.conversationId,
         requested_by_username: user ? user.username : null
       });
     } catch (e) {
-      await postBotMessage(target, `⚠️ Couldn't start decommissioning "${intent.hostname}": ${e.message}`);
+      await postBotMessage(targets, `⚠️ Couldn't start decommissioning "${intent.hostname}": ${e.message}`);
       return;
     }
 
     const { change, ci, esxiHost } = result;
     await postBotMessage(
-      target,
+      decomTargetsFromChange(change),
       `🖥️ Found ${ci.name} (${ci.ci_number}) — runs on ${esxiHost.name}. Created ${change.number}: ${change.short_description}. Needs admin approval before anything happens.`,
       { cardType: 'decom_approval', changeId: change.id, changeNumber: change.number, ciName: ci.name, status: 'pending' }
     );
@@ -101,4 +132,4 @@ async function handleDecomTrigger(target, userId, text) {
   }
 }
 
-module.exports = { handleDecomTrigger, callNovaDesk, postBotMessage };
+module.exports = { handleDecomTrigger, callNovaDesk, postBotMessage, decomTargetsFromChange, findServerDecomChannel };

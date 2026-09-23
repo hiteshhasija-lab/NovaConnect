@@ -2,6 +2,7 @@ const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation } = require('../realtime');
+const { resolveDecomCards } = require('../decomCards');
 
 const router = createAsyncRouter();
 
@@ -40,28 +41,17 @@ router.post('/novadesk/decom-updates', async (req, res) => {
   res.status(201).json({ ok: true, messageId: message.id });
 });
 
-// POST /api/integrations/novadesk/decom-updates/:messageId/resolve
-// body: { status } — lets a status change made directly in NovaDesk (the Change Tasks toggle
-// button, not a click on this card) resolve the matching precheck card here too, instead of
-// leaving it stuck showing "pending" with active buttons. Same shape as decom.js's own
-// resolveCardMessage, just reached from NovaDesk's side rather than a click in this app.
-router.post('/novadesk/decom-updates/:messageId/resolve', async (req, res) => {
-  const { status } = req.body;
-  if (!status) return res.status(400).json({ error: 'status is required.' });
+// POST /api/integrations/novadesk/decom-updates/resolve
+// body: { changeId, cardType, taskId, status } — lets a status change made directly in NovaDesk
+// (the Change Tasks toggle button, not a click on a card here) resolve every copy of the
+// matching card in this app — DM and server-decom broadcast alike — instead of leaving them
+// stuck showing "pending" with active buttons. Identified by key, not a message id: NovaDesk
+// never needs to track NovaConnect message ids at all, this app looks up every sibling itself.
+router.post('/novadesk/decom-updates/resolve', async (req, res) => {
+  const { changeId, cardType, taskId, status } = req.body;
+  if (!changeId || !cardType || !status) return res.status(400).json({ error: 'changeId, cardType, and status are required.' });
 
-  const row = await db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.messageId);
-  if (!row || !row.metadata) return res.status(404).json({ error: 'Message not found.' });
-  let meta;
-  try { meta = JSON.parse(row.metadata); } catch { return res.status(422).json({ error: 'Message has no card metadata.' }); }
-
-  meta.status = status;
-  const updated = await db.prepare(`
-    UPDATE messages SET metadata = ?, updated_at = ? WHERE id = ? RETURNING *
-  `).get(JSON.stringify(meta), nowStr(), req.params.messageId);
-  const message = await hydrateOne(updated, null);
-  if (row.channel_id) emitToChannel(row.channel_id, 'message:update', message);
-  else emitToConversation(row.conversation_id, 'message:update', message);
-
+  await resolveDecomCards({ changeId, cardType, taskId }, status);
   res.json({ ok: true });
 });
 

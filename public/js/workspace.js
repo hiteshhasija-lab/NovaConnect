@@ -670,6 +670,9 @@
   // single button, no "safe-looking" green) — this is the second, irreversible checkpoint,
   // not a routine approval.
   function decomConfirmDestroyCardHtml(meta) {
+    if (meta.status === 'cancelled') {
+      return '<div class="decom-card decom-card-cancelled"><i class="bi bi-arrow-counterclockwise"></i> Cancelled — powered back on</div>';
+    }
     if (meta.status !== 'pending') {
       return '<div class="decom-card decom-card-destroyed"><i class="bi bi-check-circle-fill"></i> Destroyed</div>';
     }
@@ -679,6 +682,7 @@
         '<div class="decom-card-warning">This permanently destroys the VM and releases its storage. This cannot be undone.</div>' +
         '<div class="decom-card-actions">' +
           '<button type="button" class="btn btn-sm btn-danger decom-confirm-destroy-btn">Confirm Destroy</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary decom-cancel-destroy-btn">Cancel</button>' +
         '</div>' +
       '</div>'
     );
@@ -687,12 +691,22 @@
   function wireDecomConfirmDestroyCard(box, msg) {
     const card = box.querySelector('.decom-card-danger');
     if (!card) return;
-    const btn = card.querySelector('.decom-confirm-destroy-btn');
-    btn.addEventListener('click', () => {
+    const confirmBtn = card.querySelector('.decom-confirm-destroy-btn');
+    const cancelBtn = card.querySelector('.decom-cancel-destroy-btn');
+    const setBusy = (busy) => { confirmBtn.disabled = busy; cancelBtn.disabled = busy; };
+
+    confirmBtn.addEventListener('click', () => {
       if (!confirm('Permanently destroy ' + (msg.metadata.ciName || 'this VM') + '? This cannot be undone.')) return;
-      btn.disabled = true;
+      setBusy(true);
       api('/api/decom/' + msg.metadata.changeId + '/confirm-destroy', { method: 'POST', body: { channel_id: msg.channel_id, conversation_id: msg.conversation_id, message_id: msg.id } })
-        .catch(e => { btn.disabled = false; showToastError(e); });
+        .catch(e => { setBusy(false); showToastError(e); });
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      if (!confirm('Cancel the destroy and power ' + (msg.metadata.ciName || 'this VM') + ' back on?')) return;
+      setBusy(true);
+      api('/api/decom/' + msg.metadata.changeId + '/cancel-destroy', { method: 'POST', body: { channel_id: msg.channel_id, conversation_id: msg.conversation_id, message_id: msg.id } })
+        .catch(e => { setBusy(false); showToastError(e); });
     });
   }
 
