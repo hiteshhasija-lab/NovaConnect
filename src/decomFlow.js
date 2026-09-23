@@ -124,11 +124,15 @@ async function handleDecomTrigger(target, userId, text) {
     }
 
     await postBotMessage(targets, `🔍 Searching CI in the CMDB for "${intent.hostname}"...`);
+    // Dots stop BEFORE the real command (creating the Change in NovaDesk) runs, not during it —
+    // previously callNovaDesk ran inside the try block with setThinking(false) only in `finally`,
+    // so it fired while the dots were still animating.
     setThinking(targets, true);
+    await sleep(10000);
+    setThinking(targets, false);
 
     let result;
     try {
-      await sleep(10000);
       result = await callNovaDesk('/api/integrations/novaconnect/decommission-requests', {
         hostname: intent.hostname,
         novaconnect_channel_id: target.channelId || broadcastChannelId,
@@ -138,8 +142,6 @@ async function handleDecomTrigger(target, userId, text) {
     } catch (e) {
       await postBotMessage(targets, `⚠️ Couldn't start decommissioning "${intent.hostname}": ${e.message}`);
       return;
-    } finally {
-      setThinking(targets, false);
     }
 
     const { change, ci, esxiHost } = result;
