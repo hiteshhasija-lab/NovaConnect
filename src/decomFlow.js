@@ -118,7 +118,7 @@ async function handleDecomTrigger(target, userId, text) {
         // was actually asked for, not just the bot's derived responses.
         await postBotMessage({ channelId: decomChannel.id }, `💬 ${user ? user.full_name : 'Someone'} asked (via DM): "${text}"`);
         setThinking(targets, true);
-        await sleep(5000);
+        await sleep(10000);
         setThinking(targets, false);
       }
     }
@@ -128,7 +128,7 @@ async function handleDecomTrigger(target, userId, text) {
 
     let result;
     try {
-      await sleep(5000);
+      await sleep(10000);
       result = await callNovaDesk('/api/integrations/novaconnect/decommission-requests', {
         hostname: intent.hostname,
         novaconnect_channel_id: target.channelId || broadcastChannelId,
