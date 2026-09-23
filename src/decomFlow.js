@@ -137,7 +137,7 @@ async function handleDecomTrigger(target, userId, text) {
     const { change, ci, esxiHost } = result;
     await postBotMessage(
       decomTargetsFromChange(change),
-      `🖥️ Found ${ci.name} (${ci.ci_number}) — runs on ${esxiHost.name}. Created ${change.number}: ${change.short_description}. Needs admin approval before anything happens.`,
+      `🖥️ Found ${ci.name} (${ci.ci_number}) — runs on ${esxiHost.name}. Created ${change.number}: ${change.short_description}. Needs admin approval to proceed.`,
       { cardType: 'decom_approval', changeId: change.id, changeNumber: change.number, ciName: ci.name, status: 'pending' }
     );
   } catch (e) {
