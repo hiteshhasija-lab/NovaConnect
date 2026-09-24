@@ -30,33 +30,50 @@
           <span class="user-avatar"><%= h.initials(currentUser.full_name) %></span>
           <span class="presence-dot presence-online" id="myPresenceDot"></span>
         </button>
-        <ul class="dropdown-menu user-menu">
-          <li>
-            <h6 class="dropdown-header"><%= currentUser.full_name %></h6>
+        <div class="dropdown-menu user-menu" id="userMenu">
+          <div class="user-menu-panel" id="userMenuMain">
+            <div class="user-menu-account">
+              <span class="user-avatar"><%= h.initials(currentUser.full_name) %></span>
+              <div class="user-menu-account-text">
+                <div class="user-menu-account-name"><%= currentUser.full_name %></div>
+                <div class="user-menu-account-email" id="userMenuEmail"></div>
+              </div>
+            </div>
             <div class="user-menu-status-message d-none" id="myStatusMessageDisplay"></div>
-          </li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online" aria-hidden="true"></span> Available</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy" aria-hidden="true"></span> Busy</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd" aria-hidden="true"></span> Do not disturb</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="brb"><span class="presence-dot presence-brb" aria-hidden="true"></span> Be right back</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away" aria-hidden="true"></span> Appear away</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="offline"><span class="presence-dot presence-offline" aria-hidden="true"></span> Appear offline</a></li>
-          <li><a class="dropdown-item presence-option" href="#" data-status="reset"><span class="presence-dot presence-reset" aria-hidden="true"></span> Reset status</a></li>
-          <li><a class="dropdown-item" href="#" id="setStatusMessageBtn"><i class="bi bi-chat-left-quote me-2"></i>Set status message</a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><a class="dropdown-item" href="/profile"><i class="bi bi-person me-2"></i>My Profile</a></li>
-          <% if (currentUser.role === 'admin') { %><li><a class="dropdown-item" href="/admin/users"><i class="bi bi-people me-2"></i>Manage Users</a></li><% } %>
-          <li><a class="dropdown-item" href="#" id="toggleThemeBtn"><i class="bi bi-moon-stars me-2"></i>Toggle theme</a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><h6 class="dropdown-header">Notifications</h6></li>
-          <li><a class="dropdown-item pref-toggle-item" href="#" id="notifSoundToggle"><i class="bi bi-volume-up me-2"></i>Sound<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a></li>
-          <li><a class="dropdown-item pref-toggle-item" href="#" id="notifDesktopToggle"><i class="bi bi-window me-2"></i>Desktop notifications<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><h6 class="dropdown-header">Message display</h6></li>
-          <li><a class="dropdown-item pref-toggle-item" href="#" id="densityCompactToggle"><i class="bi bi-arrows-collapse me-2"></i>Compact messages<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><form action="/logout" method="POST"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></form></li>
-        </ul>
+            <hr class="dropdown-divider">
+            <button type="button" class="dropdown-item user-menu-expand-btn" id="statusRowBtn" aria-haspopup="true" aria-expanded="false">
+              <span class="presence-dot presence-online" id="statusRowDot" aria-hidden="true"></span>
+              <span id="statusRowLabel">Available</span>
+              <i class="bi bi-chevron-right ms-auto"></i>
+            </button>
+            <a class="dropdown-item" href="#" id="setStatusMessageBtn"><i class="bi bi-chat-left-quote me-2"></i>Set status message</a>
+            <hr class="dropdown-divider">
+            <a class="dropdown-item" href="/profile"><i class="bi bi-person me-2"></i>My Profile</a>
+            <% if (currentUser.role === 'admin') { %><a class="dropdown-item" href="/admin/users"><i class="bi bi-people me-2"></i>Manage Users</a><% } %>
+            <a class="dropdown-item" href="#" id="toggleThemeBtn"><i class="bi bi-moon-stars me-2"></i>Toggle theme</a>
+            <hr class="dropdown-divider">
+            <h6 class="dropdown-header">Notifications</h6>
+            <a class="dropdown-item pref-toggle-item" href="#" id="notifSoundToggle"><i class="bi bi-volume-up me-2"></i>Sound<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a>
+            <a class="dropdown-item pref-toggle-item" href="#" id="notifDesktopToggle"><i class="bi bi-window me-2"></i>Desktop notifications<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a>
+            <hr class="dropdown-divider">
+            <h6 class="dropdown-header">Message display</h6>
+            <a class="dropdown-item pref-toggle-item" href="#" id="densityCompactToggle"><i class="bi bi-arrows-collapse me-2"></i>Compact messages<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a>
+            <hr class="dropdown-divider">
+            <form action="/logout" method="POST"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></form>
+          </div>
+          <div class="user-menu-panel d-none" id="userMenuStatusSub">
+            <button type="button" class="dropdown-item user-menu-back-btn" id="statusBackBtn"><i class="bi bi-chevron-left me-2"></i>Status</button>
+            <hr class="dropdown-divider">
+            <a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online" aria-hidden="true"></span> Available</a>
+            <a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy" aria-hidden="true"></span> Busy</a>
+            <a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd" aria-hidden="true"></span> Do not disturb</a>
+            <a class="dropdown-item presence-option" href="#" data-status="brb"><span class="presence-dot presence-brb" aria-hidden="true"></span> Be right back</a>
+            <a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away" aria-hidden="true"></span> Appear away</a>
+            <a class="dropdown-item presence-option" href="#" data-status="offline"><span class="presence-dot presence-offline" aria-hidden="true"></span> Appear offline</a>
+            <hr class="dropdown-divider">
+            <a class="dropdown-item presence-option" href="#" data-status="reset"><i class="bi bi-arrow-counterclockwise me-2"></i> Reset status</a>
+          </div>
+        </div>
       </div>
       <div class="status-message-popover d-none" id="statusMessagePopover">
         <textarea id="statusMessageInput" maxlength="280" placeholder="What's your status?"></textarea>

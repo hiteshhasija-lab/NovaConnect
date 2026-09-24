@@ -313,7 +313,11 @@
   });
   socket.on('presence:update', (payload) => {
     state.presence[payload.userId] = payload.status;
-    if(payload.userId===NC.currentUser.id){const dot=document.getElementById('myPresenceDot');dot.className='presence-dot presence-'+payload.status;dot.title=STATUS_LABELS[payload.status]||'Offline';}
+    if(payload.userId===NC.currentUser.id){
+      const dot=document.getElementById('myPresenceDot');dot.className='presence-dot presence-'+payload.status;dot.title=STATUS_LABELS[payload.status]||'Offline';
+      const rowDot=document.getElementById('statusRowDot'); if(rowDot) rowDot.className='presence-dot presence-'+payload.status;
+      const rowLabel=document.getElementById('statusRowLabel'); if(rowLabel) rowLabel.textContent=STATUS_LABELS[payload.status]||'Appear offline';
+    }
     document.querySelectorAll('.presence-live-' + payload.userId).forEach(node => {
       node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline)/, 'presence-' + payload.status);
       if(node.classList.contains('member-presence')||node.classList.contains('people-presence')) { node.title=STATUS_LABELS[payload.status]||'Offline';node.setAttribute('aria-label',node.title); }
@@ -1934,9 +1938,31 @@
       e.preventDefault();
       const status = opt.dataset.status;
       socket.emit('presence:set', { status });
+      const applied = status === 'reset' ? 'online' : status;
       const dot = document.getElementById('myPresenceDot');
-      dot.className = 'presence-dot presence-' + (status==='reset'?'online':status);
+      dot.className = 'presence-dot presence-' + applied;
+      const rowDot = document.getElementById('statusRowDot'); if (rowDot) rowDot.className = 'presence-dot presence-' + applied;
+      const rowLabel = document.getElementById('statusRowLabel'); if (rowLabel) rowLabel.textContent = STATUS_LABELS[applied] || 'Available';
     });
+  });
+
+  // Teams-style two-panel account menu: the status row expands into a submenu (in place,
+  // same dropdown) rather than listing every status flatly. stopPropagation on both the
+  // expand and back buttons keeps Bootstrap's dropdown open across the panel switch — without
+  // it, Bootstrap's own document-level click listener treats this as a normal item click and
+  // closes the whole menu.
+  const userMenuMain = document.getElementById('userMenuMain');
+  const userMenuStatusSub = document.getElementById('userMenuStatusSub');
+  document.getElementById('statusRowBtn').addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    userMenuMain.classList.add('d-none'); userMenuStatusSub.classList.remove('d-none');
+  });
+  document.getElementById('statusBackBtn').addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    userMenuStatusSub.classList.add('d-none'); userMenuMain.classList.remove('d-none');
+  });
+  document.querySelector('.rail-avatar-btn').addEventListener('click', () => {
+    userMenuStatusSub.classList.add('d-none'); userMenuMain.classList.remove('d-none');
   });
   document.getElementById('toggleThemeBtn').addEventListener('click', (e) => {
     e.preventDefault();
@@ -2017,7 +2043,10 @@
   document.addEventListener('pointerdown', (e) => {
     if (!statusMessagePopover.classList.contains('d-none') && !statusMessagePopover.contains(e.target) && !e.target.closest('#setStatusMessageBtn')) closeStatusMessagePopover();
   });
-  api('/api/users/' + NC.currentUser.id + '/profile').then(u => renderMyStatusMessage(u.status_message)).catch(() => {});
+  api('/api/users/' + NC.currentUser.id + '/profile').then(u => {
+    renderMyStatusMessage(u.status_message);
+    document.getElementById('userMenuEmail').textContent = u.email || '';
+  }).catch(() => {});
 
   // ---------------- boot ----------------
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));

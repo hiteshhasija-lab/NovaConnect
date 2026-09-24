@@ -94,10 +94,20 @@ a { color: var(--brand); }
   font-size: 0.75rem; font-weight: 700; flex: none;
 }
 .user-menu-name { font-weight: 500; color: #fff; }
-.user-menu { min-width: 13rem; }
-.user-menu .dropdown-item { display: flex; align-items: center; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.user-menu { min-width: 15.5rem; padding: 0.4rem 0; }
+.user-menu .dropdown-item, .user-menu .user-menu-expand-btn, .user-menu .user-menu-back-btn { display: flex; align-items: center; width: 100%; padding: 0.4rem 1rem; font-size: 0.85rem; border: 0; background: none; text-align: left; color: var(--text); }
 .pref-toggle-check { visibility: hidden; color: var(--brand,#0755d9); }
 .pref-toggle-item.pref-toggle-on .pref-toggle-check { visibility: visible; }
+.user-menu-panel { padding: 0; }
+.user-menu-account { display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 1rem 0.6rem; }
+.user-menu-account .user-avatar { width: 2.6rem; height: 2.6rem; font-size: 0.95rem; }
+.user-menu-account-text { min-width: 0; }
+.user-menu-account-name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu-account-email { font-size: 0.76rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu-expand-btn:hover, .user-menu-back-btn:hover { background: var(--surface-2); }
+.user-menu-expand-btn .presence-dot { position: static; width: 14px; height: 14px; border: none; margin-right: 0.6rem; }
+.user-menu-back-btn { font-weight: 600; }
+.user-menu .dropdown-header { padding: 0.5rem 1rem 0.2rem; font-size: 0.72rem; }
 
 /* Compact message density — reduces the message list's vertical rhythm without touching
    the header/dialog chrome scaling already handled by ui-density.css/compact-ui.css. */
@@ -586,5 +596,4 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 .presence-reset { background:transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20d%3D%22M5%205a7%207%200%201%201-2%206M5%201v5H1%22%20fill%3D%22none%22%20stroke%3D%22%23555%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat; }
 .presence-brb { background:transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%2210%22%20r%3D%2210%22%20fill%3D%22%23eaa300%22%2F%3E%3Cpath%20d%3D%22M10%205v5l3%202%22%20fill%3D%22none%22%20stroke%3D%22white%22%20stroke-width%3D%222.3%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat; }
 .people-presence { display:inline-block;flex:0 0 12px;width:12px;height:12px; }
-.user-menu .presence-dot { width:16px;height:16px;vertical-align:middle; }
-.user-menu .presence-option[data-status=reset] { border-top:1px solid var(--border);margin-top:6px;padding-top:10px; }
+.user-menu .presence-dot { position:static;border:none;width:16px;height:16px;vertical-align:middle;margin-right:0.6rem; }
