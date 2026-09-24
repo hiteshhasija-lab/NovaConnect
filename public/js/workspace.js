@@ -146,21 +146,26 @@
     state.calendarHiddenTeams = new Set(state.teams.filter(t=>t.id!==teamId).map(t=>t.id));
     document.getElementById('railCalendar').click();
   }});
-  let channelTabRequest=0, currentChannelTab='posts';
-  async function showChannelTab(tab) {
-    currentChannelTab=tab;
-    const request=++channelTabRequest, id=state.active.channel?.id;
-    if(tab==='posts') { renderMessages(state.active.messages||[]);document.getElementById('composer').classList.remove('d-none');return; }
+  let assetTabRequest=0, currentTab='posts';
+  // Shared by both channels and DMs — which base URL to page assets from depends on
+  // whichever is currently open, but the Files/Photos rendering itself is identical.
+  async function showActiveTab(tab) {
+    currentTab=tab;
+    const request=++assetTabRequest;
+    const isChannel = state.active.type === 'channel';
+    const id = isChannel ? state.active.channel?.id : state.active.conversation?.id;
+    const base = isChannel ? '/api/channels/' + id : '/api/dm/' + id;
+    if(tab==='posts'||tab==='chat') { renderMessages(state.active.messages||[]);document.getElementById('composer').classList.remove('d-none');return; }
     closeThread();document.getElementById('composer').classList.add('d-none');
     const list=document.getElementById('messageList');list.textContent='Loading…';
     try {
       const assets=[];let before='';
-      while(true) {const page=await api('/api/channels/'+id+'/assets'+before);if(request!==channelTabRequest||state.active.channel?.id!==id)return;assets.push(...page);if(page.length<100)break;before='?before='+page[page.length-1].id;}
+      while(true) {const page=await api(base+'/assets'+before);if(request!==assetTabRequest)return;assets.push(...page);if(page.length<100)break;before='?before='+page[page.length-1].id;}
       list.innerHTML='<div class="channel-assets"></div>';const box=list.firstChild;
       const filtered=assets.filter(a=>tab==='files'||String(a.mime_type).startsWith('image/'));
       if(!filtered.length)box.textContent=tab==='photos'?'No photos shared yet.':'No files shared yet.';
       filtered.forEach(a=>box.append(el(attachmentHtml(a))));
-    } catch(e) {if(request===channelTabRequest){list.textContent='Unable to load files.';showToastError(e)}}
+    } catch(e) {if(request===assetTabRequest){list.textContent='Unable to load files.';showToastError(e)}}
   }
 
   function findChannel(id) {
@@ -212,11 +217,11 @@
 
     if (state.active.type === 'channel' && msg.channel_id === state.active.channel.id) {
       hideThinkingBubble();
-      if (currentChannelTab === 'posts') appendMessageToList(msg);
+      if (currentTab === 'posts') appendMessageToList(msg);
       else state.active.messages.push(msg);
     } else if (state.active.type === 'dm' && msg.conversation_id === state.active.conversation.id) {
       hideThinkingBubble();
-      appendMessageToList(msg);
+      if (currentTab === 'chat') appendMessageToList(msg); else state.active.messages.push(msg);
       saveChatPreferences(msg.conversation_id, { is_unread:false }).catch(showToastError);
       markDmRead(msg.conversation_id, msg.id);
     } else {
@@ -603,18 +608,25 @@
         return;
       }
       notifications.forEach(n => {
+        const isTeamJoinOutcome = n.type === 'team_join_approved' || n.type === 'team_join_rejected';
+        const titleLine = isTeamJoinOutcome
+          ? escapeHtml(n.body || '')
+          : '<strong>' + escapeHtml(n.actor_name || 'Someone') + '</strong>' +
+            (n.type === 'meeting' ? ' invited you to a meeting' : n.type === 'team_join_request' ? ' asked to join a team' : ' mentioned you') +
+            (n.channel_name ? ' in #' + escapeHtml(n.channel_name) : '');
         const item = el(
           '<div class="activity-item ' + (n.is_read ? '' : 'unread') + '">' +
             avatarHtml({ id: n.actor_id, full_name: n.actor_name || '?' }) +
             '<div class="flex-grow-1">' +
-              '<div><strong>' + escapeHtml(n.actor_name || 'Someone') + '</strong>' + (n.type === 'meeting' ? ' invited you to a meeting' : ' mentioned you') + (n.channel_name ? ' in #' + escapeHtml(n.channel_name) : '') + '</div>' +
-              '<div class="text-muted text-truncate">' + escapeHtml(n.body || '') + '</div>' +
+              '<div>' + titleLine + '</div>' +
+              (isTeamJoinOutcome ? '' : '<div class="text-muted text-truncate">' + escapeHtml(n.body || '') + '</div>') +
             '</div>' +
           '</div>'
         );
         item.addEventListener('click', () => {
           api('/api/notifications/' + n.id + '/read', { method: 'POST' }).then(loadActivity);
-          if (n.channel_id) navigateToChannel(n.channel_id);
+          if (n.type === 'team_join_request' && n.team_id) { document.getElementById('railTeams').click(); openMembersModal(n.team_id); }
+          else if (n.channel_id) navigateToChannel(n.channel_id);
           else if (n.type === 'meeting' && n.meeting_id) meetings.show(n.meeting_id);
           else if (n.conversation_id) navigateToDm(n.conversation_id);
         });
@@ -650,6 +662,7 @@
     Promise.all([api('/api/dm/' + id), api('/api/dm/' + id + '/messages')]).then(([{ conversation, participants }, { messages }]) => {
       state.view = 'chat'; meetHub.close(); closeAiPane(); closeCalendarPane();
       document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'chat'));
+      ++assetTabRequest; currentTab='chat';
       state.active = { type: 'dm', conversation, participants, messages };
       saveChatPreferences(conversation.id, { is_unread:false, is_hidden:false }).catch(showToastError);
       if (messages.length) markDmRead(conversation.id, messages[messages.length - 1].id);
@@ -679,14 +692,19 @@
     const header = document.getElementById('mainHeader');
     if (state.active.type === 'channel') {
       const c = state.active.channel;
-      channelTools.header(header, c, tab => showChannelTab(tab));
+      channelTools.header(header, c, tab => showActiveTab(tab));
     } else if (state.active.type === 'dm') {
       const c = state.active.conversation;
       const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
       const statusText = others.length === 1 ? (STATUS_LABELS[state.presence[others[0].id] || others[0].status] || 'Offline') : others.length + ' people';
       header.innerHTML =
         '<div class="main-header-title"><i class="bi bi-chat-dots"></i>' + escapeHtml(convoTitle({ ...c, participants: others })) +
-        '<span class="main-header-sub">' + statusText + '</span></div>';
+        '<span class="main-header-sub">' + statusText + '</span></div>' +
+        '<nav class="channel-tabs" aria-label="Chat tabs">' + ['Chat', 'Files', 'Photos'].map((t, i) => '<button type="button" class="' + (!i ? 'selected' : '') + '" aria-pressed="' + (!i) + '">' + t + '</button>').join('') + '</nav>';
+      header.querySelectorAll('.channel-tabs button').forEach(b => b.addEventListener('click', () => {
+        header.querySelectorAll('.channel-tabs button').forEach(x => { x.classList.toggle('selected', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+        showActiveTab(b.textContent.toLowerCase());
+      }));
       chatHeader.render(header, state.active);
     } else {
       header.innerHTML = '<div class="main-header-title text-muted">NovaConnect</div>';
@@ -1346,23 +1364,29 @@
       const box = document.getElementById('browseTeamsList');
       box.innerHTML = '';
       teams.forEach(t => {
+        const joinLabel = t.has_pending_request ? 'Request sent' : (t.require_approval ? 'Request to join' : 'Join');
         const row = el(
           '<div class="list-group-item d-flex align-items-center justify-content-between">' +
-            '<div><div class="fw-semibold"><i class="bi ' + escapeHtml(t.icon || 'bi-people-fill') + '" style="color:var(--brand)"></i> ' + escapeHtml(t.name) + '</div>' +
+            '<div><div class="fw-semibold"><i class="bi ' + escapeHtml(t.icon || 'bi-people-fill') + '" style="color:var(--brand)"></i> ' + escapeHtml(t.name) + (t.require_approval ? ' <i class="bi bi-shield-lock text-muted" title="Requires approval to join"></i>' : '') + '</div>' +
             '<div class="text-muted small">' + escapeHtml(t.description || '') + ' · ' + t.member_count + ' members</div></div>' +
-            (t.is_member ? '<span class="badge text-bg-secondary">Joined</span>' : '<button class="btn btn-sm btn-primary">Join</button>') +
+            (t.is_member ? '<span class="badge text-bg-secondary">Joined</span>' : '<button class="btn btn-sm btn-primary" ' + (t.has_pending_request ? 'disabled' : '') + '>' + joinLabel + '</button>') +
           '</div>'
         );
         if (!t.is_member) {
-          row.querySelector('button').addEventListener('click', () => {
-            api('/api/teams/' + t.id + '/join', { method: 'POST' }).then(() => api('/api/teams/' + t.id)).then(({ team, channels }) => {
-              team.channels = channels;
-              state.teams.push(team);
-              state.openTeams.add(team.id);
-              modalOf(teamsModalEl).hide();
-              renderSidebar();
-              if (channels[0]) navigateToChannel(channels[0].id);
-            });
+          row.querySelector('button').addEventListener('click', (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            api('/api/teams/' + t.id + '/join', { method: 'POST' }).then((res) => {
+              if (res.requested) { btn.textContent = 'Request sent'; return; }
+              return api('/api/teams/' + t.id).then(({ team, channels }) => {
+                team.channels = channels;
+                state.teams.push(team);
+                state.openTeams.add(team.id);
+                modalOf(teamsModalEl).hide();
+                renderSidebar();
+                if (channels[0]) navigateToChannel(channels[0].id);
+              });
+            }).catch((err) => { btn.disabled = false; showToastError(err); });
           });
         } else {
           row.style.cursor = 'pointer';
@@ -1665,8 +1689,8 @@
   });
 
   function renderNotifPrefUI() {
-    document.getElementById('notifSoundToggle').classList.toggle('notif-pref-on', notifPrefEnabled('novaconnect-notif-sound', true));
-    document.getElementById('notifDesktopToggle').classList.toggle('notif-pref-on', notifPrefEnabled('novaconnect-notif-desktop', false));
+    document.getElementById('notifSoundToggle').classList.toggle('pref-toggle-on', notifPrefEnabled('novaconnect-notif-sound', true));
+    document.getElementById('notifDesktopToggle').classList.toggle('pref-toggle-on', notifPrefEnabled('novaconnect-notif-desktop', false));
   }
   document.getElementById('notifSoundToggle').addEventListener('click', (e) => {
     e.preventDefault();
@@ -1685,10 +1709,24 @@
   });
   renderNotifPrefUI();
 
+  // ---------------- message density ----------------
+  function applyDensity(compact) { document.documentElement.setAttribute('data-density', compact ? 'compact' : 'comfortable'); }
+  function renderDensityUI() { document.getElementById('densityCompactToggle').classList.toggle('pref-toggle-on', localStorage.getItem('novaconnect-density') === 'compact'); }
+  applyDensity(localStorage.getItem('novaconnect-density') === 'compact');
+  document.getElementById('densityCompactToggle').addEventListener('click', (e) => {
+    e.preventDefault();
+    const next = localStorage.getItem('novaconnect-density') === 'compact' ? 'comfortable' : 'compact';
+    localStorage.setItem('novaconnect-density', next);
+    applyDensity(next === 'compact');
+    renderDensityUI();
+  });
+  renderDensityUI();
+
   // ---------------- boot ----------------
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
   if (state.active.type === 'channel') { state.mentionMembers = []; api('/api/channels/' + state.active.channel.id).then(({ members }) => { state.mentionMembers = members; state.active.members = members; renderMainHeader(); }); }
   if (state.active.type === 'dm') {
+    currentTab='chat';
     state.mentionMembers = state.active.participants || [];
     const saved = findConversation(state.active.conversation.id); if (saved) Object.assign(state.active.conversation, saved);
     const initialMessages = state.active.messages || [];

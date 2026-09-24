@@ -17,11 +17,12 @@ async function isTeamMember(teamId, userId) {
 router.get('/api/teams', async (req, res) => {
   const teams = await db.prepare(`
     SELECT t.*, (tm.user_id IS NOT NULL) AS is_member, tm.role AS my_role,
-      (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) AS member_count
+      (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) AS member_count,
+      EXISTS (SELECT 1 FROM team_join_requests jr WHERE jr.team_id = t.id AND jr.user_id = ?) AS has_pending_request
     FROM teams t
     LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
     ORDER BY is_member DESC, t.name
-  `).all(req.session.user.id);
+  `).all(req.session.user.id, req.session.user.id);
   res.json(teams);
 });
 
@@ -45,12 +46,72 @@ router.post('/api/teams', async (req, res) => {
 
 router.post('/api/teams/:id/join', async (req, res) => {
   const teamId = req.params.id;
+  const userId = req.session.user.id;
   const team = await db.prepare('SELECT * FROM teams WHERE id = ?').get(teamId);
   if (!team) return res.status(404).json({ error: 'Team not found.' });
+  if (await isTeamMember(teamId, userId)) return res.json({ ok: true, joined: true });
+
+  if (team.require_approval) {
+    await db.prepare('INSERT INTO team_join_requests (team_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(teamId, userId);
+    const owners = await db.prepare(`SELECT user_id FROM team_members WHERE team_id = ? AND role IN ('owner','admin')`).all(teamId);
+    const requester = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(userId);
+    for (const o of owners) {
+      await db.prepare(`
+        INSERT INTO notifications (user_id, type, actor_id, body, team_id) VALUES (?, 'team_join_request', ?, ?, ?)
+      `).run(o.user_id, userId, requester.full_name + ' asked to join ' + team.name + '.', teamId);
+      emitToUser(o.user_id, 'notification:new', {});
+    }
+    return res.json({ ok: true, requested: true });
+  }
+
   await db.prepare(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, 'member') ON CONFLICT DO NOTHING`)
-    .run(teamId, req.session.user.id);
-  await resyncUserRooms(req.session.user.id);
+    .run(teamId, userId);
+  await resyncUserRooms(userId);
+  res.json({ ok: true, joined: true });
+});
+
+router.get('/api/teams/:id/join-requests', async (req, res) => {
+  const teamId = req.params.id;
+  if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only a team owner can view join requests.' });
+  const rows = await db.prepare(`
+    SELECT jr.user_id, jr.created_at, u.full_name, u.username FROM team_join_requests jr JOIN users u ON u.id = jr.user_id
+    WHERE jr.team_id = ? ORDER BY jr.created_at
+  `).all(teamId);
+  res.json(rows);
+});
+
+router.post('/api/teams/:id/join-requests/:userId/approve', async (req, res) => {
+  const teamId = req.params.id, targetId = Number(req.params.userId);
+  if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only a team owner can approve join requests.' });
+  const request = await db.prepare('SELECT 1 FROM team_join_requests WHERE team_id = ? AND user_id = ?').get(teamId, targetId);
+  if (!request) return res.status(404).json({ error: 'That join request no longer exists.' });
+  await db.prepare(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, 'member') ON CONFLICT DO NOTHING`).run(teamId, targetId);
+  await db.prepare('DELETE FROM team_join_requests WHERE team_id = ? AND user_id = ?').run(teamId, targetId);
+  const team = await db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId);
+  await db.prepare(`INSERT INTO notifications (user_id, type, body, team_id) VALUES (?, 'team_join_approved', ?, ?)`).run(targetId, 'Your request to join ' + team.name + ' was approved.', teamId);
+  await resyncUserRooms(targetId);
+  emitToUser(targetId, 'membership:changed', { teamId });
+  emitToUser(targetId, 'notification:new', {});
   res.json({ ok: true });
+});
+
+router.post('/api/teams/:id/join-requests/:userId/reject', async (req, res) => {
+  const teamId = req.params.id, targetId = Number(req.params.userId);
+  if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only a team owner can reject join requests.' });
+  const deleted = await db.prepare('DELETE FROM team_join_requests WHERE team_id = ? AND user_id = ?').run(teamId, targetId);
+  if (!deleted.changes) return res.status(404).json({ error: 'That join request no longer exists.' });
+  const team = await db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId);
+  await db.prepare(`INSERT INTO notifications (user_id, type, body, team_id) VALUES (?, 'team_join_rejected', ?, ?)`).run(targetId, 'Your request to join ' + team.name + ' was declined.', teamId);
+  emitToUser(targetId, 'notification:new', {});
+  res.json({ ok: true });
+});
+
+router.patch('/api/teams/:id/settings', async (req, res) => {
+  const teamId = req.params.id;
+  if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only a team owner can change settings.' });
+  if (typeof req.body.require_approval !== 'boolean') return res.status(400).json({ error: 'require_approval must be true or false.' });
+  await db.prepare('UPDATE teams SET require_approval = ? WHERE id = ?').run(req.body.require_approval ? 1 : 0, teamId);
+  res.json({ ok: true, require_approval: req.body.require_approval });
 });
 
 router.post('/api/teams/:id/leave', async (req, res) => {

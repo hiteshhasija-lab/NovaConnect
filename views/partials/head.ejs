@@ -13,6 +13,7 @@
       var saved = localStorage.getItem('novaconnect-theme');
       var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       document.documentElement.setAttribute('data-bs-theme', theme);
+      document.documentElement.setAttribute('data-density', localStorage.getItem('novaconnect-density') === 'compact' ? 'compact' : 'comfortable');
     })();
   </script>
 </head>

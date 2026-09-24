@@ -24,4 +24,8 @@
 .channel-assets { display:flex;flex-wrap:wrap;gap:16px;padding:20px; }.channel-assets img { max-width:240px;max-height:180px;object-fit:contain; }
 .pinned-row { padding:12px 0;border-bottom:1px solid var(--border); }.pinned-row strong { display:block;font-size:0.78rem;color:var(--text-muted);font-weight:600; }.pinned-row p { margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere; }.pinned-row button { padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:inherit; }
 .pinned-empty { color:var(--text-muted); }
+.membership-approval-toggle { display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer; }.membership-approval-toggle input { accent-color:var(--brand); }
+.pending-requests { margin-bottom:14px; }.pending-requests h3 { font-size:0.85rem;font-weight:600;color:var(--text-muted);margin:0 0 6px; }
+.pending-row button { padding:5px 12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:inherit;margin-left:6px; }
+.pending-row .approve-btn { border-color:var(--brand);color:var(--brand); }
 @media(max-width:900px) { #mainHeader:has(.channel-heading) { flex-wrap:wrap;gap:8px;height:auto; }.channel-header-actions{margin-left:0}.channel-tabs{margin-left:0}.channel-heading{font-size:1.2rem;} }

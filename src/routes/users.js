@@ -41,7 +41,7 @@ router.delete('/api/users/:id/block', async (req, res) => {
 
 router.get('/api/notifications', async (req, res) => {
   const rows = await db.prepare(`
-    SELECT n.*, u.full_name AS actor_name, c.name AS channel_name, c.team_id
+    SELECT n.*, u.full_name AS actor_name, c.name AS channel_name
     FROM notifications n
     LEFT JOIN users u ON u.id = n.actor_id
     LEFT JOIN channels c ON c.id = n.channel_id

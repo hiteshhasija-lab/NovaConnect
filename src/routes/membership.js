@@ -33,7 +33,7 @@ for(const kind of ['teams','channels']) {
           members = members.map(m=>({...m,role:owners.some(o=>o.user_id===m.id)?'owner':'member'}));
         }
       }
-      return {members,canManage:c.canManage,name:c.channel?.name||c.team.name,inherited:!!c.channel&&!c.channel.is_private};
+      return {members,canManage:c.canManage,name:c.channel?.name||c.team.name,inherited:!!c.channel&&!c.channel.is_private,requireApproval:kind==='teams'?!!c.team.require_approval:undefined};
     }); res.json(result);
   }));
   router.post(`/api/${kind}/:id/membership`, endpoint(async(req,res)=>{

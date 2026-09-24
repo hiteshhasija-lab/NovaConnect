@@ -15,6 +15,33 @@ window.createChannelTools = function({api,escapeHtml,notify,navigate,events,pres
       d.querySelector('form').hidden=!data.canManage;
       d.querySelector('form').onsubmit=e=>e.preventDefault();
       const feedback=document.createElement('p');feedback.className='membership-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');d.querySelector('.membership-list').before(feedback);
+
+      if(kind==='teams'&&data.canManage) {
+        const approvalRow=document.createElement('label');approvalRow.className='membership-approval-toggle';
+        approvalRow.innerHTML='<input type="checkbox"> Require approval to join';
+        const cb=approvalRow.querySelector('input');cb.checked=!!data.requireApproval;
+        cb.onchange=async()=>{cb.disabled=true;try{await api('/api/teams/'+id+'/settings',{method:'PATCH',body:{require_approval:cb.checked}});}catch(e){cb.checked=!cb.checked;notify(e)}finally{cb.disabled=false}};
+        d.querySelector('.membership-note').before(approvalRow);
+
+        const pendingBox=document.createElement('div');pendingBox.className='pending-requests';
+        d.querySelector('.membership-note').before(pendingBox);
+        async function loadPending() {
+          try {
+            const reqs=await api('/api/teams/'+id+'/join-requests');
+            pendingBox.replaceChildren();
+            if(!reqs.length) return;
+            const heading=document.createElement('h3');heading.textContent='Pending requests ('+reqs.length+')';pendingBox.append(heading);
+            reqs.forEach(u=>{
+              const r=document.createElement('div');r.className='membership-row pending-row';
+              r.innerHTML='<span><strong>'+esc(u.full_name)+'</strong><small>@'+esc(u.username)+'</small></span><button type="button" class="approve-btn">Approve</button><button type="button" class="reject-btn">Decline</button>';
+              r.querySelector('.approve-btn').onclick=async()=>{r.querySelectorAll('button').forEach(b=>b.disabled=true);try{await api('/api/teams/'+id+'/join-requests/'+u.id+'/approve',{method:'POST'});r.remove();data.members.push({...u,role:'member'});d.querySelector('.membership-list').append(row({...u,role:'member'},false));if(!pendingBox.querySelectorAll('.pending-row').length)pendingBox.replaceChildren();else heading.textContent='Pending requests ('+pendingBox.querySelectorAll('.pending-row').length+')';}catch(e){r.querySelectorAll('button').forEach(b=>b.disabled=false);notify(e)}};
+              r.querySelector('.reject-btn').onclick=async()=>{r.querySelectorAll('button').forEach(b=>b.disabled=true);try{await api('/api/teams/'+id+'/join-requests/'+u.id+'/reject',{method:'POST'});r.remove();if(!pendingBox.querySelectorAll('.pending-row').length)pendingBox.replaceChildren();else heading.textContent='Pending requests ('+pendingBox.querySelectorAll('.pending-row').length+')';}catch(e){r.querySelectorAll('button').forEach(b=>b.disabled=false);notify(e)}};
+              pendingBox.append(r);
+            });
+          } catch(e){notify(e)}
+        }
+        loadPending();
+      }
       async function save(user,role) {await api('/api/'+kind+'/'+id+'/membership',{method:'POST',body:{user_id:user.id,role}});}
 
       function row(user,adding) {

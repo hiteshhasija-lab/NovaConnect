@@ -188,6 +188,20 @@ router.get('/api/dm/:id/search', async (req, res) => {
   res.json({ messages, next_before: rows.length > 50 ? messages[49].id : null });
 });
 
+// Paginated attachments shared in this DM, newest first — backs the DM header's Files/Photos
+// tabs, mirroring /api/channels/:id/assets in membership.js.
+router.get('/api/dm/:id/assets', async (req, res) => {
+  const convo = await loadConversationForUser(req.params.id, req.session.user.id);
+  if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
+  const before = Number(req.query.before) || 2147483647;
+  const rows = await db.prepare(`
+    SELECT a.* FROM attachments a JOIN messages m ON m.id = a.message_id
+    WHERE m.conversation_id = ? AND m.deleted = 0 AND a.id < ?
+    ORDER BY a.id DESC LIMIT 100
+  `).all(convo.id, before);
+  res.json(rows);
+});
+
 router.get('/api/dm/:id/messages', async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });

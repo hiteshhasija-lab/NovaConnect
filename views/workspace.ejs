@@ -42,8 +42,11 @@
           <li><a class="dropdown-item" href="#" id="toggleThemeBtn"><i class="bi bi-moon-stars me-2"></i>Toggle theme</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><h6 class="dropdown-header">Notifications</h6></li>
-          <li><a class="dropdown-item notif-pref-item" href="#" id="notifSoundToggle"><i class="bi bi-volume-up me-2"></i>Sound<i class="bi bi-check2 notif-pref-check ms-auto"></i></a></li>
-          <li><a class="dropdown-item notif-pref-item" href="#" id="notifDesktopToggle"><i class="bi bi-window me-2"></i>Desktop notifications<i class="bi bi-check2 notif-pref-check ms-auto"></i></a></li>
+          <li><a class="dropdown-item pref-toggle-item" href="#" id="notifSoundToggle"><i class="bi bi-volume-up me-2"></i>Sound<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a></li>
+          <li><a class="dropdown-item pref-toggle-item" href="#" id="notifDesktopToggle"><i class="bi bi-window me-2"></i>Desktop notifications<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><h6 class="dropdown-header">Message display</h6></li>
+          <li><a class="dropdown-item pref-toggle-item" href="#" id="densityCompactToggle"><i class="bi bi-arrows-collapse me-2"></i>Compact messages<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a></li>
           <li><hr class="dropdown-divider"></li>
           <li><form action="/logout" method="POST"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></form></li>
         </ul>
@@ -294,14 +297,14 @@
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <%- include('call-panel') %>
 <script src="/js/calls.js?v=2"></script>
-<link rel="stylesheet" href="/css/chat-header.css?v=2">
+<link rel="stylesheet" href="/css/chat-header.css?v=3">
 <link rel="stylesheet" href="/css/meetings.css?v=2">
 <link rel="stylesheet" href="/css/compact-ui.css?v=3">
 <script src="/js/meetings.js?v=2"></script>
 <script src="/js/chat-header.js?v=3"></script>
-<link rel="stylesheet" href="/css/channel-tools.css?v=3">
+<link rel="stylesheet" href="/css/channel-tools.css?v=4">
 <link rel="stylesheet" href="/css/ui-density.css?v=7">
-<script src="/js/channel-tools.js?v=6"></script>
+<script src="/js/channel-tools.js?v=7"></script>
 <link rel="stylesheet" href="/css/meet.css?v=2">
 <script src="/js/meet-hub.js?v=1"></script>
 <link rel="stylesheet" href="/css/chat-list.css?v=1">

@@ -1,4 +1,4 @@
-.chat-tools { display:flex; align-items:center; gap:12px; position:relative; flex-shrink:0; }
+.chat-tools { display:flex; align-items:center; gap:12px; position:relative; flex-shrink:0; margin-left:auto; }
 .chat-tool { display:grid; place-items:center; width:40px; height:42px; border:0; border-radius:5px; padding:7px; background:transparent; color:var(--brand); cursor:pointer; }
 .chat-tool svg { width:27px; height:29px; }
 .chat-tool-search { color:var(--text,#444); }
