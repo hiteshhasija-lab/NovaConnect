@@ -11,7 +11,7 @@ pgTypes.setTypeParser(1700, (val) => (val === null ? null : parseFloat(val))); /
 const knexInstance = require('knex')({
   client: 'pg',
   connection: {
-    host: process.env.PGHOST || 'RHEL10',
+    host: process.env.PGHOST || 'NOVAAPP01',
     port: process.env.PGPORT || 5432,
     user: process.env.PGUSER || 'novadesk',
     password: process.env.PGPASSWORD || 'novadesk_dev_pw',
