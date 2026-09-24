@@ -41,18 +41,18 @@
       const b = document.createElement('button'); b.type = 'button'; b.className = 'chat-action' + (primary ? ' chat-action-primary' : ''); b.textContent = text; b.onclick = handler; return b;
     }
     function group(b, active) {
-      const p = popup(b, 'Start a group chat', 'Enter name, email or username'); if (!p) return;
+      const p = popup(b, 'Add people', 'Enter name, email or username'); if (!p) return;
       const existing = active.participants.filter(u => u.id !== currentUser.id);
       const selected = new Map();
       const results = p.panel.querySelector('.chat-results'), pills = p.panel.querySelector('.chat-pills'), feedback = p.panel.querySelector('.chat-feedback');
       let saving = false;
-      const create = action('Create', true, async () => {
+      const create = action('Add', true, async () => {
         if (saving || !selected.size) return;
-        saving = true; create.disabled = true; feedback.textContent = 'Creating group…';
+        saving = true; create.disabled = true; feedback.textContent = 'Adding to this chat…';
         try {
-          const reply = await api('/api/dm', { method: 'POST', body: { user_ids: [...existing.map(u => u.id), ...selected.keys()] } });
+          await api('/api/dm/' + active.conversation.id + '/participants', { method: 'POST', body: { user_ids: [...selected.keys()] } });
           if (open === p) close(false);
-          navigate(reply.id);
+          navigate(active.conversation.id);
         } catch (e) { if (open === p) { feedback.textContent = e.message; saving = false; create.disabled = !selected.size; } }
       });
       create.disabled = true;
@@ -117,6 +117,24 @@
       p.input.oninput = () => { clearTimeout(p.timer); ++p.generation; more.hidden = true; p.timer = setTimeout(() => load(false), 250); };
       p.input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(p.timer); load(false); } };
     }
+    function pinnedMessages(b, active) {
+      const p = popup(b, 'Pinned messages', ''); if (!p) return;
+      p.input.remove();
+      const results = p.panel.querySelector('.chat-results'), feedback = p.panel.querySelector('.chat-feedback');
+      p.panel.querySelector('.chat-popover-actions').append(action('Close', false, () => close()));
+      feedback.textContent = 'Loading…';
+      api('/api/pins?conversation_id=' + active.conversation.id).then(pins => {
+        if (open !== p) return;
+        feedback.textContent = pins.length ? '' : 'No pinned messages yet.';
+        pins.forEach(m => {
+          const row = document.createElement('article'); row.className = 'chat-search-result';
+          const meta = document.createElement('strong'); meta.textContent = m.author.full_name + ' · ' + new Date(m.created_at.replace(' ', 'T') + 'Z').toLocaleString();
+          const body = document.createElement('p'); body.textContent = m.body;
+          const unpin = action('Unpin', false, async () => { await api('/api/messages/' + m.id + '/pin', { method: 'POST' }); row.remove(); if (!results.children.length) feedback.textContent = 'No pinned messages yet.'; });
+          row.append(meta, body, unpin); results.appendChild(row);
+        });
+      }).catch(e => { if (open === p) feedback.textContent = e.message; });
+    }
     function menu(b, active) {
       const p = popup(b, 'More chat options', ''); if (!p) return;
       p.panel.classList.add('chat-menu'); p.panel.setAttribute('role','menu');
@@ -138,11 +156,21 @@
         return calls.share(c.id, active.participants.find(u => u.id !== currentUser.id).full_name);
       }, '⇧ ⌘ E');
       line();
+      add('pin-angle', 'Pinned messages', () => pinnedMessages(active));
       add('envelope', 'Mark as unread', () => preferences(c.id, { is_unread: true }));
       add(c.is_favorite ? 'heart-fill' : 'heart', c.is_favorite ? 'Remove from favorites' : 'Favorite', () => preferences(c.id, { is_favorite: !c.is_favorite }));
       add(c.is_muted ? 'bell' : 'bell-slash', c.is_muted ? 'Unmute' : 'Mute', () => preferences(c.id, { is_muted: !c.is_muted }));
       line();
       add('exclamation-triangle', 'Report a concern', () => report(b, active));
+      if (!c.is_group && active.participants.length === 2) {
+        const other = active.participants.find(u => u.id !== currentUser.id);
+        add('slash-circle', 'Block ' + other.full_name, async () => {
+          if (!confirm('Block ' + other.full_name + '? You will no longer be able to message each other or find each other in search. This does not delete your existing messages.')) return;
+          await api('/api/users/' + other.id + '/block', { method: 'POST' });
+          await preferences(c.id, { is_hidden: true });
+          removed(c.id);
+        });
+      }
       add('trash', 'Delete', async () => {
         if (!confirm('Delete this chat from your list? Other people keep their messages. A new message will bring the chat back.')) return;
         await preferences(c.id, { is_hidden: true });

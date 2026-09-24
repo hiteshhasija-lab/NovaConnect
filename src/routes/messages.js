@@ -182,6 +182,89 @@ router.delete('/api/messages/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.post('/api/messages/:id/pin', async (req, res) => {
+  const ctx = await loadMessageWithAccess(req.params.id, req.session.user.id);
+  if (!ctx) return res.status(404).json({ error: 'Message not found or inaccessible.' });
+  if (ctx.msg.deleted) return res.status(400).json({ error: 'This message was deleted.' });
+
+  const nowPinned = !ctx.msg.pinned_at;
+  const updated = await db.prepare(`
+    UPDATE messages SET pinned_at = ?, pinned_by = ? WHERE id = ? RETURNING *
+  `).get(nowPinned ? nowStr() : null, nowPinned ? req.session.user.id : null, ctx.msg.id);
+
+  const message = await hydrateOne(updated, req.session.user.id);
+  const event = updated.parent_message_id ? 'thread:message:update' : 'message:update';
+  if (ctx.channel) emitToChannel(ctx.channel.id, event, message);
+  else emitToConversation(ctx.conversation.id, event, message);
+  res.json(message);
+});
+
+// Lists every currently-pinned message in a channel or DM, newest pin first — used by the
+// "Pinned messages" panel in both chat headers.
+router.get('/api/pins', async (req, res) => {
+  const channelId = req.query.channel_id ? Number(req.query.channel_id) : null;
+  const conversationId = req.query.conversation_id ? Number(req.query.conversation_id) : null;
+  if (!channelId && !conversationId) return res.status(400).json({ error: 'channel_id or conversation_id is required.' });
+
+  if (channelId) {
+    const channel = await loadChannelForUser(channelId, req.session.user.id);
+    if (!channel) return res.status(403).json({ error: 'You do not have access to this channel.' });
+  } else {
+    const inConvo = await db.prepare('SELECT 1 FROM dm_participants WHERE conversation_id = ? AND user_id = ?').get(conversationId, req.session.user.id);
+    if (!inConvo) return res.status(403).json({ error: 'You are not part of this conversation.' });
+  }
+
+  const rows = await db.prepare(`
+    SELECT * FROM messages WHERE ${channelId ? 'channel_id = ?' : 'conversation_id = ?'} AND pinned_at IS NOT NULL AND deleted = 0
+    ORDER BY pinned_at DESC
+  `).all(channelId || conversationId);
+  res.json(await hydrateMessages(rows, req.session.user.id));
+});
+
+// Copies a message's text (and any attachments, by referencing the same stored file — no
+// re-upload needed) into another channel or DM the user has access to, tagged with where it
+// came from so the recipient's client can render a "Forwarded from X" note.
+router.post('/api/messages/:id/forward', async (req, res) => {
+  const ctx = await loadMessageWithAccess(req.params.id, req.session.user.id);
+  if (!ctx || ctx.msg.deleted) return res.status(404).json({ error: 'Message not found or inaccessible.' });
+
+  const targetChannelId = req.body.channel_id ? Number(req.body.channel_id) : null;
+  const targetConversationId = req.body.conversation_id ? Number(req.body.conversation_id) : null;
+  if (!targetChannelId && !targetConversationId) return res.status(400).json({ error: 'Choose where to forward this message.' });
+
+  let targetChannel = null;
+  if (targetChannelId) {
+    targetChannel = await loadChannelForUser(targetChannelId, req.session.user.id);
+    if (!targetChannel) return res.status(403).json({ error: 'You do not have access to that channel.' });
+  } else {
+    const inConvo = await db.prepare('SELECT 1 FROM dm_participants WHERE conversation_id = ? AND user_id = ?').get(targetConversationId, req.session.user.id);
+    if (!inConvo) return res.status(403).json({ error: 'You are not part of that conversation.' });
+  }
+
+  const author = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(ctx.msg.user_id);
+  const metadata = JSON.stringify({ forwardedFrom: { messageId: ctx.msg.id, authorName: author ? author.full_name : 'Unknown user' } });
+  const row = await db.prepare(`
+    INSERT INTO messages (channel_id, conversation_id, user_id, body, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+  `).get(targetChannelId || null, targetChannelId ? null : targetConversationId, req.session.user.id, ctx.msg.body, metadata, nowStr(), nowStr());
+
+  const sourceAttachments = await db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(ctx.msg.id);
+  for (const a of sourceAttachments) {
+    await db.prepare(`
+      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(row.id, a.filename, a.original_name, a.mime_type, a.size, req.session.user.id);
+  }
+
+  if (targetConversationId) {
+    await db.prepare('UPDATE dm_participants SET is_hidden = 0, is_unread = CASE WHEN user_id = ? THEN 0 ELSE 1 END WHERE conversation_id = ?').run(req.session.user.id, targetConversationId);
+  }
+
+  const message = await hydrateOne(row, req.session.user.id);
+  if (targetChannelId) emitToChannel(targetChannelId, 'message:new', message);
+  else emitToConversation(targetConversationId, 'message:new', message);
+  res.status(201).json(message);
+});
+
 router.get('/api/attachments/:id/download', async (req, res) => {
   const att = await db.prepare('SELECT * FROM attachments WHERE id = ?').get(req.params.id);
   if (!att) return res.status(404).render('error', { title: 'Not Found', message: 'Attachment not found.' });

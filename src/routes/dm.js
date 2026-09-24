@@ -45,6 +45,11 @@ router.post('/api/dm', async (req, res) => {
   if (otherIds.length === 0) return res.status(400).json({ error: 'Pick at least one other person to message.' });
   const people = await db.prepare(`SELECT id FROM users WHERE active = 1 AND id IN (${otherIds.map(() => '?').join(',')})`).all(...otherIds);
   if (people.length !== otherIds.length) return res.status(400).json({ error: 'One or more people are no longer available.' });
+  const blocked = await db.prepare(`
+    SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id IN (${otherIds.map(() => '?').join(',')}))
+      OR (blocked_id = ? AND blocker_id IN (${otherIds.map(() => '?').join(',')})) LIMIT 1
+  `).get(userId, ...otherIds, userId, ...otherIds);
+  if (blocked) return res.status(403).json({ error: 'You cannot message someone you have blocked, or who has blocked you.' });
 
 
   if (otherIds.length === 1) {
@@ -101,10 +106,67 @@ router.get('/api/dm/:id', async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
   const participants = await db.prepare(`
-    SELECT u.id, u.full_name, u.username, u.status FROM dm_participants dp JOIN users u ON u.id = dp.user_id
+    SELECT u.id, u.full_name, u.username, u.status, dp.last_read_message_id FROM dm_participants dp JOIN users u ON u.id = dp.user_id
     WHERE dp.conversation_id = ? ORDER BY u.full_name
   `).all(convo.id);
   res.json({ conversation: convo, participants });
+});
+
+// Adds people to THIS conversation (shared history, everyone sees the same thread going
+// forward) rather than spinning up a separate conversation — a 1:1 becomes a group the
+// moment a third person joins. Posts a system-style message so existing participants see who
+// was added and by whom.
+router.post('/api/dm/:id/participants', async (req, res) => {
+  const convo = await loadConversationForUser(req.params.id, req.session.user.id);
+  if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
+  if (!Array.isArray(req.body.user_ids) || req.body.user_ids.length === 0 || req.body.user_ids.length > 50 || req.body.user_ids.some(id => !Number.isSafeInteger(Number(id)) || Number(id) < 1)) {
+    return res.status(400).json({ error: 'Choose at least one valid person to add.' });
+  }
+  const existing = (await db.prepare('SELECT user_id FROM dm_participants WHERE conversation_id = ?').all(convo.id)).map(r => r.user_id);
+  const newIds = [...new Set(req.body.user_ids.map(Number))].filter(id => !existing.includes(id));
+  if (newIds.length === 0) return res.status(400).json({ error: 'Everyone selected is already in this chat.' });
+
+  const people = await db.prepare(`SELECT id, full_name FROM users WHERE active = 1 AND id IN (${newIds.map(() => '?').join(',')})`).all(...newIds);
+  if (people.length !== newIds.length) return res.status(400).json({ error: 'One or more people are no longer available.' });
+  const blocked = await db.prepare(`
+    SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id IN (${newIds.map(() => '?').join(',')}))
+      OR (blocked_id = ? AND blocker_id IN (${newIds.map(() => '?').join(',')})) LIMIT 1
+  `).get(req.session.user.id, ...newIds, req.session.user.id, ...newIds);
+  if (blocked) return res.status(403).json({ error: 'You cannot add someone you have blocked, or who has blocked you.' });
+
+  for (const uid of newIds) {
+    await db.prepare('INSERT INTO dm_participants (conversation_id, user_id) VALUES (?, ?)').run(convo.id, uid);
+  }
+  if (!convo.is_group) await db.prepare('UPDATE dm_conversations SET is_group = 1 WHERE id = ?').run(convo.id);
+
+  const actor = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.user.id);
+  const names = people.map(p => p.full_name).join(', ');
+  const metadata = JSON.stringify({ system: 'added_participants', addedBy: actor.full_name, addedNames: people.map(p => p.full_name) });
+  const row = await db.prepare(`
+    INSERT INTO messages (conversation_id, user_id, body, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *
+  `).get(convo.id, req.session.user.id, actor.full_name + ' added ' + names + ' to the chat.', metadata, nowStr(), nowStr());
+
+  for (const uid of [...existing, ...newIds]) await resyncUserRooms(uid);
+  for (const uid of newIds) emitToUser(uid, 'dm:created', { id: convo.id });
+  const message = await hydrateOne(row, req.session.user.id);
+  emitToConversation(convo.id, 'message:new', message);
+  res.status(201).json({ id: convo.id, added: people.map(p => p.full_name) });
+});
+
+// Marks everything up to `message_id` as read for the caller, and tells the other
+// participant(s) so their open window can show a "Seen" line under their last message.
+router.post('/api/dm/:id/read', async (req, res) => {
+  const convo = await loadConversationForUser(req.params.id, req.session.user.id);
+  if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
+  const messageId = Number(req.body.message_id);
+  if (!Number.isSafeInteger(messageId) || messageId < 1) return res.status(400).json({ error: 'Invalid message id.' });
+
+  await db.prepare(`
+    UPDATE dm_participants SET last_read_message_id = ?
+    WHERE conversation_id = ? AND user_id = ? AND (last_read_message_id IS NULL OR last_read_message_id < ?)
+  `).run(messageId, convo.id, req.session.user.id, messageId);
+  emitToConversation(convo.id, 'dm:read', { conversation_id: convo.id, user_id: req.session.user.id, message_id: messageId });
+  res.json({ ok: true });
 });
 
 // Search all persisted messages, including thread replies, within this DM only.

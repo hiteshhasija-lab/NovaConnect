@@ -47,11 +47,28 @@ window.createChannelTools = function({api,escapeHtml,notify,navigate,events,pres
       d.querySelector('input').oninput=e=>{clearTimeout(timer);const q=e.target.value.trim(),g=++generation;const box=d.querySelector('.people-results');box.replaceChildren();if(!q)return;timer=setTimeout(async()=>{try{const users=await api('/api/users/search?q='+encodeURIComponent(q));if(g!==generation||!d.isConnected)return;const matches=users.filter(u=>!data.members.some(m=>m.id===u.id));box.textContent=matches.length?'':'No matching people to add.';matches.forEach(u=>box.append(row(u,true)));}catch(e){notify(e)}},200)};
     } catch(e){notify(e)}
   }
+  async function pinned(channel) {
+    try {
+      const d=dialog('Pinned messages','<p class="pinned-empty" hidden>No pinned messages yet.</p><div class="pinned-list"></div>');
+      const list=d.querySelector('.pinned-list'), empty=d.querySelector('.pinned-empty');
+      const pins=await api('/api/pins?channel_id='+channel.id);
+      empty.hidden=!!pins.length;
+      pins.forEach(m=>{
+        const row=document.createElement('div');row.className='pinned-row';
+        row.innerHTML='<strong></strong><p></p><button type="button">Unpin</button>';
+        row.querySelector('strong').textContent=m.author.full_name+' · '+new Date(m.created_at.replace(' ','T')+'Z').toLocaleString();
+        row.querySelector('p').textContent=m.body;
+        row.querySelector('button').onclick=async()=>{await api('/api/messages/'+m.id+'/pin',{method:'POST'});row.remove();if(!list.children.length)empty.hidden=false;};
+        list.append(row);
+      });
+    } catch(e){notify(e)}
+  }
   function header(container,channel,onTab) {
-    container.innerHTML='<div class="channel-heading"><svg class="channel-tag" viewBox="0 0 32 32" aria-hidden="true"><path fill="#ffbf45" d="M2 17 17 2l12 1 1 12-15 15z"/><circle cx="23" cy="9" r="3" fill="white"/></svg><strong>'+esc(channel.name)+'</strong></div><nav class="channel-tabs" aria-label="Channel tabs">'+['Posts','Files','Photos'].map((t,i)=>'<button type="button" class="'+(!i?'selected':'')+'" aria-pressed="'+(!i)+'">'+t+'</button>').join('')+'</nav><div class="channel-header-actions"><button type="button" data-action="events"><i class="bi bi-calendar3"></i> Events</button><button type="button" data-action="members" title="Add members or owners" aria-label="Add members or owners">'+peopleSvg+'</button><button type="button" data-action="link" title="Copy channel link" aria-label="Copy channel link"><i class="bi bi-link-45deg"></i></button><button type="button" data-action="settings" title="Channel settings" aria-label="Channel settings"><i class="bi bi-gear"></i></button></div>';
+    container.innerHTML='<div class="channel-heading"><svg class="channel-tag" viewBox="0 0 32 32" aria-hidden="true"><path fill="#ffbf45" d="M2 17 17 2l12 1 1 12-15 15z"/><circle cx="23" cy="9" r="3" fill="white"/></svg><strong>'+esc(channel.name)+'</strong></div><nav class="channel-tabs" aria-label="Channel tabs">'+['Posts','Files','Photos'].map((t,i)=>'<button type="button" class="'+(!i?'selected':'')+'" aria-pressed="'+(!i)+'">'+t+'</button>').join('')+'</nav><div class="channel-header-actions"><button type="button" data-action="events"><i class="bi bi-calendar3"></i> Events</button><button type="button" data-action="pins" title="Pinned messages" aria-label="Pinned messages"><i class="bi bi-pin-angle"></i></button><button type="button" data-action="members" title="Add members or owners" aria-label="Add members or owners">'+peopleSvg+'</button><button type="button" data-action="link" title="Copy channel link" aria-label="Copy channel link"><i class="bi bi-link-45deg"></i></button><button type="button" data-action="settings" title="Channel settings" aria-label="Channel settings"><i class="bi bi-gear"></i></button></div>';
     container.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{container.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('selected',x===b);x.setAttribute('aria-pressed',String(x===b))});onTab(b.textContent.toLowerCase())});
     container.querySelector('[data-action=members]').onclick=()=>members('channels',channel.id);
     container.querySelector('[data-action=events]').onclick=()=>events(channel.team_id);
+    container.querySelector('[data-action=pins]').onclick=()=>pinned(channel);
     container.querySelector('[data-action=link]').onclick=async()=>{const url=location.origin+'/app/channel/'+channel.id;try{await navigator.clipboard.writeText(url);const b=container.querySelector('[data-action=link]');b.title='Link copied';b.setAttribute('aria-label','Link copied');}catch{const d=dialog('Channel link','<input readonly aria-label="Channel link">');d.querySelector('input').value=url;d.querySelector('input').select()}};
     container.querySelector('[data-action=settings]').onclick=async()=>{try{const data=await api('/api/channels/'+channel.id+'/membership');const d=dialog('Channel settings','<form><label>Name<input name="name" required maxlength="80"></label><label>Description<textarea name="description" maxlength="1000"></textarea></label><p class="settings-info"></p><button type="submit">Save</button></form>');d.querySelector('[name=name]').value=channel.name;d.querySelector('textarea').value=channel.description||'';d.querySelector('.settings-info').textContent=channel.is_private?'Private channel':'Standard channel · all team members have access';d.querySelectorAll('input,textarea,button[type=submit]').forEach(e=>e.disabled=!data.canManage);d.querySelector('form').onsubmit=async e=>{e.preventDefault();try{await api('/api/channels/'+channel.id+'/settings',{method:'PATCH',body:{name:d.querySelector('input').value,description:d.querySelector('textarea').value}});d.close();navigate(channel.id)}catch(e){notify(e)}}}catch(e){notify(e)}};
   }

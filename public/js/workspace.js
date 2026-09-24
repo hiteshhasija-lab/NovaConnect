@@ -67,6 +67,20 @@
     } catch (e) { /* audio not available — not worth surfacing to the user */ }
   }
 
+  // Per-browser notification preferences (same pattern as the existing novaconnect-theme
+  // toggle) — sound defaults on, desktop notifications default off since they need an
+  // explicit permission grant.
+  function notifPrefEnabled(key, def) { const v = localStorage.getItem(key); return v === null ? def : v === '1'; }
+  function showDesktopNotification(msg) {
+    if (!notifPrefEnabled('novaconnect-notif-desktop', false)) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.visibilityState === 'visible' && (state.active.type === 'channel' && msg.channel_id === state.active.channel?.id || state.active.type === 'dm' && msg.conversation_id === state.active.conversation?.id)) return;
+    try {
+      const n = new Notification(msg.author.full_name, { body: msg.body || 'Sent an attachment', tag: 'novaconnect-' + (msg.channel_id || msg.conversation_id) });
+      n.onclick = () => { window.focus(); if (msg.channel_id) navigateToChannel(msg.channel_id); else if (msg.conversation_id) navigateToDm(msg.conversation_id); };
+    } catch (e) { /* notifications not available — not worth surfacing to the user */ }
+  }
+
   // Blinks whichever surface represents the chat a new message just landed in: the sidebar
   // entry (channel or DM row) if that chat isn't the one currently open, or the main chat
   // window itself if it is — rather than a generic "something happened" flash on the user's own
@@ -204,6 +218,7 @@
       hideThinkingBubble();
       appendMessageToList(msg);
       saveChatPreferences(msg.conversation_id, { is_unread:false }).catch(showToastError);
+      markDmRead(msg.conversation_id, msg.id);
     } else {
       if (msg.channel_id) state.unreadChannel.add(msg.channel_id);
       if (msg.conversation_id && !findConversation(msg.conversation_id)?.is_muted) state.unreadDm.add(msg.conversation_id);
@@ -214,11 +229,18 @@
     // Triggered after the sidebar re-render above (not before) so the row this looks for
     // actually exists in the DOM by the time it queries for it.
     if (msg.author && msg.author.id !== NC.currentUser.id) {
-      playNotificationSound();
+      if (notifPrefEnabled('novaconnect-notif-sound', true)) playNotificationSound();
+      showDesktopNotification(msg);
       blinkChatEntry(msg, isActiveChat);
     }
   });
   socket.on('message:update', (msg) => { patchMessageInList(msg); });
+  socket.on('dm:read', (payload) => {
+    if (state.active.type !== 'dm' || state.active.conversation.id !== payload.conversation_id) return;
+    const p = (state.active.participants || []).find(x => x.id === payload.user_id);
+    if (p && (p.last_read_message_id || 0) < payload.message_id) p.last_read_message_id = payload.message_id;
+    renderSeenIndicator();
+  });
   socket.on('message:delete', (payload) => { markDeletedInList(payload.id); });
   socket.on('thread:message', (msg) => {
     bumpReplyCount(msg.parent_message_id, msg.id);
@@ -441,6 +463,25 @@
     }).catch(showToastError);
   }
 
+  function openBlockedPeopleDialog() {
+    const d=document.createElement('dialog');d.className='channel-dialog';
+    d.innerHTML='<header><h2>Blocked people</h2><button type="button" aria-label="Close">×</button></header><div class="channel-dialog-body"><p class="pinned-empty" hidden>No one is blocked.</p><div class="pinned-list"></div></div>';
+    document.body.append(d);
+    d.querySelector('header button').onclick=()=>d.close();
+    d.addEventListener('close',()=>d.remove());
+    d.showModal();
+    const list=d.querySelector('.pinned-list'), empty=d.querySelector('.pinned-empty');
+    api('/api/users/blocked').then(rows=>{
+      empty.hidden=!!rows.length;
+      rows.forEach(u=>{
+        const row=document.createElement('div');row.className='pinned-row';
+        row.innerHTML='<strong></strong><button type="button">Unblock</button>';
+        row.querySelector('strong').textContent=u.full_name+' · @'+u.username;
+        row.querySelector('button').onclick=async()=>{await api('/api/users/'+u.id+'/block',{method:'DELETE'}).catch(showToastError);row.remove();if(!list.children.length)empty.hidden=false;};
+        list.append(row);
+      });
+    }).catch(showToastError);
+  }
   function renderSidebar() {
     const title = document.getElementById('sidebarTitle');
     const actions = document.getElementById('sidebarActions');
@@ -450,10 +491,20 @@
 
     if (state.view === 'people') {
       title.textContent='People';
+      const blockedBtn=el('<button title="Blocked people"><i class="bi bi-slash-circle"></i></button>');
+      blockedBtn.addEventListener('click',openBlockedPeopleDialog);
+      actions.appendChild(blockedBtn);
       const input=el('<input class="people-search" type="search" aria-label="Search people" placeholder="Name, username or email">');
       const results=el('<div aria-live="polite"></div>');body.append(input,results);
       let timer,generation=0;
-      const search=async()=>{const g=++generation;try{const users=await api('/api/users/search?q='+encodeURIComponent(input.value.trim()));if(g!==generation||!results.isConnected)return;results.textContent=users.length?'':'No people found.';users.forEach(u=>{const row=el('<button type="button" class="people-result">'+avatarHtml(u)+'<span class="people-presence presence-'+(state.presence[u.id]||u.status||'offline')+' presence-live-'+u.id+'" role="img" aria-label="'+escapeHtml(STATUS_LABELS[state.presence[u.id]||u.status]||'Appear offline')+'" title="'+escapeHtml(STATUS_LABELS[state.presence[u.id]||u.status]||'Appear offline')+'"></span><span>'+escapeHtml(u.full_name)+'<small>@'+escapeHtml(u.username)+'</small></span></button>');row.onclick=()=>api('/api/dm',{method:'POST',body:{user_ids:[u.id]}}).then(({id})=>navigateToDm(id)).catch(showToastError);results.append(row)});}catch(e){showToastError(e)}};
+      const search=async()=>{const g=++generation;try{const users=await api('/api/users/search?q='+encodeURIComponent(input.value.trim()));if(g!==generation||!results.isConnected)return;results.textContent=users.length?'':'No people found.';users.forEach(u=>{
+        const row=el('<div class="people-row"></div>');
+        const open=el('<button type="button" class="people-result">'+avatarHtml(u)+'<span class="people-presence presence-'+(state.presence[u.id]||u.status||'offline')+' presence-live-'+u.id+'" role="img" aria-label="'+escapeHtml(STATUS_LABELS[state.presence[u.id]||u.status]||'Appear offline')+'" title="'+escapeHtml(STATUS_LABELS[state.presence[u.id]||u.status]||'Appear offline')+'"></span><span>'+escapeHtml(u.full_name)+'<small>@'+escapeHtml(u.username)+'</small></span></button>');
+        open.onclick=()=>api('/api/dm',{method:'POST',body:{user_ids:[u.id]}}).then(({id})=>navigateToDm(id)).catch(showToastError);
+        const block=el('<button type="button" class="people-block-btn" title="Block ' + escapeHtml(u.full_name) + '" aria-label="Block ' + escapeHtml(u.full_name) + '"><i class="bi bi-slash-circle"></i></button>');
+        block.onclick=async()=>{if(!confirm('Block '+u.full_name+'? You will no longer be able to message each other or find each other in search.'))return;await api('/api/users/'+u.id+'/block',{method:'POST'}).catch(showToastError);row.remove();};
+        row.append(open,block); results.append(row);
+      });}catch(e){showToastError(e)}};
       input.oninput=()=>{++generation;clearTimeout(timer);timer=setTimeout(search,200)};search();
     } else if (state.view === 'teams') {
       title.textContent = 'Teams';
@@ -601,6 +652,7 @@
       document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'chat'));
       state.active = { type: 'dm', conversation, participants, messages };
       saveChatPreferences(conversation.id, { is_unread:false, is_hidden:false }).catch(showToastError);
+      if (messages.length) markDmRead(conversation.id, messages[messages.length - 1].id);
       state.mentionMembers = participants;
       if (!findConversation(id)) state.conversations.unshift({ ...conversation, participants: participants.filter(p => p.id !== NC.currentUser.id) });
       history.pushState({}, '', '/app/dm/' + id);
@@ -657,11 +709,41 @@
     messages.forEach(msg => {
       const day = fmtDayLabel(msg.created_at);
       if (day !== lastDay) { list.appendChild(el('<div class="day-divider"><span>' + day + '</span></div>')); lastAuthor = null; lastDay = day; }
+      if (msg.metadata && msg.metadata.system) { list.appendChild(buildSystemRow(msg)); lastAuthor = null; return; }
       const grouped = lastAuthor === msg.author.id && (toDate(msg.created_at) - lastTime) < 5 * 60 * 1000;
       list.appendChild(buildMessageRow(msg, grouped));
       lastAuthor = msg.author.id; lastTime = toDate(msg.created_at);
     });
     list.scrollTop = list.scrollHeight;
+    renderSeenIndicator();
+  }
+
+  function markDmRead(conversationId, messageId) {
+    if (!messageId) return;
+    api('/api/dm/' + conversationId + '/read', { method: 'POST', body: { message_id: messageId } }).catch(() => {});
+  }
+
+  // Shows "Seen" (1:1) or "Seen by N" (group) under the current user's most recent message
+  // in the open DM, once every other participant's last_read_message_id has caught up to it —
+  // moves to whichever own message is newest as reads come in, same as it does elsewhere.
+  function renderSeenIndicator() {
+    document.querySelectorAll('.msg-seen').forEach(n => n.remove());
+    if (state.active.type !== 'dm') return;
+    const others = (state.active.participants || []).filter(p => p.id !== NC.currentUser.id);
+    if (!others.length) return;
+    const mine = (state.active.messages || []).filter(m => m.author && m.author.id === NC.currentUser.id && !(m.metadata && m.metadata.system));
+    const last = mine[mine.length - 1];
+    if (!last) return;
+    const seenBy = others.filter(p => (p.last_read_message_id || 0) >= last.id);
+    if (!seenBy.length) return;
+    const row = document.querySelector('.msg-row[data-id="' + last.id + '"]');
+    if (!row) return;
+    const label = state.active.conversation.is_group ? ('Seen by ' + seenBy.length) : 'Seen';
+    row.querySelector('.msg-body-col').insertAdjacentHTML('beforeend', '<div class="msg-seen"><i class="bi bi-check2-all"></i> ' + label + '</div>');
+  }
+
+  function buildSystemRow(msg) {
+    return el('<div class="msg-row-system" data-id="' + msg.id + '"><span>' + escapeHtml(msg.body) + '</span></div>');
   }
 
   function attachmentHtml(a) {
@@ -681,6 +763,9 @@
   }
 
   const QUICK_EMOJI = ['👍', '❤️', '😂', '🎉', '👀', '✅'];
+  let emojiPickerCallback = null;
+  const emojiPicker = window.createEmojiPicker((emoji) => { const cb = emojiPickerCallback; emojiPickerCallback = null; if (cb) cb(emoji); });
+  function openEmojiPicker(anchorBtn, onPick) { emojiPickerCallback = onPick; emojiPicker.open(anchorBtn); }
 
   function buildMessageRow(msg, grouped, isThreadReply) {
     const row = el(
@@ -691,15 +776,22 @@
           '<div class="msg-content"></div>' +
         '</div>' +
         '<div class="msg-actions">' +
-          '<div class="reaction-picker">' + QUICK_EMOJI.map(e => '<button data-emoji="' + e + '" title="React">' + e + '</button>').join('') + '</div>' +
+          '<div class="reaction-picker">' + QUICK_EMOJI.map(e => '<button data-emoji="' + e + '" title="React">' + e + '</button>').join('') + '<button class="more-emoji-btn" title="More reactions"><i class="bi bi-emoji-smile"></i></button></div>' +
+          '<button class="pin-btn" title="' + (msg.pinned ? 'Unpin' : 'Pin') + '"><i class="bi ' + (msg.pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle') + '"></i></button>' +
+          '<button class="forward-btn" title="Forward"><i class="bi bi-arrow-90deg-right"></i></button>' +
           (msg.author.id === NC.currentUser.id ? '<button class="edit-btn" title="Edit"><i class="bi bi-pencil"></i></button><button class="delete-btn" title="Delete"><i class="bi bi-trash"></i></button>' : '') +
         '</div>' +
       '</div>'
     );
     renderMessageContent(row, msg, isThreadReply);
-    row.querySelectorAll('.reaction-picker button').forEach(btn => {
-      btn.addEventListener('click', () => api('/api/messages/' + msg.id + '/reactions', { method: 'POST', body: { emoji: btn.dataset.emoji } }));
+    row.querySelectorAll('.reaction-picker button[data-emoji]').forEach(btn => {
+      btn.addEventListener('click', () => api('/api/messages/' + msg.id + '/reactions', { method: 'POST', body: { emoji: btn.dataset.emoji } }).catch(showToastError));
     });
+    row.querySelector('.more-emoji-btn').addEventListener('click', (e) => {
+      openEmojiPicker(e.currentTarget, (emoji) => api('/api/messages/' + msg.id + '/reactions', { method: 'POST', body: { emoji } }).catch(showToastError));
+    });
+    row.querySelector('.pin-btn').addEventListener('click', () => api('/api/messages/' + msg.id + '/pin', { method: 'POST' }).catch(showToastError));
+    row.querySelector('.forward-btn').addEventListener('click', () => openForwardPicker(msg));
     const editBtn = row.querySelector('.edit-btn');
     if (editBtn) editBtn.addEventListener('click', () => startEdit(row, msg));
     const deleteBtn = row.querySelector('.delete-btn');
@@ -713,7 +805,10 @@
       box.innerHTML = '<div class="msg-deleted"><i class="bi bi-slash-circle me-1"></i>This message was deleted</div>';
       return;
     }
-    let html = '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
+    let html = '';
+    if (msg.pinned) html += '<div class="msg-pinned-flag"><i class="bi bi-pin-angle-fill"></i> Pinned' + (msg.pinned_by ? ' by ' + escapeHtml(msg.pinned_by.full_name) : '') + '</div>';
+    if (msg.metadata && msg.metadata.forwardedFrom) html += '<div class="msg-forwarded-flag"><i class="bi bi-arrow-90deg-right"></i> Forwarded from ' + escapeHtml(msg.metadata.forwardedFrom.authorName) + '</div>';
+    html += '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') html += decomApprovalCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') html += decomConfirmDestroyCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') html += decomSkipManualTasksCardHtml(msg.metadata);
@@ -732,6 +827,45 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') wireDecomConfirmDestroyCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') wireDecomSkipManualTasksCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') wireDecomPrecheckTaskCard(box, msg);
+  }
+
+  // A small "forward to…" picker listing every channel and DM the user can see, filterable
+  // by name — separate from the chat-header popovers since it needs the full teams/conversations
+  // state already loaded here rather than a server round trip.
+  function openForwardPicker(msg) {
+    document.querySelectorAll('.forward-popover').forEach(p => p.remove());
+    const panel = el('<div class="chat-popover forward-popover" role="dialog" aria-label="Forward message"><h2>Forward to…</h2><input class="chat-entry" type="search" placeholder="Search channels and people" aria-label="Search channels and people"><p class="chat-feedback" role="status"></p><div class="chat-results"></div></div>');
+    panel.style.position = 'fixed';
+    document.body.appendChild(panel);
+    const rect = document.body.getBoundingClientRect();
+    panel.style.top = '80px'; panel.style.right = '40px'; panel.style.left = 'auto';
+    const input = panel.querySelector('.chat-entry'), results = panel.querySelector('.chat-results'), feedback = panel.querySelector('.chat-feedback');
+    const targets = [];
+    state.teams.forEach(t => (t.channels || []).forEach(c => targets.push({ kind: 'channel', id: c.id, label: '# ' + c.name + ' · ' + t.name })));
+    state.conversations.forEach(c => targets.push({ kind: 'dm', id: c.id, label: convoTitle(c) }));
+    function renderList(list) {
+      results.replaceChildren();
+      list.forEach(t => {
+        const row = el('<button type="button" class="chat-person"></button>');
+        row.textContent = t.label;
+        row.onclick = async () => {
+          row.disabled = true; feedback.textContent = 'Forwarding…';
+          try {
+            await api('/api/messages/' + msg.id + '/forward', { method: 'POST', body: t.kind === 'channel' ? { channel_id: t.id } : { conversation_id: t.id } });
+            close();
+          } catch (e) { feedback.textContent = e.message; row.disabled = false; }
+        };
+        results.appendChild(row);
+      });
+      if (!list.length) feedback.textContent = 'No matches.'; else feedback.textContent = '';
+    }
+    renderList(targets);
+    input.oninput = () => renderList(targets.filter(t => t.label.toLowerCase().includes(input.value.trim().toLowerCase())));
+    function close() { panel.remove(); document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', onKey); }
+    const outside = (e) => { if (!panel.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    setTimeout(() => { document.addEventListener('pointerdown', outside); document.addEventListener('keydown', onKey); }, 0);
+    input.focus();
   }
 
   function decomApprovalCardHtml(meta) {
@@ -920,28 +1054,40 @@
   }
 
   function appendMessageToList(msg) {
-    if (document.querySelector('.msg-row[data-id="' + msg.id + '"]')) return;
+    if (document.querySelector('.msg-row[data-id="' + msg.id + '"], .msg-row-system[data-id="' + msg.id + '"]')) return;
     const list = document.getElementById('messageList');
     const wasEmpty = !!list.querySelector('.empty-state');
     const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
     if (wasEmpty) list.innerHTML = '';
+    const today = fmtDayLabel(msg.created_at);
+    const lastDivider = [...list.querySelectorAll('.day-divider span')].pop();
+    const newDay = !lastDivider || lastDivider.textContent !== today;
+    if (newDay) list.appendChild(el('<div class="day-divider"><span>' + today + '</span></div>'));
+    if (msg.metadata && msg.metadata.system) {
+      list.appendChild(buildSystemRow(msg));
+      (state.active.messages = state.active.messages || []).push(msg);
+      if (nearBottom) list.scrollTop = list.scrollHeight;
+      return;
+    }
     const lastRow = [...list.querySelectorAll('.msg-row')].pop();
     let grouped = false;
-    if (lastRow) {
+    if (lastRow && !newDay) {
       const lastId = Number(lastRow.dataset.id);
       const lastMsg = (state.active.messages || []).find(m => m.id === lastId);
       if (lastMsg && lastMsg.author.id === msg.author.id && (toDate(msg.created_at) - toDate(lastMsg.created_at)) < 5 * 60 * 1000) grouped = true;
     }
-    const today = fmtDayLabel(msg.created_at);
-    const lastDivider = [...list.querySelectorAll('.day-divider span')].pop();
-    if (!lastDivider || lastDivider.textContent !== today) { list.appendChild(el('<div class="day-divider"><span>' + today + '</span></div>')); grouped = false; }
     list.appendChild(buildMessageRow(msg, grouped));
     (state.active.messages = state.active.messages || []).push(msg);
     if (nearBottom || msg.author.id === NC.currentUser.id) list.scrollTop = list.scrollHeight;
+    renderSeenIndicator();
   }
   function patchMessageInList(msg) {
     const row = document.querySelector('.msg-row[data-id="' + msg.id + '"]');
-    if (row) renderMessageContent(row, msg, false);
+    if (row) {
+      renderMessageContent(row, msg, false);
+      const pinBtn = row.querySelector('.pin-btn');
+      if (pinBtn) { pinBtn.title = msg.pinned ? 'Unpin' : 'Pin'; pinBtn.innerHTML = '<i class="bi ' + (msg.pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle') + '"></i>'; }
+    }
     const idx = (state.active.messages || []).findIndex(m => m.id === msg.id);
     if (idx >= 0) state.active.messages[idx] = msg;
   }
@@ -1007,6 +1153,15 @@
     }
   });
   document.getElementById('composerSendBtn').addEventListener('click', sendComposerMessage);
+  document.getElementById('composerEmojiBtn').addEventListener('click', (e) => {
+    openEmojiPicker(e.currentTarget, (emoji) => {
+      const start = composerInput.selectionStart || composerInput.value.length, end = composerInput.selectionEnd || composerInput.value.length;
+      composerInput.value = composerInput.value.slice(0, start) + emoji + composerInput.value.slice(end);
+      composerInput.focus();
+      composerInput.selectionStart = composerInput.selectionEnd = start + emoji.length;
+      composerInput.dispatchEvent(new Event('input'));
+    });
+  });
 
   // ---------------- rewrite with Gemini ----------------
   const rewritePopover = document.getElementById('rewritePopover');
@@ -1509,10 +1664,36 @@
     localStorage.setItem('novaconnect-theme', next);
   });
 
+  function renderNotifPrefUI() {
+    document.getElementById('notifSoundToggle').classList.toggle('notif-pref-on', notifPrefEnabled('novaconnect-notif-sound', true));
+    document.getElementById('notifDesktopToggle').classList.toggle('notif-pref-on', notifPrefEnabled('novaconnect-notif-desktop', false));
+  }
+  document.getElementById('notifSoundToggle').addEventListener('click', (e) => {
+    e.preventDefault();
+    localStorage.setItem('novaconnect-notif-sound', notifPrefEnabled('novaconnect-notif-sound', true) ? '0' : '1');
+    renderNotifPrefUI();
+  });
+  document.getElementById('notifDesktopToggle').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const turningOn = !notifPrefEnabled('novaconnect-notif-desktop', false);
+    if (turningOn && 'Notification' in window && Notification.permission === 'default') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { renderNotifPrefUI(); return; }
+    }
+    localStorage.setItem('novaconnect-notif-desktop', turningOn ? '1' : '0');
+    renderNotifPrefUI();
+  });
+  renderNotifPrefUI();
+
   // ---------------- boot ----------------
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
   if (state.active.type === 'channel') { state.mentionMembers = []; api('/api/channels/' + state.active.channel.id).then(({ members }) => { state.mentionMembers = members; state.active.members = members; renderMainHeader(); }); }
-  if (state.active.type === 'dm') { state.mentionMembers = state.active.participants || []; const saved = findConversation(state.active.conversation.id); if (saved) Object.assign(state.active.conversation, saved); }
+  if (state.active.type === 'dm') {
+    state.mentionMembers = state.active.participants || [];
+    const saved = findConversation(state.active.conversation.id); if (saved) Object.assign(state.active.conversation, saved);
+    const initialMessages = state.active.messages || [];
+    if (initialMessages.length) markDmRead(state.active.conversation.id, initialMessages[initialMessages.length - 1].id);
+  }
   if (state.active.type === 'channel' && state.active.team) state.openTeams.add(state.active.team.id);
   renderSidebar();
   renderMainHeader();

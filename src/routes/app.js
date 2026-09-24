@@ -91,7 +91,7 @@ router.get('/dm/:id', async (req, res) => {
   if (!inConvo) return res.status(403).render('error', { title: 'Access Denied', message: 'You are not part of this conversation.' });
   const conversation = await db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(req.params.id);
   const participants = await db.prepare(`
-    SELECT u.id, u.full_name, u.username, u.status FROM dm_participants dp JOIN users u ON u.id = dp.user_id
+    SELECT u.id, u.full_name, u.username, u.status, dp.last_read_message_id FROM dm_participants dp JOIN users u ON u.id = dp.user_id
     WHERE dp.conversation_id = ? ORDER BY u.full_name
   `).all(conversation.id);
 

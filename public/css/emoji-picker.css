@@ -1,0 +1,10 @@
+.emoji-picker-popover { position:fixed; z-index:1060; width:320px; max-height:360px; display:flex; flex-direction:column; background:var(--surface,#fff); color:var(--text,#333); border:1px solid var(--border,#ddd); border-radius:10px; box-shadow:0 10px 35px #0003; padding:10px; }
+.emoji-picker-search { border:1px solid var(--border,#ddd); border-radius:6px; background:var(--bg,#f5f5f5); color:inherit; padding:7px 10px; font:inherit; outline:none; margin-bottom:8px; }
+.emoji-picker-search:focus { box-shadow:0 0 0 1px var(--brand,#0755d9); }
+.emoji-picker-tabs { display:flex; gap:2px; border-bottom:1px solid var(--border,#ddd); padding-bottom:6px; margin-bottom:6px; }
+.emoji-picker-tabs button { flex:1; border:0; background:transparent; border-radius:6px; padding:5px 0; font-size:1.1rem; cursor:pointer; }
+.emoji-picker-tabs button.active,.emoji-picker-tabs button:hover { background:var(--surface-2,#f0f0f0); }
+.emoji-picker-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; overflow-y:auto; }
+.emoji-picker-grid button { border:0; background:transparent; border-radius:6px; font-size:1.3rem; padding:6px 0; cursor:pointer; line-height:1; }
+.emoji-picker-grid button:hover { background:var(--surface-2,#f0f0f0); }
+.emoji-picker-empty { grid-column:1/-1; color:var(--text-muted,#777); font-size:0.85rem; text-align:center; padding:20px 0; }

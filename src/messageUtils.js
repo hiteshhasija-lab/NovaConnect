@@ -11,7 +11,7 @@ async function hydrateMessages(rows, currentUserId) {
   if (rows.length === 0) return [];
   const ids = rows.map(r => r.id);
 
-  const authorIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+  const authorIds = [...new Set([...rows.map(r => r.user_id), ...rows.map(r => r.pinned_by)].filter(Boolean))];
   const authors = authorIds.length
     ? await db.prepare(`SELECT id, full_name, username, status FROM users WHERE id IN (${authorIds.map(() => '?').join(',')})`).all(...authorIds)
     : [];
@@ -52,6 +52,8 @@ async function hydrateMessages(rows, currentUserId) {
     metadata: parseMetadata(r.metadata),
     edited: !!r.edited,
     deleted: !!r.deleted,
+    pinned: !!r.pinned_at,
+    pinned_by: r.pinned_by ? (authorById[r.pinned_by] || { id: r.pinned_by, full_name: 'Unknown user', username: '' }) : null,
     created_at: r.created_at,
     updated_at: r.updated_at,
     author: authorById[r.user_id] || { id: r.user_id, full_name: 'Unknown user', username: '' },

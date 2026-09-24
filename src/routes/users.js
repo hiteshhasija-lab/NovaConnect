@@ -10,9 +10,33 @@ router.get('/api/users/search', async (req, res) => {
   const rows = await db.prepare(`
     SELECT id, full_name, username, email, title, status FROM users
     WHERE active = 1 AND id != ? AND (full_name ILIKE ? OR username ILIKE ? OR email ILIKE ?)
+      AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = ?)
+      AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = ?)
     ORDER BY full_name LIMIT 10
-  `).all(req.session.user.id, q, q, q);
+  `).all(req.session.user.id, q, q, q, req.session.user.id, req.session.user.id);
   res.json(rows);
+});
+
+router.get('/api/users/blocked', async (req, res) => {
+  const rows = await db.prepare(`
+    SELECT u.id, u.full_name, u.username FROM blocked_users b JOIN users u ON u.id = b.blocked_id
+    WHERE b.blocker_id = ? ORDER BY u.full_name
+  `).all(req.session.user.id);
+  res.json(rows);
+});
+
+router.post('/api/users/:id/block', async (req, res) => {
+  const targetId = Number(req.params.id);
+  if (!Number.isSafeInteger(targetId) || targetId === req.session.user.id) return res.status(400).json({ error: 'Invalid person to block.' });
+  const target = await db.prepare('SELECT id, full_name FROM users WHERE id = ? AND active = 1').get(targetId);
+  if (!target) return res.status(404).json({ error: 'Person not found.' });
+  await db.prepare('INSERT INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?) ON CONFLICT (blocker_id, blocked_id) DO NOTHING').run(req.session.user.id, targetId);
+  res.json({ ok: true, full_name: target.full_name });
+});
+
+router.delete('/api/users/:id/block', async (req, res) => {
+  await db.prepare('DELETE FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?').run(req.session.user.id, Number(req.params.id));
+  res.json({ ok: true });
 });
 
 router.get('/api/notifications', async (req, res) => {
