@@ -39,6 +39,52 @@ router.delete('/api/users/:id/block', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Quick status-message setter (the avatar dropdown popover) — separate from the full
+// /profile page form, same shape as Teams' own "Set status message" flyout: a message plus
+// a "clear after" duration. Expiry is computed here (server clock, naive UTC, matching every
+// other timestamp in this app) and actually cleared later by scheduler.js's poll tick rather
+// than just hidden client-side, so every consumer (profile card, DM header, etc.) sees the
+// same true state without each having to re-check expiry itself.
+function computeStatusExpiry(clearAfter) {
+  const now = new Date();
+  switch (clearAfter) {
+    case 'today': { const d = new Date(now); d.setUTCHours(23, 59, 59, 999); return d; }
+    case '1h': return new Date(now.getTime() + 60 * 60000);
+    case '4h': return new Date(now.getTime() + 4 * 60 * 60000);
+    case 'week': return new Date(now.getTime() + 7 * 86400000);
+    default: return null;
+  }
+}
+
+router.patch('/api/profile/status-message', async (req, res) => {
+  const statusMessage = String(req.body.status_message || '').trim().slice(0, 280) || null;
+  const clearAfter = ['today', '1h', '4h', 'week'].includes(req.body.clear_after) ? req.body.clear_after : 'never';
+  const expiry = statusMessage ? computeStatusExpiry(clearAfter) : null;
+  const expiresAt = expiry ? expiry.toISOString().slice(0, 19).replace('T', ' ') : null;
+  await db.prepare('UPDATE users SET status_message = ?, status_message_expires_at = ? WHERE id = ?')
+    .run(statusMessage, expiresAt, req.session.user.id);
+  res.json({ status_message: statusMessage, status_message_expires_at: expiresAt });
+});
+
+// Full profile-card payload — used when clicking someone's avatar/name anywhere in the app.
+router.get('/api/users/:id/profile', async (req, res) => {
+  const targetId = Number(req.params.id);
+  if (!Number.isSafeInteger(targetId)) return res.status(400).json({ error: 'Invalid user.' });
+  const blocked = await db.prepare(`
+    SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)
+  `).get(req.session.user.id, targetId, targetId, req.session.user.id);
+  if (blocked) return res.status(404).json({ error: 'Person not found.' });
+  const user = await db.prepare(`
+    SELECT id, full_name, username, email, title, status, status_message, status_message_expires_at FROM users WHERE id = ? AND active = 1
+  `).get(targetId);
+  if (!user) return res.status(404).json({ error: 'Person not found.' });
+  if (user.status_message_expires_at && user.status_message_expires_at < new Date().toISOString().slice(0, 19).replace('T', ' ')) {
+    user.status_message = null;
+  }
+  delete user.status_message_expires_at;
+  res.json(user);
+});
+
 router.get('/api/notifications', async (req, res) => {
   const rows = await db.prepare(`
     SELECT n.*, u.full_name AS actor_name, c.name AS channel_name

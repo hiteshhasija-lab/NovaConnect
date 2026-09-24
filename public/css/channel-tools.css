@@ -16,6 +16,7 @@
 .channel-dialog-body { padding:24px; }.channel-dialog label { display:block;margin-bottom:12px; }
 .channel-dialog input,.channel-dialog textarea { display:block;width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:inherit; }
 .membership-row { display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border); }.membership-row span { flex:1;min-width:0;overflow-wrap:anywhere; }.membership-row small { display:block;color:var(--text-muted); }
+.membership-name-btn { cursor:pointer; }.membership-name-btn:hover,.membership-name-btn:focus-visible { text-decoration:underline; }
 .membership-row select,.membership-row button,.channel-dialog button[type=submit] { padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:inherit; }
 .people-search { width:calc(100% - 24px);margin:12px;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text); }
 .people-result { width:100%;display:flex;gap:10px;align-items:center;padding:12px;text-align:left;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text); }.people-result small { display:block;color:var(--text-muted); }

@@ -1,4 +1,4 @@
-window.createChannelTools = function({api,escapeHtml,notify,navigate,events,presence=()=>null}) {
+window.createChannelTools = function({api,escapeHtml,notify,navigate,events,presence=()=>null,openProfile=()=>{}}) {
   const esc=escapeHtml;
   const peopleSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M2 20v-3a6 6 0 0 1 12 0v3M17 4a3 3 0 0 1 0 6M20 14v6m-3-3h6"/></svg>';
   function dialog(title,html) {
@@ -45,7 +45,10 @@ window.createChannelTools = function({api,escapeHtml,notify,navigate,events,pres
       async function save(user,role) {await api('/api/'+kind+'/'+id+'/membership',{method:'POST',body:{user_id:user.id,role}});}
 
       function row(user,adding) {
-        const r=document.createElement('div');r.className='membership-row';r.innerHTML='<span><strong>'+esc(user.full_name)+'</strong><small>@'+esc(user.username)+'</small></span>';
+        const r=document.createElement('div');r.className='membership-row';r.innerHTML='<span><strong class="membership-name-btn" role="button" tabindex="0">'+esc(user.full_name)+'</strong><small>@'+esc(user.username)+'</small></span>';
+        const nameBtn=r.querySelector('.membership-name-btn');
+        nameBtn.onclick=()=>openProfile(user.id);
+        nameBtn.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openProfile(user.id);}};
         const status=presence(user.id)||user.status||'offline';
         const labels={ online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
         const safeStatus=labels[status]?status:'offline';

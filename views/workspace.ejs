@@ -31,7 +31,10 @@
           <span class="presence-dot presence-online" id="myPresenceDot"></span>
         </button>
         <ul class="dropdown-menu user-menu">
-          <li><h6 class="dropdown-header"><%= currentUser.full_name %></h6></li>
+          <li>
+            <h6 class="dropdown-header"><%= currentUser.full_name %></h6>
+            <div class="user-menu-status-message d-none" id="myStatusMessageDisplay"></div>
+          </li>
           <li><a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online" aria-hidden="true"></span> Available</a></li>
           <li><a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy" aria-hidden="true"></span> Busy</a></li>
           <li><a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd" aria-hidden="true"></span> Do not disturb</a></li>
@@ -39,6 +42,7 @@
           <li><a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away" aria-hidden="true"></span> Appear away</a></li>
           <li><a class="dropdown-item presence-option" href="#" data-status="offline"><span class="presence-dot presence-offline" aria-hidden="true"></span> Appear offline</a></li>
           <li><a class="dropdown-item presence-option" href="#" data-status="reset"><span class="presence-dot presence-reset" aria-hidden="true"></span> Reset status</a></li>
+          <li><a class="dropdown-item" href="#" id="setStatusMessageBtn"><i class="bi bi-chat-left-quote me-2"></i>Set status message</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="/profile"><i class="bi bi-person me-2"></i>My Profile</a></li>
           <% if (currentUser.role === 'admin') { %><li><a class="dropdown-item" href="/admin/users"><i class="bi bi-people me-2"></i>Manage Users</a></li><% } %>
@@ -53,6 +57,23 @@
           <li><hr class="dropdown-divider"></li>
           <li><form action="/logout" method="POST"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></form></li>
         </ul>
+      </div>
+      <div class="status-message-popover d-none" id="statusMessagePopover">
+        <textarea id="statusMessageInput" maxlength="280" placeholder="What's your status?"></textarea>
+        <div class="status-message-count"><span id="statusMessageCount">0</span>/280</div>
+        <label>Clear after
+          <select id="statusMessageClearAfter">
+            <option value="never">Never</option>
+            <option value="today">Today</option>
+            <option value="1h">1 hour</option>
+            <option value="4h">4 hours</option>
+            <option value="week">This week</option>
+          </select>
+        </label>
+        <div class="status-message-popover-actions">
+          <button type="button" class="chat-action" id="statusMessageClearBtn">Clear</button>
+          <button type="button" class="chat-action chat-action-primary" id="statusMessageSaveBtn">Done</button>
+        </div>
       </div>
     </div>
   </div>
@@ -338,9 +359,9 @@
 <link rel="stylesheet" href="/css/compact-ui.css?v=3">
 <script src="/js/meetings.js?v=2"></script>
 <script src="/js/chat-header.js?v=3"></script>
-<link rel="stylesheet" href="/css/channel-tools.css?v=4">
+<link rel="stylesheet" href="/css/channel-tools.css?v=5">
 <link rel="stylesheet" href="/css/ui-density.css?v=7">
-<script src="/js/channel-tools.js?v=7"></script>
+<script src="/js/channel-tools.js?v=8"></script>
 <link rel="stylesheet" href="/css/meet.css?v=2">
 <script src="/js/meet-hub.js?v=1"></script>
 <link rel="stylesheet" href="/css/chat-list.css?v=1">
@@ -351,5 +372,6 @@
 <script src="/js/emoji-picker.js?v=1"></script>
 <link rel="stylesheet" href="/css/gif-picker.css?v=1">
 <script src="/js/gif-picker.js?v=1"></script>
+<script src="/js/profile-card.js?v=1"></script>
 <script src="/js/workspace.js?v=<%= h.jsVersion() %>"></script>
 <%- include('partials/foot') %>

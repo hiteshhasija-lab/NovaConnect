@@ -52,9 +52,22 @@ async function deliverDue() {
   }
 }
 
+// Actually clears expired status messages (rather than leaving every reader to check
+// status_message_expires_at itself) so the DB always reflects the true current state.
+async function clearExpiredStatusMessages() {
+  await db.prepare(`
+    UPDATE users SET status_message = NULL, status_message_expires_at = NULL
+    WHERE status_message_expires_at IS NOT NULL AND status_message_expires_at <= ?
+  `).run(nowStr());
+}
+
 function start() {
-  deliverDue().catch(e => console.error('scheduler initial run failed:', e.message));
-  setInterval(() => deliverDue().catch(e => console.error('scheduler run failed:', e.message)), POLL_INTERVAL_MS);
+  const tick = () => Promise.all([
+    deliverDue().catch(e => console.error('scheduler run failed:', e.message)),
+    clearExpiredStatusMessages().catch(e => console.error('status-message expiry sweep failed:', e.message))
+  ]);
+  tick();
+  setInterval(tick, POLL_INTERVAL_MS);
 }
 
 module.exports = { start };

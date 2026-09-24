@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS presence_preference TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status_message_expires_at TEXT;
 
 CREATE TABLE IF NOT EXISTS teams (
   id SERIAL PRIMARY KEY,

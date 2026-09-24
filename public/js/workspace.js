@@ -190,7 +190,11 @@
     });
   }
 
-  const channelTools = createChannelTools({ api, escapeHtml, presence:id=>state.presence[id], notify:showToastError, navigate:navigateToChannel, events:teamId=>{
+  const profileCard = window.createProfileCard({
+    api, escapeHtml, avatarHtml, presence: id => state.presence[id],
+    onMessage: (userId) => api('/api/dm', { method: 'POST', body: { user_ids: [userId] } }).then(({ id }) => navigateToDm(id)).catch(showToastError)
+  });
+  const channelTools = createChannelTools({ api, escapeHtml, presence:id=>state.presence[id], notify:showToastError, navigate:navigateToChannel, openProfile: profileCard.open, events:teamId=>{
     state.calendarHiddenTeams = new Set(state.teams.filter(t=>t.id!==teamId).map(t=>t.id));
     document.getElementById('railCalendar').click();
   }});
@@ -800,15 +804,17 @@
     } else if (state.active.type === 'dm') {
       const c = state.active.conversation;
       const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
-      const statusText = others.length === 1 ? (STATUS_LABELS[state.presence[others[0].id] || others[0].status] || 'Offline') : others.length + ' people';
+      let statusText = others.length === 1 ? (STATUS_LABELS[state.presence[others[0].id] || others[0].status] || 'Offline') : others.length + ' people';
+      if (others.length === 1 && others[0].status_message) statusText += ' · ' + others[0].status_message;
       header.innerHTML =
-        '<div class="main-header-title"><i class="bi bi-chat-dots"></i>' + escapeHtml(convoTitle({ ...c, participants: others })) +
-        '<span class="main-header-sub">' + statusText + '</span></div>' +
+        '<div class="main-header-title"><i class="bi bi-chat-dots"></i><span class="' + (others.length === 1 ? 'msg-author-btn' : '') + '" id="dmHeaderTitle">' + escapeHtml(convoTitle({ ...c, participants: others })) + '</span>' +
+        '<span class="main-header-sub">' + escapeHtml(statusText) + '</span></div>' +
         '<nav class="channel-tabs" aria-label="Chat tabs">' + ['Chat', 'Files', 'Photos'].map((t, i) => '<button type="button" class="' + (!i ? 'selected' : '') + '" aria-pressed="' + (!i) + '">' + t + '</button>').join('') + '</nav>';
       header.querySelectorAll('.channel-tabs button').forEach(b => b.addEventListener('click', () => {
         header.querySelectorAll('.channel-tabs button').forEach(x => { x.classList.toggle('selected', x === b); x.setAttribute('aria-pressed', String(x === b)); });
         showActiveTab(b.textContent.toLowerCase());
       }));
+      if (others.length === 1) header.querySelector('#dmHeaderTitle').addEventListener('click', () => profileCard.open(others[0].id));
       chatHeader.render(header, state.active);
     } else {
       header.innerHTML = '<div class="main-header-title text-muted">NovaConnect</div>';
@@ -892,9 +898,9 @@
   function buildMessageRow(msg, grouped, isThreadReply) {
     const row = el(
       '<div class="msg-row ' + (grouped ? 'grouped' : '') + '" data-id="' + msg.id + '">' +
-        (grouped ? '<div class="msg-time-inline">' + fmtTime(msg.created_at) + '</div>' : '<div class="msg-avatar-slot">' + avatarHtml(msg.author) + '</div>') +
+        (grouped ? '<div class="msg-time-inline">' + fmtTime(msg.created_at) + '</div>' : '<div class="msg-avatar-slot msg-avatar-btn" role="button" tabindex="0">' + avatarHtml(msg.author) + '</div>') +
         '<div class="msg-body-col">' +
-          (grouped ? '' : '<div class="msg-meta"><span class="msg-author">' + escapeHtml(msg.author.full_name) + '</span><span class="msg-time">' + fmtTime(msg.created_at) + '</span></div>') +
+          (grouped ? '' : '<div class="msg-meta"><span class="msg-author msg-author-btn" role="button" tabindex="0">' + escapeHtml(msg.author.full_name) + '</span><span class="msg-time">' + fmtTime(msg.created_at) + '</span></div>') +
           '<div class="msg-content"></div>' +
         '</div>' +
         '<div class="msg-actions">' +
@@ -907,6 +913,10 @@
       '</div>'
     );
     renderMessageContent(row, msg, isThreadReply);
+    row.querySelectorAll('.msg-avatar-btn, .msg-author-btn').forEach(el => {
+      el.addEventListener('click', () => profileCard.open(msg.author.id));
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); profileCard.open(msg.author.id); } });
+    });
     row.querySelectorAll('.reaction-picker button[data-emoji]').forEach(btn => {
       btn.addEventListener('click', () => api('/api/messages/' + msg.id + '/reactions', { method: 'POST', body: { emoji: btn.dataset.emoji } }).catch(showToastError));
     });
@@ -1969,6 +1979,45 @@
     renderDensityUI();
   });
   renderDensityUI();
+
+  // ---------------- status message ----------------
+  const statusMessagePopover = document.getElementById('statusMessagePopover');
+  const statusMessageInput = document.getElementById('statusMessageInput');
+  const statusMessageDisplay = document.getElementById('myStatusMessageDisplay');
+  function renderMyStatusMessage(text) {
+    if (text) { statusMessageDisplay.textContent = text; statusMessageDisplay.classList.remove('d-none'); }
+    else { statusMessageDisplay.textContent = ''; statusMessageDisplay.classList.add('d-none'); }
+  }
+  function closeStatusMessagePopover() { statusMessagePopover.classList.add('d-none'); }
+  document.getElementById('statusMessageInput').addEventListener('input', () => {
+    document.getElementById('statusMessageCount').textContent = statusMessageInput.value.length;
+  });
+  document.getElementById('setStatusMessageBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    statusMessagePopover.classList.remove('d-none');
+    api('/api/users/' + NC.currentUser.id + '/profile').then(u => {
+      statusMessageInput.value = u.status_message || '';
+      document.getElementById('statusMessageCount').textContent = statusMessageInput.value.length;
+    }).catch(() => {});
+    statusMessageInput.focus();
+  });
+  document.getElementById('statusMessageClearBtn').addEventListener('click', () => {
+    api('/api/profile/status-message', { method: 'PATCH', body: { status_message: '', clear_after: 'never' } }).then(() => {
+      renderMyStatusMessage(null);
+      closeStatusMessagePopover();
+    }).catch(showToastError);
+  });
+  document.getElementById('statusMessageSaveBtn').addEventListener('click', () => {
+    const clearAfter = document.getElementById('statusMessageClearAfter').value;
+    api('/api/profile/status-message', { method: 'PATCH', body: { status_message: statusMessageInput.value, clear_after: clearAfter } }).then(r => {
+      renderMyStatusMessage(r.status_message);
+      closeStatusMessagePopover();
+    }).catch(showToastError);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!statusMessagePopover.classList.contains('d-none') && !statusMessagePopover.contains(e.target) && !e.target.closest('#setStatusMessageBtn')) closeStatusMessagePopover();
+  });
+  api('/api/users/' + NC.currentUser.id + '/profile').then(u => renderMyStatusMessage(u.status_message)).catch(() => {});
 
   // ---------------- boot ----------------
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
