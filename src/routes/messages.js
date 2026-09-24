@@ -42,6 +42,49 @@ async function recordMentions({ body, authorId, memberRows, channelId, conversat
   }
 }
 
+// Accepts only the app's naive-UTC 'YYYY-MM-DD HH:MM:SS' shape (the client converts its
+// datetime-local input's browser-local value with localInputToUtcStr before sending, same
+// helper the calendar event form already uses) at least a minute out, so scheduling "now"
+// can't race the scheduler's own poll interval into firing immediately.
+function parseSendAt(raw) {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return null;
+  const minFuture = new Date(Date.now() + 60000).toISOString().slice(0, 19).replace('T', ' ');
+  return raw > minFuture ? raw : null;
+}
+
+router.get('/api/scheduled-messages', async (req, res) => {
+  const rows = await db.prepare(`
+    SELECT sm.*, c.name AS channel_name, dc.is_group AS dm_is_group
+    FROM scheduled_messages sm
+    LEFT JOIN channels c ON c.id = sm.channel_id
+    LEFT JOIN dm_conversations dc ON dc.id = sm.conversation_id
+    WHERE sm.user_id = ? AND sm.status = 'pending' ORDER BY sm.send_at
+  `).all(req.session.user.id);
+  res.json(rows);
+});
+
+router.delete('/api/scheduled-messages/:id', async (req, res) => {
+  const row = await db.prepare('SELECT * FROM scheduled_messages WHERE id = ?').get(req.params.id);
+  if (!row || row.user_id !== req.session.user.id) return res.status(404).json({ error: 'Scheduled message not found.' });
+  if (row.status !== 'pending') return res.status(400).json({ error: 'This message has already been sent or cancelled.' });
+  await db.prepare(`UPDATE scheduled_messages SET status = 'cancelled' WHERE id = ?`).run(row.id);
+  res.json({ ok: true });
+});
+
+router.post('/api/channels/:id/messages/schedule', async (req, res) => {
+  const channel = await loadChannelForUser(req.params.id, req.session.user.id);
+  if (!channel) return res.status(403).json({ error: 'You do not have access to this channel.' });
+  const body = (req.body.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'Message cannot be empty.' });
+  const sendAt = parseSendAt(req.body.send_at);
+  if (!sendAt) return res.status(400).json({ error: 'Choose a time at least a minute in the future.' });
+  const parentId = req.body.parent_message_id ? Number(req.body.parent_message_id) : null;
+  const row = await db.prepare(`
+    INSERT INTO scheduled_messages (channel_id, user_id, body, parent_message_id, send_at) VALUES (?, ?, ?, ?, ?) RETURNING *
+  `).get(channel.id, req.session.user.id, body, parentId, sendAt);
+  res.status(201).json(row);
+});
+
 router.get('/api/channels/:id/messages', async (req, res) => {
   const channel = await loadChannelForUser(req.params.id, req.session.user.id);
   if (!channel) return res.status(403).json({ error: 'You do not have access to this channel.' });
@@ -274,3 +317,7 @@ router.get('/api/attachments/:id/download', async (req, res) => {
 });
 
 module.exports = router;
+// Reused by scheduler.js when delivering a due scheduled channel message, so it doesn't
+// have to reimplement mention-notification recording or channel-membership resolution.
+module.exports.recordMentions = recordMentions;
+module.exports.channelMemberIds = channelMemberIds;

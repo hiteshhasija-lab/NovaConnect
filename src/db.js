@@ -175,6 +175,18 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS metadata TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS pinned_at TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS pinned_by INTEGER REFERENCES users(id);
 
+CREATE TABLE IF NOT EXISTS scheduled_messages (
+  id SERIAL PRIMARY KEY,
+  channel_id INTEGER REFERENCES channels(id) ON DELETE CASCADE,
+  conversation_id INTEGER REFERENCES dm_conversations(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  parent_message_id INTEGER REFERENCES messages(id) ON DELETE CASCADE,
+  send_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- pending, sent, cancelled, failed
+  created_at TEXT NOT NULL ${TS_DEFAULT}
+);
+
 CREATE TABLE IF NOT EXISTS blocked_users (
   id SERIAL PRIMARY KEY,
   blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -222,6 +222,28 @@ router.get('/api/dm/:id/messages', async (req, res) => {
   res.json({ messages, has_more: rows.length === limit });
 });
 
+// Same validation as messages.js's parseSendAt (channel scheduling) — kept as a small local
+// copy rather than a cross-file import since it's four lines with no shared state.
+function parseSendAt(raw) {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return null;
+  const minFuture = new Date(Date.now() + 60000).toISOString().slice(0, 19).replace('T', ' ');
+  return raw > minFuture ? raw : null;
+}
+
+router.post('/api/dm/:id/messages/schedule', async (req, res) => {
+  const convo = await loadConversationForUser(req.params.id, req.session.user.id);
+  if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
+  const body = (req.body.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'Message cannot be empty.' });
+  const sendAt = parseSendAt(req.body.send_at);
+  if (!sendAt) return res.status(400).json({ error: 'Choose a time at least a minute in the future.' });
+  const parentId = req.body.parent_message_id ? Number(req.body.parent_message_id) : null;
+  const row = await db.prepare(`
+    INSERT INTO scheduled_messages (conversation_id, user_id, body, parent_message_id, send_at) VALUES (?, ?, ?, ?, ?) RETURNING *
+  `).get(convo.id, req.session.user.id, body, parentId, sendAt);
+  res.status(201).json(row);
+});
+
 router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(req, res, next), async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });

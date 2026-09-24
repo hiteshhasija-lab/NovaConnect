@@ -87,6 +87,7 @@ app.use('/', teamRoutes);
 app.use('/', messageRoutes);
 app.use('/', dmRoutes);
 app.use('/', userRoutes);
+app.use('/', require('./routes/search'));
 app.use('/', aiRoutes);
 app.use('/', calendarRoutes);
 app.use('/', require('./routes/meetings'));
@@ -111,6 +112,7 @@ realtime.attach(server, sessionMiddleware);
 
 initDb()
   .then(() => {
+    require('./scheduler').start();
     const servers = [];
 
     servers.push(server.listen(PORT, HOST, () => {

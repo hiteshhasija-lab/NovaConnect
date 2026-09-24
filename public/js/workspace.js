@@ -113,15 +113,63 @@
     if (sameDay(d, yesterday)) return 'Yesterday';
     return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
   }
-  function renderBody(body, members) {
-    let html = escapeHtml(body);
+  // Renders a light markdown subset (bold/italic/strikethrough/inline+block code/quote/
+  // lists/links) typed via the composer's formatting toolbar. Everything runs on ALREADY
+  // html-escaped text — the markdown regexes only ever produce tags from OUR OWN template
+  // strings, never from user input, and the link transform whitelists http(s) URLs only —
+  // so this can't become an HTML/XSS injection point no matter what a message body contains.
+  function renderInline(text, members) {
+    const codeSpans = [];
+    text = text.replace(/`([^`\n]+)`/g, (m, code) => { codeSpans.push(escapeHtml(code)); return '\u0000C' + (codeSpans.length - 1) + '\u0000'; });
+    let html = escapeHtml(text);
+    html = html.replace(/\[([^\[\]]+)\]\((https?:\/\/[^\s()]+)\)/g, (m, label, url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>');
+    html = html.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/(?:\*([^\n*]+?)\*|_([^\n_]+?)_)/g, (m, a, b) => '<em>' + (a || b) + '</em>');
+    html = html.replace(/~~([^\n]+?)~~/g, '<s>$1</s>');
     const sorted = [...(members || [])].sort((a, b) => b.full_name.length - a.full_name.length);
     for (const m of sorted) {
       const needle = escapeHtml('@' + m.full_name);
       if (needle.length < 2) continue;
       html = html.split(needle).join('<span class="mention">' + needle + '</span>');
     }
-    return html.replace(/\n/g, '<br>');
+    html = html.replace(/\u0000C(\d+)\u0000/g, (m, i) => '<code>' + codeSpans[Number(i)] + '</code>');
+    return html;
+  }
+  function renderBody(body, members) {
+    const codeBlocks = [];
+    const withPlaceholders = body.replace(/```([\s\S]*?)```/g, (m, code) => {
+      codeBlocks.push('<pre><code>' + escapeHtml(code.replace(/^\n/, '').replace(/\n$/, '')) + '</code></pre>');
+      return '\u0000B' + (codeBlocks.length - 1) + '\u0000';
+    });
+    const lines = withPlaceholders.split('\n');
+    const parts = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const blockMatch = line.match(/^\u0000B(\d+)\u0000$/);
+      if (blockMatch) { parts.push(codeBlocks[Number(blockMatch[1])]); i++; continue; }
+      if (/^>\s?/.test(line)) {
+        const quoted = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) { quoted.push(renderInline(lines[i].replace(/^>\s?/, ''), members)); i++; }
+        parts.push('<blockquote>' + quoted.join('<br>') + '</blockquote>');
+        continue;
+      }
+      if (/^[-*]\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^[-*]\s+/.test(lines[i])) { items.push('<li>' + renderInline(lines[i].replace(/^[-*]\s+/, ''), members) + '</li>'); i++; }
+        parts.push('<ul>' + items.join('') + '</ul>');
+        continue;
+      }
+      if (/^\d+\.\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\d+\.\s+/.test(lines[i])) { items.push('<li>' + renderInline(lines[i].replace(/^\d+\.\s+/, ''), members) + '</li>'); i++; }
+        parts.push('<ol>' + items.join('') + '</ol>');
+        continue;
+      }
+      parts.push(renderInline(line, members));
+      i++;
+    }
+    return parts.join('<br>');
   }
   function avatarHtml(user, size) {
     const style = 'background:' + avatarColor(user.id) + (size ? ';width:' + size + ';height:' + size : '');
@@ -494,7 +542,61 @@
     body.innerHTML = '';
     actions.innerHTML = '';
 
-    if (state.view === 'people') {
+    if (state.view === 'search') {
+      title.textContent = 'Search';
+      const input = el('<input class="people-search" type="search" aria-label="Search messages, files and people" placeholder="Search messages, files and people">');
+      const results = el('<div class="global-search-results" aria-live="polite"></div>');
+      body.append(input, results);
+      let timer, generation = 0;
+      function chatLabelFor(row) {
+        return row.channel_id ? '#' + row.channel_name : (row.dm_is_group ? 'Group chat' : 'Direct message');
+      }
+      function openResultChat(row) { if (row.channel_id) navigateToChannel(row.channel_id); else navigateToDm(row.conversation_id); }
+      async function runSearch() {
+        const g = ++generation;
+        const q = input.value.trim();
+        results.innerHTML = '';
+        if (!q) return;
+        results.textContent = 'Searching…';
+        try {
+          const data = await api('/api/search?q=' + encodeURIComponent(q));
+          if (g !== generation || !results.isConnected) return;
+          results.innerHTML = '';
+          if (!data.messages.length && !data.files.length && !data.people.length) { results.innerHTML = '<div class="p-3 text-muted small">No results.</div>'; return; }
+          if (data.people.length) {
+            const section = el('<div class="global-search-section"><h3>People</h3></div>');
+            data.people.forEach(u => {
+              const row = el('<button type="button" class="people-result">' + avatarHtml(u) + '<span>' + escapeHtml(u.full_name) + '<small>@' + escapeHtml(u.username) + '</small></span></button>');
+              row.onclick = () => api('/api/dm', { method: 'POST', body: { user_ids: [u.id] } }).then(({ id }) => navigateToDm(id)).catch(showToastError);
+              section.appendChild(row);
+            });
+            results.appendChild(section);
+          }
+          if (data.messages.length) {
+            const section = el('<div class="global-search-section"><h3>Messages</h3></div>');
+            data.messages.forEach(m => {
+              const row = el('<button type="button" class="chat-search-result global-search-result"></button>');
+              const meta = document.createElement('strong'); meta.textContent = (m.author_name || 'Former member') + ' · ' + chatLabelFor(m) + ' · ' + new Date(m.created_at.replace(' ', 'T') + 'Z').toLocaleString();
+              const bodyP = document.createElement('p'); bodyP.textContent = m.body;
+              row.append(meta, bodyP);
+              row.onclick = () => openResultChat(m);
+              section.appendChild(row);
+            });
+            results.appendChild(section);
+          }
+          if (data.files.length) {
+            const section = el('<div class="global-search-section"><h3>Files</h3></div>');
+            data.files.forEach(a => {
+              const row = el('<a class="global-search-result msg-attachment" href="/api/attachments/' + a.id + '/download" target="_blank"><i class="bi bi-file-earmark-arrow-down"></i>' + escapeHtml(a.original_name) + '<small class="d-block text-muted">' + escapeHtml(chatLabelFor(a)) + '</small></a>');
+              section.appendChild(row);
+            });
+            results.appendChild(section);
+          }
+        } catch (e) { if (g === generation) { results.textContent = e.message; } }
+      }
+      input.oninput = () => { clearTimeout(timer); timer = setTimeout(runSearch, 300); };
+      input.focus();
+    } else if (state.view === 'people') {
       title.textContent='People';
       const blockedBtn=el('<button title="Blocked people"><i class="bi bi-slash-circle"></i></button>');
       blockedBtn.addEventListener('click',openBlockedPeopleDialog);
@@ -689,6 +791,8 @@
 
   function renderMainHeader() {
     chatHeader.close(false);
+    closeSchedulePopover();
+    closeScheduledList();
     const header = document.getElementById('mainHeader');
     if (state.active.type === 'channel') {
       const c = state.active.channel;
@@ -1181,6 +1285,48 @@
     });
   });
 
+  // ---------------- formatting toolbar ----------------
+  document.getElementById('composerFormatBtn').addEventListener('click', () => {
+    document.getElementById('composerToolbar').classList.toggle('d-none');
+  });
+  function wrapSelection(ta, prefix, suffix, placeholder) {
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const selected = ta.value.slice(start, end) || placeholder;
+    ta.value = ta.value.slice(0, start) + prefix + selected + suffix + ta.value.slice(end);
+    const caretStart = start + prefix.length;
+    ta.focus();
+    ta.selectionStart = caretStart; ta.selectionEnd = caretStart + selected.length;
+    ta.dispatchEvent(new Event('input'));
+  }
+  function prefixLines(ta, prefix, numbered) {
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    let lineStart = ta.value.lastIndexOf('\n', start - 1) + 1;
+    let lineEnd = ta.value.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = ta.value.length;
+    const segment = ta.value.slice(lineStart, lineEnd);
+    const lines = segment.split('\n');
+    const transformed = lines.map((l, i) => (numbered ? (i + 1) + '. ' : prefix) + l).join('\n');
+    ta.value = ta.value.slice(0, lineStart) + transformed + ta.value.slice(lineEnd);
+    ta.focus();
+    ta.selectionStart = lineStart; ta.selectionEnd = lineStart + transformed.length;
+    ta.dispatchEvent(new Event('input'));
+  }
+  document.getElementById('composerToolbar').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-fmt]');
+    if (!btn) return;
+    switch (btn.dataset.fmt) {
+      case 'bold': wrapSelection(composerInput, '**', '**', 'bold text'); break;
+      case 'italic': wrapSelection(composerInput, '*', '*', 'italic text'); break;
+      case 'strike': wrapSelection(composerInput, '~~', '~~', 'strikethrough text'); break;
+      case 'code': wrapSelection(composerInput, '`', '`', 'code'); break;
+      case 'codeblock': wrapSelection(composerInput, '```\n', '\n```', 'code'); break;
+      case 'quote': prefixLines(composerInput, '> '); break;
+      case 'bullets': prefixLines(composerInput, '- '); break;
+      case 'numbers': prefixLines(composerInput, '', true); break;
+      case 'link': wrapSelection(composerInput, '[', '](https://)', 'link text'); break;
+    }
+  });
+
   // ---------------- rewrite with Gemini ----------------
   const rewritePopover = document.getElementById('rewritePopover');
   const REWRITE_STYLE_LABELS = { concise: 'Concise', professional: 'Professional', friendly: 'Friendlier', grammar: 'Fix grammar' };
@@ -1263,6 +1409,80 @@
     pendingFile = null; composerFileInput.value = ''; composerFilePreview.classList.add('d-none');
     api(url, { method: 'POST', body: fd }).then(msg => appendMessageToList(msg)).catch(showToastError);
   }
+
+  // ---------------- scheduled send ----------------
+  const schedulePopover = document.getElementById('schedulePopover');
+  const scheduleAtInput = document.getElementById('scheduleAtInput');
+  const scheduleError = document.getElementById('scheduleError');
+  function scheduleEndpoint() {
+    return state.active.type === 'channel' ? '/api/channels/' + state.active.channel.id + '/messages/schedule' : '/api/dm/' + state.active.conversation.id + '/messages/schedule';
+  }
+  function closeSchedulePopover() { schedulePopover.classList.add('d-none'); scheduleError.textContent = ''; }
+  document.getElementById('composerScheduleBtn').addEventListener('click', () => {
+    if (state.active.type === 'none') return;
+    if (!schedulePopover.classList.contains('d-none')) { closeSchedulePopover(); return; }
+    closeScheduledList();
+    const def = new Date(Date.now() + 60 * 60000);
+    def.setSeconds(0, 0);
+    scheduleAtInput.value = def.getFullYear() + '-' + pad2(def.getMonth() + 1) + '-' + pad2(def.getDate()) + 'T' + pad2(def.getHours()) + ':' + pad2(def.getMinutes());
+    schedulePopover.classList.remove('d-none');
+  });
+  document.getElementById('scheduleCancelBtn').addEventListener('click', closeSchedulePopover);
+  document.getElementById('scheduleConfirmBtn').addEventListener('click', () => {
+    const body = composerInput.value.trim();
+    if (!body) { scheduleError.textContent = 'Type a message first.'; return; }
+    if (pendingFile) { scheduleError.textContent = 'Scheduled messages can\'t include an attachment yet — remove the file first.'; return; }
+    const sendAt = localInputToUtcStr(scheduleAtInput.value);
+    if (!sendAt) { scheduleError.textContent = 'Choose a time.'; return; }
+    api(scheduleEndpoint(), { method: 'POST', body: { body, send_at: sendAt } }).then(() => {
+      composerInput.value = ''; composerInput.style.height = 'auto';
+      closeSchedulePopover();
+      refreshScheduledBadge();
+    }).catch(e => { scheduleError.textContent = e.message; });
+  });
+
+  const scheduledListPopover = el('<div class="scheduled-list-popover d-none" id="scheduledListPopover"></div>');
+  document.getElementById('composer').appendChild(scheduledListPopover);
+  function closeScheduledList() { scheduledListPopover.classList.add('d-none'); }
+  function loadScheduledList() {
+    scheduledListPopover.innerHTML = 'Loading…';
+    api('/api/scheduled-messages').then(rows => {
+      if (!rows.length) { scheduledListPopover.innerHTML = '<div class="scheduled-list-empty">No scheduled messages.</div>'; return; }
+      scheduledListPopover.innerHTML = '';
+      rows.forEach(r => {
+        const chatLabel = r.channel_id ? '#' + r.channel_name : (r.dm_is_group ? 'Group chat' : 'Direct message');
+        const item = el(
+          '<div class="scheduled-list-item">' +
+            '<div class="scheduled-list-meta"><span>' + escapeHtml(chatLabel) + ' · ' + escapeHtml(toDate(r.send_at).toLocaleString()) + '</span><button type="button" class="scheduled-list-cancel">Cancel</button></div>' +
+            '<div class="scheduled-list-body"></div>' +
+          '</div>'
+        );
+        item.querySelector('.scheduled-list-body').textContent = r.body;
+        item.querySelector('.scheduled-list-cancel').addEventListener('click', () => {
+          api('/api/scheduled-messages/' + r.id, { method: 'DELETE' }).then(() => { loadScheduledList(); refreshScheduledBadge(); }).catch(showToastError);
+        });
+        scheduledListPopover.appendChild(item);
+      });
+    }).catch(e => { scheduledListPopover.textContent = e.message; });
+  }
+  document.getElementById('composerScheduledBtn').addEventListener('click', () => {
+    if (!scheduledListPopover.classList.contains('d-none')) { closeScheduledList(); return; }
+    closeSchedulePopover();
+    scheduledListPopover.classList.remove('d-none');
+    loadScheduledList();
+  });
+  function refreshScheduledBadge() {
+    api('/api/scheduled-messages').then(rows => {
+      const badge = document.getElementById('composerScheduledBadge');
+      if (rows.length) { badge.textContent = rows.length > 99 ? '99+' : rows.length; badge.classList.remove('d-none'); }
+      else badge.classList.add('d-none');
+    }).catch(() => {});
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (!schedulePopover.classList.contains('d-none') && !schedulePopover.contains(e.target) && !e.target.closest('#composerScheduleBtn')) closeSchedulePopover();
+    if (!scheduledListPopover.classList.contains('d-none') && !scheduledListPopover.contains(e.target) && !e.target.closest('#composerScheduledBtn')) closeScheduledList();
+  });
+  refreshScheduledBadge();
 
   // ---------------- @mentions ----------------
   function handleMentionTyping(input, popover) {

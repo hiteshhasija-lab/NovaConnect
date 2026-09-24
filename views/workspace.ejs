@@ -2,6 +2,9 @@
 <div class="workspace">
   <div class="rail">
     <div class="rail-top">
+      <button class="rail-btn" data-view="search" id="railSearch" title="Search">
+        <i class="bi bi-search"></i><span>Search</span>
+      </button>
       <button class="rail-btn" data-view="activity" id="railActivity" title="Activity">
         <i class="bi bi-bell-fill"></i><span>Activity</span>
         <span class="rail-badge d-none" id="activityBadge">0</span>
@@ -68,11 +71,27 @@
     <div class="typing-indicator d-none" id="typingIndicator"></div>
     <div class="composer d-none" id="composer">
       <div class="composer-file-preview d-none" id="composerFilePreview"></div>
+      <div class="composer-toolbar d-none" id="composerToolbar" role="toolbar" aria-label="Formatting">
+        <button type="button" data-fmt="bold" title="Bold"><i class="bi bi-type-bold"></i></button>
+        <button type="button" data-fmt="italic" title="Italic"><i class="bi bi-type-italic"></i></button>
+        <button type="button" data-fmt="strike" title="Strikethrough"><i class="bi bi-type-strikethrough"></i></button>
+        <span class="composer-toolbar-divider"></span>
+        <button type="button" data-fmt="bullets" title="Bulleted list"><i class="bi bi-list-ul"></i></button>
+        <button type="button" data-fmt="numbers" title="Numbered list"><i class="bi bi-list-ol"></i></button>
+        <button type="button" data-fmt="quote" title="Quote"><i class="bi bi-quote"></i></button>
+        <span class="composer-toolbar-divider"></span>
+        <button type="button" data-fmt="code" title="Code"><i class="bi bi-code"></i></button>
+        <button type="button" data-fmt="codeblock" title="Code block"><i class="bi bi-code-square"></i></button>
+        <button type="button" data-fmt="link" title="Link"><i class="bi bi-link-45deg"></i></button>
+      </div>
       <div class="composer-row">
         <label class="composer-attach-btn" title="Attach a file">
           <i class="bi bi-paperclip"></i>
           <input type="file" id="composerFileInput" hidden>
         </label>
+        <button type="button" class="composer-attach-btn" id="composerFormatBtn" title="Formatting options">
+          <i class="bi bi-type"></i>
+        </button>
         <button type="button" class="composer-attach-btn" id="composerWandBtn" title="Rewrite with Gemini">
           <i class="bi bi-magic"></i>
         </button>
@@ -80,7 +99,21 @@
           <i class="bi bi-emoji-smile"></i>
         </button>
         <textarea id="composerInput" class="composer-input" rows="1" placeholder="Type a message… (@ to mention)"></textarea>
+        <button type="button" class="composer-attach-btn" id="composerScheduledBtn" title="Scheduled messages">
+          <i class="bi bi-clock-history"></i><span class="composer-scheduled-badge d-none" id="composerScheduledBadge">0</span>
+        </button>
+        <button type="button" class="composer-attach-btn" id="composerScheduleBtn" title="Schedule send">
+          <i class="bi bi-calendar-plus"></i>
+        </button>
         <button class="composer-send-btn" id="composerSendBtn" title="Send"><i class="bi bi-send-fill"></i></button>
+      </div>
+      <div class="schedule-popover d-none" id="schedulePopover">
+        <label>Send at<input type="datetime-local" id="scheduleAtInput"></label>
+        <div class="schedule-popover-actions">
+          <button type="button" class="chat-action" id="scheduleCancelBtn">Cancel</button>
+          <button type="button" class="chat-action chat-action-primary" id="scheduleConfirmBtn">Schedule</button>
+        </div>
+        <p class="schedule-popover-error" id="scheduleError"></p>
       </div>
       <div class="mention-popover d-none" id="mentionPopover"></div>
       <div class="rewrite-popover d-none" id="rewritePopover"></div>
