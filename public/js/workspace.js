@@ -901,6 +901,7 @@
           '<div class="reaction-picker">' + QUICK_EMOJI.map(e => '<button data-emoji="' + e + '" title="React">' + e + '</button>').join('') + '<button class="more-emoji-btn" title="More reactions"><i class="bi bi-emoji-smile"></i></button></div>' +
           '<button class="pin-btn" title="' + (msg.pinned ? 'Unpin' : 'Pin') + '"><i class="bi ' + (msg.pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle') + '"></i></button>' +
           '<button class="forward-btn" title="Forward"><i class="bi bi-arrow-90deg-right"></i></button>' +
+          (msg.body.trim() ? '<button class="translate-btn" title="Translate"><i class="bi bi-translate"></i></button>' : '') +
           (msg.author.id === NC.currentUser.id ? '<button class="edit-btn" title="Edit"><i class="bi bi-pencil"></i></button><button class="delete-btn" title="Delete"><i class="bi bi-trash"></i></button>' : '') +
         '</div>' +
       '</div>'
@@ -914,11 +915,29 @@
     });
     row.querySelector('.pin-btn').addEventListener('click', () => api('/api/messages/' + msg.id + '/pin', { method: 'POST' }).catch(showToastError));
     row.querySelector('.forward-btn').addEventListener('click', () => openForwardPicker(msg));
+    const translateBtn = row.querySelector('.translate-btn');
+    if (translateBtn) translateBtn.addEventListener('click', () => toggleTranslation(row, msg));
     const editBtn = row.querySelector('.edit-btn');
     if (editBtn) editBtn.addEventListener('click', () => startEdit(row, msg));
     const deleteBtn = row.querySelector('.delete-btn');
     if (deleteBtn) deleteBtn.addEventListener('click', () => { if (confirm('Delete this message?')) api('/api/messages/' + msg.id, { method: 'DELETE' }); });
     return row;
+  }
+
+  function toggleTranslation(row, msg) {
+    const box = row.querySelector('.msg-content');
+    const existing = box.querySelector('.msg-translation');
+    if (existing) { existing.remove(); return; }
+    const note = el('<div class="msg-translation"><i class="bi bi-translate"></i> Translating…</div>');
+    const textEl = box.querySelector('.msg-text');
+    (textEl || box).insertAdjacentElement('afterend', note);
+    const target = (navigator.language || 'en').slice(0, 2);
+    api('/api/messages/' + msg.id + '/translate', { method: 'POST', body: { target } }).then(data => {
+      if (!note.isConnected) return;
+      if (!data.configured) { note.innerHTML = '<i class="bi bi-translate"></i> ' + escapeHtml(data.note); return; }
+      note.innerHTML = '<i class="bi bi-translate"></i> <span class="msg-translation-label">Translated from ' + escapeHtml(data.detectedLang || '?') + '</span><div></div>';
+      note.querySelector('div').textContent = data.translated;
+    }).catch(e => { if (note.isConnected) note.innerHTML = '<i class="bi bi-translate"></i> ' + escapeHtml(e.message); });
   }
 
   function renderMessageContent(row, msg, isThreadReply) {
@@ -930,7 +949,10 @@
     let html = '';
     if (msg.pinned) html += '<div class="msg-pinned-flag"><i class="bi bi-pin-angle-fill"></i> Pinned' + (msg.pinned_by ? ' by ' + escapeHtml(msg.pinned_by.full_name) : '') + '</div>';
     if (msg.metadata && msg.metadata.forwardedFrom) html += '<div class="msg-forwarded-flag"><i class="bi bi-arrow-90deg-right"></i> Forwarded from ' + escapeHtml(msg.metadata.forwardedFrom.authorName) + '</div>';
-    html += '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
+    if (msg.body.trim() || !(msg.metadata && msg.metadata.gifUrl)) {
+      html += '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
+    }
+    if (msg.metadata && msg.metadata.gifUrl) html += '<img class="msg-gif" src="' + escapeHtml(msg.metadata.gifUrl) + '" alt="GIF">';
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') html += decomApprovalCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') html += decomConfirmDestroyCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') html += decomSkipManualTasksCardHtml(msg.metadata);
@@ -1275,6 +1297,12 @@
     }
   });
   document.getElementById('composerSendBtn').addEventListener('click', sendComposerMessage);
+  const gifPicker = window.createGifPicker(api, (gifUrl) => {
+    if (state.active.type === 'none') return;
+    const url = state.active.type === 'channel' ? '/api/channels/' + state.active.channel.id + '/messages' : '/api/dm/' + state.active.conversation.id + '/messages';
+    api(url, { method: 'POST', body: { gif_url: gifUrl } }).then(msg => appendMessageToList(msg)).catch(showToastError);
+  });
+  document.getElementById('composerGifBtn').addEventListener('click', (e) => { gifPicker.open(e.currentTarget); });
   document.getElementById('composerEmojiBtn').addEventListener('click', (e) => {
     openEmojiPicker(e.currentTarget, (emoji) => {
       const start = composerInput.selectionStart || composerInput.value.length, end = composerInput.selectionEnd || composerInput.value.length;

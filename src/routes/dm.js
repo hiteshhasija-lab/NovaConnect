@@ -244,17 +244,26 @@ router.post('/api/dm/:id/messages/schedule', async (req, res) => {
   res.status(201).json(row);
 });
 
+// Same restriction as messages.js's parseGifUrl (https-only, so it can never become a
+// javascript:/data: URI in the <img src> the client renders) — kept local rather than
+// cross-imported, same reasoning as parseSendAt above.
+function parseGifUrl(raw) {
+  return typeof raw === 'string' && /^https:\/\//.test(raw) ? raw : null;
+}
+
 router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(req, res, next), async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
 
   const body = (req.body.body || '').trim();
-  if (!body && !req.file) return res.status(400).json({ error: 'Message cannot be empty.' });
+  const gifUrl = parseGifUrl(req.body.gif_url);
+  if (!body && !req.file && !gifUrl) return res.status(400).json({ error: 'Message cannot be empty.' });
   const parentId = req.body.parent_message_id ? Number(req.body.parent_message_id) : null;
+  const metadata = gifUrl ? JSON.stringify({ gifUrl }) : null;
 
   const row = await db.prepare(`
-    INSERT INTO messages (conversation_id, user_id, body, parent_message_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *
-  `).get(convo.id, req.session.user.id, body, parentId, nowStr(), nowStr());
+    INSERT INTO messages (conversation_id, user_id, body, parent_message_id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+  `).get(convo.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
     await db.prepare(`

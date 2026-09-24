@@ -1,0 +1,6 @@
+.gif-picker-popover { width: 340px; max-height: 420px; }
+.gif-picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; overflow-y: auto; max-height: 360px; }
+.gif-picker-item { border: 0; background: none; padding: 0; border-radius: 8px; overflow: hidden; cursor: pointer; line-height: 0; }
+.gif-picker-item img { width: 100%; height: 90px; object-fit: cover; display: block; border-radius: 8px; }
+.gif-picker-item:hover img { outline: 2px solid var(--brand,#0755d9); outline-offset: -2px; }
+.msg-gif { max-width: 280px; max-height: 220px; border-radius: 0.6rem; margin-top: 0.4rem; display: block; border: 1px solid var(--border); }

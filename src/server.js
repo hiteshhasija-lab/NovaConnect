@@ -88,6 +88,7 @@ app.use('/', messageRoutes);
 app.use('/', dmRoutes);
 app.use('/', userRoutes);
 app.use('/', require('./routes/search'));
+app.use('/', require('./routes/gifs'));
 app.use('/', aiRoutes);
 app.use('/', calendarRoutes);
 app.use('/', require('./routes/meetings'));

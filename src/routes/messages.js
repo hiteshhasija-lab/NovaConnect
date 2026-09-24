@@ -105,17 +105,25 @@ router.get('/api/channels/:id/messages', async (req, res) => {
   res.json({ messages, has_more: rows.length === limit });
 });
 
+// A GIF picker selection is sent as a message with no text body, just this URL — restricted
+// to https so it can never become a javascript:/data: URI in the <img src> the client renders.
+function parseGifUrl(raw) {
+  return typeof raw === 'string' && /^https:\/\//.test(raw) ? raw : null;
+}
+
 router.post('/api/channels/:id/messages', (req, res, next) => upload.single('file')(req, res, next), async (req, res) => {
   const channel = await loadChannelForUser(req.params.id, req.session.user.id);
   if (!channel) return res.status(403).json({ error: 'You do not have access to this channel.' });
 
   const body = (req.body.body || '').trim();
-  if (!body && !req.file) return res.status(400).json({ error: 'Message cannot be empty.' });
+  const gifUrl = parseGifUrl(req.body.gif_url);
+  if (!body && !req.file && !gifUrl) return res.status(400).json({ error: 'Message cannot be empty.' });
   const parentId = req.body.parent_message_id ? Number(req.body.parent_message_id) : null;
+  const metadata = gifUrl ? JSON.stringify({ gifUrl }) : null;
 
   const row = await db.prepare(`
-    INSERT INTO messages (channel_id, user_id, body, parent_message_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *
-  `).get(channel.id, req.session.user.id, body, parentId, nowStr(), nowStr());
+    INSERT INTO messages (channel_id, user_id, body, parent_message_id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
+  `).get(channel.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
     await db.prepare(`
@@ -306,6 +314,38 @@ router.post('/api/messages/:id/forward', async (req, res) => {
   if (targetChannelId) emitToChannel(targetChannelId, 'message:new', message);
   else emitToConversation(targetConversationId, 'message:new', message);
   res.status(201).json(message);
+});
+
+// No GOOGLE_TRANSLATE_API_KEY set yet — mirrors ai.js's own placeholder-until-configured
+// pattern rather than erroring, so the button always exists but is honest about its state.
+const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY || '';
+
+router.post('/api/messages/:id/translate', async (req, res) => {
+  const ctx = await loadMessageWithAccess(req.params.id, req.session.user.id);
+  if (!ctx || ctx.msg.deleted) return res.status(404).json({ error: 'Message not found or inaccessible.' });
+  if (!ctx.msg.body.trim()) return res.status(400).json({ error: 'Nothing to translate.' });
+
+  if (!GOOGLE_TRANSLATE_API_KEY) {
+    return res.json({ configured: false, note: "Translation isn't set up yet — ask your admin to add a GOOGLE_TRANSLATE_API_KEY." });
+  }
+
+  const target = /^[a-z]{2}(-[A-Z]{2})?$/.test(req.body.target || '') ? req.body.target : 'en';
+  try {
+    const resp = await fetch('https://translation.googleapis.com/language/translate/v2?key=' + GOOGLE_TRANSLATE_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: ctx.msg.body, target })
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Google Translate API error ${resp.status}: ${errText.slice(0, 300)}`);
+    }
+    const data = await resp.json();
+    const result = data.data.translations[0];
+    res.json({ configured: true, translated: result.translatedText, detectedLang: result.detectedSourceLanguage, target });
+  } catch (e) {
+    res.status(502).json({ error: 'Could not reach the translation service.' });
+  }
 });
 
 router.get('/api/attachments/:id/download', async (req, res) => {
