@@ -750,7 +750,7 @@
     api('/api/channels/' + id).then(({ channel, members }) => {
       return api('/api/channels/' + id + '/messages').then(({ messages }) => {
         const teamEntry = findChannel(id);
-        ++channelTabRequest; currentChannelTab='posts';
+        ++assetTabRequest; currentTab='posts';
         if (findChannel(id)) Object.assign(findChannel(id).channel, channel);
         state.active = { type: 'channel', channel, team: teamEntry ? teamEntry.team : { id: channel.team_id }, messages, members };
         state.mentionMembers = members;
