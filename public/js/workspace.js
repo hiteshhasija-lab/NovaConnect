@@ -67,18 +67,29 @@
     } catch (e) { /* audio not available — not worth surfacing to the user */ }
   }
 
-  // Blinks the user's own avatar button (bottom-left rail), like MS Teams flashing the taskbar
-  // icon on a new message — draws the eye without needing the window focused or a specific
-  // chat open.
-  let profileBlinkTimer = null;
-  function blinkProfile() {
-    const btn = document.querySelector('.rail-avatar-btn');
-    if (!btn) return;
-    btn.classList.remove('profile-blink');
-    void btn.offsetWidth; // restart the animation if it's already mid-blink from a prior message
-    btn.classList.add('profile-blink');
-    clearTimeout(profileBlinkTimer);
-    profileBlinkTimer = setTimeout(() => btn.classList.remove('profile-blink'), 4000);
+  // Blinks whichever surface represents the chat a new message just landed in: the sidebar
+  // entry (channel or DM row) if that chat isn't the one currently open, or the main chat
+  // window itself if it is — rather than a generic "something happened" flash on the user's own
+  // avatar, which didn't say which conversation to look at.
+  const chatEntryBlinkTimers = new Map();
+  function blinkElement(el, key) {
+    if (!el) return;
+    el.classList.remove('chat-entry-blink');
+    void el.offsetWidth; // restart the animation if it's already mid-blink from a prior message
+    el.classList.add('chat-entry-blink');
+    clearTimeout(chatEntryBlinkTimers.get(key));
+    chatEntryBlinkTimers.set(key, setTimeout(() => el.classList.remove('chat-entry-blink'), 4000));
+  }
+  function blinkChatEntry(msg, isActiveChat) {
+    if (isActiveChat) {
+      blinkElement(document.querySelector('.main-pane'), 'active');
+      return;
+    }
+    if (msg.channel_id) {
+      blinkElement(document.querySelector('.channel-item[data-channel-id="' + msg.channel_id + '"]'), 'channel:' + msg.channel_id);
+    } else if (msg.conversation_id) {
+      blinkElement(document.querySelector('.chat-list-row[data-convo-id="' + msg.conversation_id + '"]'), 'convo:' + msg.conversation_id);
+    }
   }
   function fmtDayLabel(s) {
     const d = toDate(s), now = new Date();
@@ -182,10 +193,9 @@
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'e' && !state.active.conversation.is_group) { e.preventDefault(); calls.share(state.active.conversation.id, state.active.participants.find(p => p.id !== NC.currentUser.id).full_name); }
   });
   socket.on('message:new', (msg) => {
-    if (msg.author && msg.author.id !== NC.currentUser.id) {
-      playNotificationSound();
-      blinkProfile();
-    }
+    const isActiveChat = (state.active.type === 'channel' && msg.channel_id === state.active.channel.id)
+      || (state.active.type === 'dm' && msg.conversation_id === state.active.conversation.id);
+
     if (state.active.type === 'channel' && msg.channel_id === state.active.channel.id) {
       hideThinkingBubble();
       if (currentChannelTab === 'posts') appendMessageToList(msg);
@@ -200,6 +210,13 @@
       renderSidebar();
     }
     bumpConversationPreview(msg);
+
+    // Triggered after the sidebar re-render above (not before) so the row this looks for
+    // actually exists in the DOM by the time it queries for it.
+    if (msg.author && msg.author.id !== NC.currentUser.id) {
+      playNotificationSound();
+      blinkChatEntry(msg, isActiveChat);
+    }
   });
   socket.on('message:update', (msg) => { patchMessageInList(msg); });
   socket.on('message:delete', (payload) => { markDeletedInList(payload.id); });
@@ -800,10 +817,10 @@
     const items = (meta.tasks || []).map(t => '<li>' + escapeHtml(t) + '</li>').join('');
     return (
       '<div class="decom-card decom-card-neutral">' +
-        '<div class="decom-card-title">Not automated in NovaDesk:</div>' +
+        '<div class="decom-card-title">Pre-decommission checks:</div>' +
         '<ul class="decom-card-list">' + items + '</ul>' +
         '<div class="decom-card-actions">' +
-          '<button type="button" class="btn btn-sm btn-outline-secondary decom-skip-tasks-btn">Skip (not automated)</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-secondary decom-skip-tasks-btn">Skip all</button>' +
         '</div>' +
       '</div>'
     );
@@ -830,7 +847,7 @@
     const taskName = escapeHtml(meta.taskDescription || meta.taskNumber || 'Pre-decommission check');
     return (
       '<div class="decom-card decom-card-neutral">' +
-        '<div class="decom-card-title">' + taskName + ' (not automated):</div>' +
+        '<div class="decom-card-title">' + taskName + ':</div>' +
         '<div class="decom-card-actions mt-2">' +
           '<button type="button" class="btn btn-sm btn-success decom-task-complete-btn">Completed</button>' +
           '<button type="button" class="btn btn-sm btn-outline-secondary decom-task-skip-btn">Skip</button>' +
@@ -883,7 +900,7 @@
           row('CMDB', escapeHtml(meta.cmdbStatus)) +
           row('Reclaimed', escapeHtml(meta.reclaimed)) +
           row('Tracker', 'Row ' + escapeHtml(String(meta.trackerRow)) + ' appended') +
-          row('Elapsed', escapeHtml(meta.elapsedSim) + ' (sim) · ' + escapeHtml(meta.elapsedReal) + ' (real)') +
+          row('Elapsed', escapeHtml(meta.elapsedReal)) +
         '</div>' +
       '</div>'
     );
