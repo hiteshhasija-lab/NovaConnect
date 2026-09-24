@@ -1,4 +1,6 @@
 const { Server } = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const { redis } = require('./redis');
 const { db, nowStr } = require('./db');
 const { createCalls } = require('./calls');
 
@@ -40,6 +42,11 @@ function attach(server, sessionMiddleware) {
   }
 
   io = new Server(server, { cors: { origin: false } });
+
+  // Redis adapter for horizontal scaling: pub/sub across multiple Node workers.
+  const pubClient = redis.duplicate();
+  const subClient = redis.duplicate();
+  io.adapter(createAdapter(pubClient, subClient));
 
   // Reuse the express-session middleware so each socket has req.session.user available,
   // the same identity the HTTP routes trust — no separate socket auth scheme needed.

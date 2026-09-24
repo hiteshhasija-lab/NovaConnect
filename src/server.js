@@ -1,11 +1,12 @@
 const { initDb, db } = require('./db');
+const { redis } = require('./redis');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const express = require('express');
 const session = require('express-session');
-const FileStore = require('session-file-store')(session);
+const RedisStore = require('connect-redis').RedisStore;
 const methodOverride = require('method-override');
 
 const { attachUser } = require('./middleware/auth');
@@ -65,7 +66,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/api/integrations', integrationsInRoutes);
 
 const sessionMiddleware = session({
-  store: new FileStore({ path: path.join(__dirname, '..', 'data', 'sessions'), logFn: () => {} }),
+  store: new RedisStore({ client: redis, prefix: 'nc:sess:' }),
   secret: process.env.SESSION_SECRET || 'novaconnect-dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
