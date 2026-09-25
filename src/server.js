@@ -1,5 +1,7 @@
 const { initDb, db } = require('./db');
 const { redis } = require('./redis');
+const { initTelemetry, shutdownTelemetry } = require('./telemetry');
+const { logger } = require('./logger');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -25,10 +27,15 @@ const aiRoutes = require('./routes/ai');
 const calendarRoutes = require('./routes/calendar');
 const integrationsInRoutes = require('./routes/integrationsIn');
 
-// A single unexpected rejection (e.g. a transient DB outage hit from outside an Express
-// request/asyncRouter, such as a socket listener) must not take the whole process — and every
-// connected user — down. Log it and keep serving; the specific call site should still be fixed.
-process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+// Initialize telemetry first (before other instrumentations)
+initTelemetry();
+
+// Structured logging for unhandled errors
+process.on('unhandledRejection', (err) => logger.error({ err }, 'Unhandled rejection'));
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+  shutdownTelemetry().finally(() => process.exit(1));
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +52,7 @@ app.get('/health', async (req, res) => {
     await db.raw('SELECT 1');
     res.json({ status: 'healthy', database: 'connected' });
   } catch (err) {
+    logger.error({ err }, 'Health check failed: database disconnected');
     res.status(503).json({ status: 'unhealthy', database: 'disconnected', error: err.message });
   }
 });
@@ -54,6 +62,22 @@ app.use(express.json());
 app.use(methodOverride('_method'));
 app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'img', 'logo-mark.png')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  const requestLogger = require('./logger').createRequestLogger(req, res);
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    requestLogger[level]({
+      status_code: res.statusCode,
+      duration_ms: duration,
+      content_length: res.getHeader('content-length'),
+    }, `${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+});
 
 // Registered before session/attachUser and before every other router below, on purpose: nearly
 // every router mounted at '/' further down has its own blanket router.use(requireAuth) with no
@@ -118,8 +142,8 @@ initDb()
     const servers = [];
 
     servers.push(server.listen(PORT, HOST, () => {
-      console.log(`NovaConnect running at http://${HOST}:${PORT}`);
-      console.log('Seed logins: admin/admin123 (admin), jdoe/member123, bsmith/member123, mchen/member123, rpatel/member123');
+      logger.info(`NovaConnect running at http://${HOST}:${PORT}`);
+      logger.info('Seed logins: admin/admin123 (admin), jdoe/member123, bsmith/member123, mchen/member123, rpatel/member123');
     }));
 
     if (fs.existsSync(TLS_KEY_PATH) && fs.existsSync(TLS_CERT_PATH)) {
@@ -127,27 +151,34 @@ initDb()
       const httpsServer = https.createServer(tlsOptions, app);
       realtime.attach(httpsServer, sessionMiddleware);
       servers.push(httpsServer.listen(HTTPS_PORT, HOST, () => {
-        console.log(`NovaConnect also running securely at https://${HOST}:${HTTPS_PORT}`);
+        logger.info(`NovaConnect also running securely at https://${HOST}:${HTTPS_PORT}`);
       }));
     } else {
-      console.log(`No TLS certificate found at ${TLS_CERT_PATH} — HTTPS not started.`);
+      logger.warn(`No TLS certificate found at ${TLS_CERT_PATH} — HTTPS not started.`);
     }
 
     // Running as PID 1 in a container: an unhandled SIGTERM is silently ignored rather
     // than terminating the process (the kernel's default signal disposition doesn't apply
     // to PID 1 without an explicit handler), which otherwise forces every container stop
     // to wait out the full timeout and fall back to SIGKILL.
-    const shutdown = () => {
-      console.log('Shutting down...');
-      Promise.all(servers.map(s => new Promise(resolve => s.close(resolve))))
-        .then(() => process.exit(0))
-        .catch(() => process.exit(1));
+    const shutdown = async (signal) => {
+      logger.info({ signal }, 'Shutting down...');
+      try {
+        await Promise.all(servers.map(s => new Promise(resolve => s.close(resolve))));
+        await shutdownTelemetry();
+        logger.info('Shutdown complete');
+        process.exit(0);
+      } catch (err) {
+        logger.error({ err }, 'Error during shutdown');
+        await shutdownTelemetry();
+        process.exit(1);
+      }
       setTimeout(() => process.exit(1), 5000).unref();
     };
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   })
   .catch((err) => {
-    console.error('Failed to initialize database:', err);
+    logger.fatal({ err }, 'Failed to initialize database');
     process.exit(1);
   });
