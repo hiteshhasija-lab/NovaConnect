@@ -26,7 +26,8 @@ async function getIndex() {
 async function ensureIndex() {
   const c = await getClient();
   const indexes = await c.getIndexes();
-  const exists = indexes.some(i => i.uid === INDEX_NAME);
+  const indexList = indexes.results || indexes;
+  const exists = indexList.some(i => i.uid === INDEX_NAME);
   if (!exists) {
     await c.createIndex(INDEX_NAME, { primaryKey: 'id' });
   }
