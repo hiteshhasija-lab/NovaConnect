@@ -3,6 +3,7 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const { redis } = require('./redis');
 const { db, nowStr } = require('./db');
 const { createCalls } = require('./calls');
+const { createSfuSignaling } = require('./sfu-signaling');
 
 let io = null;
 // userId -> Set of live socket ids. A user counts as "online" while this set is non-empty.
@@ -64,10 +65,13 @@ function attach(server, sessionMiddleware) {
   // an unhandled rejection that crashes the whole process (taking every connected user down
   // with it) the moment the database hiccups. Every listener body below is guarded accordingly.
   const calls = createCalls(io, db);
-  const meet = require('./meet-signaling').createMeetSignaling(io,db);
+  const meet = require('./meet-signaling').createMeetSignaling(io, db);
+  const sfu = createSfuSignaling(io, db);
+  sfu.setIo(io);
   io.on('connection', (socket) => {
     calls.attach(socket);
     meet.attach(socket);
+    sfu.attach(socket);
     const userId = socket.user.id;
 
     (async () => {
