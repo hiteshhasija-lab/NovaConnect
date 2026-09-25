@@ -1,0 +1,28 @@
+{
+  "env": {
+    "node": true,
+    "es2022": true,
+    "jest": true
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "rules": {
+    "indent": ["warn", 2],
+    "linebreak-style": ["error", "unix"],
+    "quotes": ["warn", "single"],
+    "semi": ["error", "always"],
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "off",
+    "prefer-const": "warn",
+    "no-var": "warn",
+    "prefer-arrow-callback": "warn",
+    "object-shorthand": "warn",
+    "eqeqeq": ["warn", "always"]
+  },
+  "ignorePatterns": ["node_modules/", "public/", "migrations/", "releases/", "src/routes/meet.js", "src/meet-signaling.js", "src/routes/users.js", "src/routes/app.js", "src/routes/meetings.js", "src/db.js", "src/decomFlow.js", "src/report-categories.js", "src/routes/admin.js", "src/routes/ai.js", "src/routes/auth.js", "src/routes/dm.js", "src/routes/integrationsIn.js", "src/routes/membership.js", "src/routes/messages.js", "src/routes/teams.js", "src/scheduler.js", "src/search.js", "src/storage.js", "src/realtime.js", "src/report-categories.js"]
+}

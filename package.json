@@ -1,11 +1,13 @@
 {
   "name": "novaconnect",
-  "version": "1.0.65",
+  "version": "1.0.66",
   "description": "NovaConnect: a team chat and collaboration app (channels, DMs, presence, threads, file sharing)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
+    "lint": "eslint src/**/*.js src/*.js",
+    "test": "node --test test/*.test.js",
     "migrate": "node-pg-migrate",
     "migrate:up": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",
@@ -50,6 +52,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "eslint": "^8.56.0",
     "node-pg-migrate": "^7.5.0"
   },
   "engines": {
