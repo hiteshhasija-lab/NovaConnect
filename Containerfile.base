@@ -2,6 +2,11 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# ffmpeg (the real binary, not the npm wrapper) — needed for server-side meeting recording
+# (src/sfu.js's startRecording/stopRecording), which spawns it directly via child_process.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
