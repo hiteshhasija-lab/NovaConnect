@@ -712,6 +712,7 @@
     const body = document.getElementById('sidebarBody');
     api('/api/notifications').then(({ notifications, unread_count }) => {
       updateActivityBadge(unread_count);
+      if (state.view !== 'activity') return; // user navigated away before this resolved
       body.innerHTML = '';
       if (notifications.length === 0) {
         body.appendChild(el('<div class="p-3 text-muted small">You\'re all caught up.</div>'));
