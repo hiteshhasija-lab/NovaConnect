@@ -18,12 +18,18 @@
     </div>
     <p id="meetStatus" role="status">Choose your microphone and camera settings, then join.</p>
   </div>
+  <div class="meet-lobby" id="meetLobby" hidden>
+    <div class="meet-lobby-waiting">
+      <div class="meet-lobby-spinner"></div>
+      <p class="meet-lobby-message">Waiting for host to admit you…</p>
+    </div>
+  </div>
   <div class="meet-videos" id="meetVideos"></div>
 </main>
 <%- include('call-panel') %>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/group-call.js?v=1"></script>
-<script src="/js/meet-room.js?v=2"></script>
+<script src="/js/meet-room.js?v=3"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

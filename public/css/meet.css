@@ -10,4 +10,15 @@
 .meet-section-title { display:flex;justify-content:space-between;gap:16px;align-items:center;margin:32px 0 20px; }
 .meet-link-row { display:flex;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--border);padding:12px 0; }.meet-link-row>div,.meet-link-row>.meet-details { flex:1; }.meet-link-row small { display:block;color:var(--text-muted);overflow-wrap:anywhere; }.meet-link-row a { text-decoration:none;white-space:nowrap; }
 .meet-room { max-width:1200px;margin:auto;padding:24px; }.meet-room header { display:flex;justify-content:space-between;gap:16px; }.meet-room h1 { font-size:1.5rem; }.meet-room-controls { display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:20px 0; }.meet-videos { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px; }.meet-video { background:#171d32;color:white;border-radius:10px;padding:10px; }.meet-video video { width:100%;max-height:380px;background:#0c1020; }.meet-video p { margin:4px 0; }.meet-room button { min-height:36px; }
+.meet-room-preview { margin-bottom:20px; }
+.meet-room-controls { display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:16px 0; }
+.meet-lobby { margin-top:20px; }
+.meet-lobby-waiting { display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px; }
+.meet-lobby-spinner { width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px; }
+.meet-lobby-message { margin:0;color:var(--text-muted);font-size:1rem; }
+.meet-lobby-denied { color:var(--brand);margin-top:16px; }
+.meet-lobby-actions { margin-top:16px;display:flex;gap:12px; }
+@keyframes spin { to { transform:rotate(360deg); } }
 @media(max-width:750px){.meet-top-actions{grid-template-columns:1fr}.meet-content{padding:24px 16px}.meet-section-title{align-items:flex-start;flex-direction:column}}
+
+(End of file - total 21 lines)

@@ -1,4 +1,4 @@
-// SFU-based meeting signaling (replaces peer-to-peer mesh). Media goes through mediasoup SFU.
+// SFU-based meeting signaling with lobby support. Media goes through mediasoup SFU.
 function createMeetSignaling(io, db) {
   const sfu = require('./sfu-signaling');
   const { getRoom } = require('./sfu');
@@ -6,6 +6,8 @@ function createMeetSignaling(io, db) {
   function attach(socket) {
     let roomCode = null;
     let meetingId = null;
+    let inLobby = false;
+    let isAdmitted = false;
 
     function leave() {
       if (!roomCode) return;
@@ -27,6 +29,8 @@ function createMeetSignaling(io, db) {
       }
       roomCode = null;
       meetingId = null;
+      inLobby = false;
+      isAdmitted = false;
     }
 
     async function authorized() {
@@ -52,7 +56,7 @@ function createMeetSignaling(io, db) {
       });
     }
 
-    // Join meeting via SFU
+    // Join meeting via SFU (enters lobby first)
     handle('meet:join', async ({ code }, u) => {
       if (typeof code !== 'string' || !/^[a-f0-9]{24}$/.test(code)) throw Error('Enter a valid meeting ID.');
 
@@ -69,21 +73,22 @@ function createMeetSignaling(io, db) {
 
       roomCode = roomId;
       meetingId = code;
+      inLobby = true;
+      isAdmitted = false;
 
       // Track this socket's SFU membership
-      sfu.roomUserMap.set(socket.id, { roomId, peerId, userId: u.id });
+      sfu.roomUserMap.set(socket.id, { roomId, peerId, userId: u.id, inLobby: true });
 
       // Join socket.io rooms
       socket.join('meet:' + code);
       socket.join('sfu:' + roomCode);
 
-      // Get existing peers in the SFU room
+      // Get existing peers in the SFU room (only admitted ones)
       const peers = sfu.getRoomPeers(roomCode).filter(p => p !== peerId);
       const peerDetails = [];
       for (const pid of peers) {
-        // Find the socket for this peer to get user info
         for (const [sid, info] of sfu.roomUserMap.entries()) {
-          if (info.peerId === pid) {
+          if (info.peerId === pid && !info.inLobby) {
             peerDetails.push({
               peerId: pid,
               userId: info.userId,
@@ -107,23 +112,159 @@ function createMeetSignaling(io, db) {
         roomId,
         peerId,
         routerRtpCapabilities: room.router.rtpCapabilities,
+        inLobby: true,
+        isAdmitted: false,
       };
+    });
+
+    // Request to join from lobby (user clicks "Join Meeting" after preview)
+    handle('meet:request-join', async ({ roomId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      const room = sfu.getRoom(roomId);
+      if (!room) throw Error('Room not found');
+      
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping) throw Error('Not in lobby');
+      
+      mapping.inLobby = false;
+      inLobby = false;
+      isAdmitted = true;
+
+      // Notify others that user has joined
+      io.to(`sfu:${roomId}`).emit('sfu:peer-joined', {
+        peerId: mapping.peerId,
+        userId: u.id,
+        fullName: u.full_name,
+      });
+
+      // Return router capabilities for media setup
+      return {
+        routerRtpCapabilities: room.router.rtpCapabilities,
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      };
+    });
+
+    // Lobby: request to join (from waiting user)
+    handle('meet:lobby-request', async ({ roomId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      const room = sfu.getRoom(roomId);
+      if (!room) throw Error('Room not found');
+      
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping || !mapping.inLobby) throw Error('Not in lobby');
+      
+      // Notify meeting owner/admins that someone is waiting
+      io.to(`sfu:${roomId}`).emit('meet:lobby-waiting', {
+        peerId: mapping.peerId,
+        userId: u.id,
+        fullName: u.full_name,
+      });
+      
+      return { success: true };
+    });
+
+    // Meeting owner admits user from lobby
+    handle('meet:admit', async ({ roomId, peerId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      const room = sfu.getRoom(roomId);
+      if (!room) throw Error('Room not found');
+      
+      // Check if user is meeting owner (creator of the link)
+      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
+      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can admit participants');
+      
+      const targetMapping = Array.from(sfu.roomUserMap.values()).find(m => m.peerId === peerId && m.roomId === roomId);
+      if (!targetMapping || !targetMapping.inLobby) throw Error('User not in lobby');
+      
+      targetMapping.inLobby = false;
+      
+      // Notify the admitted user
+      io.to(`user:${targetMapping.userId}`).emit('meet:admitted', {
+        roomId,
+        routerRtpCapabilities: room.router.rtpCapabilities,
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+      
+      // Notify others in the room
+      io.to(`sfu:${roomId}`).emit('sfu:peer-joined', {
+        peerId: targetMapping.peerId,
+        userId: targetMapping.userId,
+        fullName: (await getUserFullName(db, targetMapping.userId)) || 'Unknown',
+      });
+      
+      return { success: true };
+    });
+
+    // Meeting owner denies user from lobby
+    handle('meet:deny', async ({ roomId, peerId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
+      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can deny participants');
+      
+      const targetMapping = Array.from(sfu.roomUserMap.values()).find(m => m.peerId === peerId && m.roomId === roomId);
+      if (!targetMapping || !targetMapping.inLobby) throw Error('User not in lobby');
+      
+      // Notify the denied user
+      io.to(`user:${targetMapping.userId}`).emit('meet:denied', { roomId });
+      
+      // Clean up
+      sfu.closePeerTransports(roomId, peerId);
+      const idx = Array.from(sfu.roomUserMap.entries()).findIndex(([_, m]) => m.peerId === peerId && m.roomId === roomId);
+      if (idx >= 0) {
+        const [sid] = Array.from(sfu.roomUserMap.entries())[idx];
+        sfu.roomUserMap.delete(sid);
+      }
+      
+      io.to(`sfu:${roomId}`).emit('meet:lobby-left', { peerId });
+      
+      return { success: true };
+    });
+
+    // Get lobby waiting list
+    handle('meet:lobby-list', async ({ roomId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
+      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can view lobby');
+      
+      const waiting = [];
+      for (const [sid, mapping] of sfu.roomUserMap.entries()) {
+        if (mapping.roomId === roomId && mapping.inLobby) {
+          waiting.push({
+            peerId: mapping.peerId,
+            userId: mapping.userId,
+            fullName: (await getUserFullName(db, mapping.userId)) || 'Unknown',
+          });
+        }
+      }
+      
+      return { waiting };
     });
 
     // SFU signaling events (delegate to sfu-signaling)
     handle('sfu:create-transport', async ({ roomId, direction }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
       return await sfu.createTransport(roomId, `${u.id}-${socket.id}`, direction);
     });
 
     handle('sfu:connect-transport', async ({ roomId, transportId, dtlsParameters }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
       await sfu.connectTransport(roomId, `${u.id}-${socket.id}`, transportId, dtlsParameters);
       return { success: true };
     });
 
     handle('sfu:produce', async ({ roomId, transportId, kind, rtpParameters, appData }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
       const producerId = await sfu.produce(roomId, `${u.id}-${socket.id}`, transportId, kind, rtpParameters, {
         ...appData,
         sourcePeerId: `${u.id}-${socket.id}`,
@@ -135,6 +276,8 @@ function createMeetSignaling(io, db) {
 
     handle('sfu:consume', async ({ roomId, transportId, producerId, rtpCapabilities, appData }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
       return await sfu.consume(roomId, `${u.id}-${socket.id}`, transportId, producerId, rtpCapabilities, {
         ...appData,
         sourcePeerId: appData?.sourcePeerId,
@@ -143,6 +286,8 @@ function createMeetSignaling(io, db) {
 
     handle('sfu:resume-consumer', async ({ roomId, consumerId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      const mapping = sfu.roomUserMap.get(socket.id);
+      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
       await sfu.resumeConsumer(roomId, `${u.id}-${socket.id}`, consumerId);
       return { success: true };
     });
