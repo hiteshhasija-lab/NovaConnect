@@ -1,3 +1,6 @@
+<% if (layout) { %>
+<%- include('partials/head') %>
+<% } %>
 <link rel="stylesheet" href="/css/meet.css?v=2">
 <link rel="stylesheet" href="/css/calls.css?v=3">
 <main class="meet-room" data-code="<%= link.code %>">
@@ -21,3 +24,6 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/group-call.js?v=1"></script>
 <script src="/js/meet-room.js?v=2"></script>
+<% if (layout) { %>
+<%- include('partials/foot') %>
+<% } %>
