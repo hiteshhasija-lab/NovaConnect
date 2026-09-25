@@ -1,19 +1,139 @@
-<link rel="stylesheet" href="/css/calls.css?v=1">
+<link rel="stylesheet" href="/css/calls.css?v=2">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
-  <div class="nc-call-kind" id="callKind"></div>
-  <h2 id="callName"></h2>
-  <p class="nc-call-status" id="callStatus" role="status" aria-live="polite"></p>
-  <div class="nc-call-media">
-    <video id="callRemote" autoplay playsinline aria-label="Other participant"></video>
-    <video id="callLocal" autoplay playsinline muted aria-label="Your camera preview"></video>
+  <div class="nc-call-header">
+    <div class="nc-call-kind" id="callKind"></div>
+    <h2 id="callName"></h2>
+    <p class="nc-call-status" id="callStatus" role="status" aria-live="polite"></p>
+    <button type="button" class="nc-call-close" id="callClose" aria-label="Close call panel" hidden>×</button>
   </div>
-  <div class="nc-call-controls">
-    <button type="button" id="callAccept" class="btn btn-success">Accept</button>
-    <button type="button" id="callDecline" class="btn btn-danger">Decline</button>
-    <button type="button" id="callMute" class="btn btn-outline-light" aria-pressed="false">Mute</button>
-    <button type="button" id="callCamera" class="btn btn-outline-light" aria-pressed="false">Turn camera off</button>
-    <button type="button" id="callStopSharing" class="btn btn-outline-light" hidden>Stop sharing</button>
-    <button type="button" id="callHangup" class="btn btn-danger">End call</button>
-    <button type="button" id="callPlayback" class="btn btn-light" hidden>Play call audio</button>
+
+  <div class="nc-call-media" id="callMedia">
+    <!-- Group call: grid layout -->
+    <div class="nc-call-grid" id="callGrid" hidden>
+      <template id="videoTileTemplate">
+        <section class="nc-video-tile" data-peer-id="">
+          <video autoplay playsinline aria-label="Participant video"></video>
+          <div class="nc-video-overlay">
+            <p class="nc-video-name"></p>
+            <div class="nc-video-controls" hidden>
+              <button type="button" class="nc-btn-icon nc-pin" aria-label="Pin" aria-pressed="false" title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 12l3 3 3-3"/></svg></button>
+              <button type="button" class="nc-btn-icon nc-spotlight" aria-label="Spotlight" aria-pressed="false" title="Spotlight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg></button>
+            </div>
+            <div class="nc-video-indicators">
+              <span class="nc-speaking-indicator" hidden>🔊</span>
+              <span class="nc-pinned-badge" hidden>📌</span>
+              <span class="nc-hand-raised" hidden>✋</span>
+              <span class="nc-muted-badge" hidden>🔇</span>
+            </div>
+          </section>
+        </template>
+      </div>
+
+      <!-- 1:1 call: two videos side by side -->
+      <div class="nc-call-media-1to1" id="callMedia1to1" hidden>
+        <video id="callRemote" autoplay playsinline aria-label="Other participant"></video>
+        <video id="callLocal" autoplay playsinline muted aria-label="Your camera preview"></video>
+      </div>
+  </div>
+
+  <div class="nc-call-footer">
+    <div class="nc-call-toolbar" id="callToolbar">
+      <div class="nc-toolbar-group nc-toolbar-media">
+        <button type="button" class="nc-btn-icon nc-btn-danger" id="callHangup" aria-label="End call" title="End call (Ctrl+E)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/><path d="M22 12h-4M2 12h4"/></svg>
+        </button>
+      </div>
+      <div class="nc-toolbar-group nc-toolbar-media">
+        <button type="button" class="nc-btn-icon" id="callMute" aria-label="Mute/Unmute" title="Mute (M)">
+          <svg class="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          <svg class="icon-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" hidden><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2M17 16.95V4"/></svg>
+        </button>
+        <button type="button" class="nc-btn-icon" id="callCamera" aria-label="Turn camera on/off" title="Toggle camera (C)">
+          <svg class="icon-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="12" r="4"/></svg>
+          <svg class="icon-cam-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" hidden><line x1="1" y1="1" x2="23" y2="23"/><path d="M21 21a6 6 0 0 0-12 0"/><path d="M15 12a3 3 0 1 1-6 0"/></svg>
+        </button>
+        <button type="button" class="nc-btn-icon" id="callScreenShare" aria-label="Share screen" title="Share screen (S)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="23 7 16 12 23 17 23 7"/><path d="M21 16v-6a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </button>
+      </div>
+      <div class="nc-toolbar-group nc-toolbar-participants">
+        <button type="button" class="nc-btn-icon" id="callParticipants" aria-label="Show participants" aria-expanded="false" aria-controls="callParticipantsPanel" title="Participants (P)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="nc-badge" id="callParticipantCount" hidden>0</span>
+        </button>
+        <button type="button" class="nc-btn-icon" id="callReactions" aria-label="Reactions" aria-expanded="false" aria-controls="callReactionsPanel" title="Reactions (R)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.22 12.89A5 5 0 0 0 12 5a5 5 0 0 0-8.22 6.22"/><path d="M22 12h-5"/><circle cx="8" cy="12" r="2"/><path d="M19.5 17.5a3.5 3.5 0 0 1-5 0"/></svg>
+        </button>
+        <button type="button" class="nc-btn-icon" id="callChat" aria-label="Chat" aria-expanded="false" aria-controls="callChatPanel" title="Chat (H)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="nc-badge" id="callChatCount" hidden>0</span>
+        </button>
+        <button type="button" class="nc-btn-icon" id="callSettings" aria-label="Settings" aria-expanded="false" aria-controls="callSettingsPanel" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 1 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 1 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1 1.51"/></svg>
+        </button>
+      </div>
+      <div class="nc-toolbar-group nc-toolbar-media">
+        <button type="button" id="callStopSharing" class="nc-btn-text nc-btn-warning" aria-label="Stop sharing" hidden>Stop sharing</button>
+        <button type="button" class="nc-btn-icon" id="callPlayback" aria-label="Play audio" hidden>▶</button>
+      </div>
+    </div>
+
+    <!-- Side panels -->
+    <aside class="nc-call-panel" id="callParticipantsPanel" role="complementary" aria-label="Participants" hidden>
+      <header>
+        <h3>Participants <span class="nc-badge" id="participantCount">0</span></h3>
+        <button type="button" class="nc-btn-close" aria-label="Close participants">×</button>
+      </header>
+      <div class="nc-participant-list" id="participantList"></div>
+      <div class="nc-panel-footer">
+        <button type="button" class="nc-btn-primary" id="inviteParticipants">Invite</button>
+      </div>
+    </aside>
+
+    <aside class="nc-call-panel" id="callReactionsPanel" role="complementary" aria-label="Reactions" hidden>
+      <header>
+        <h3>Reactions</h3>
+        <button type="button" class="nc-btn-close" aria-label="Close reactions">×</button>
+      </header>
+      <div class="nc-reaction-grid" id="reactionGrid"></div>
+    </aside>
+
+    <aside class="nc-call-panel" id="callChatPanel" role="complementary" aria-label="Chat" hidden>
+      <header>
+        <h3>Chat <span class="nc-badge" id="chatCount">0</span></h3>
+        <button type="button" class="nc-btn-close" aria-label="Close chat">×</button>
+      </header>
+      <div class="nc-chat-messages" id="callChatMessages"></div>
+      <form class="nc-chat-input" id="callChatForm">
+        <input type="text" id="callChatInput" placeholder="Type a message…" autocomplete="off" aria-label="Chat message">
+        <button type="submit" class="nc-btn-icon" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+      </form>
+    </aside>
+
+    <aside class="nc-call-panel" id="callSettingsPanel" role="complementary" aria-label="Settings" hidden>
+      <header>
+        <h3>Settings</h3>
+        <button type="button" class="nc-btn-close" aria-label="Close settings">×</button>
+      </header>
+      <div class="nc-settings-grid">
+        <section class="nc-setting">
+          <h4>Audio</h4>
+          <label><input type="checkbox" id="settingEchoCancellation" checked> Echo cancellation</label>
+          <label><input type="checkbox" id="settingNoiseSuppression" checked> Noise suppression</label>
+          <label><input type="checkbox" id="settingAutoGainControl" checked> Auto gain control</label>
+          <label>Input volume: <input type="range" id="settingInputVolume" min="0" max="100" value="80"> <span id="inputVolValue">80%</span></label>
+        </section>
+        <section class="nc-setting">
+          <h4>Video</h4>
+          <label>Resolution: <select id="settingResolution"><option value="1280x720">720p</option><option value="1920x1080">1080p</option></select></label>
+          <label>Frame rate: <select id="settingFrameRate"><option value="15">15 fps</option><option value="30" selected>30 fps</option></select></label>
+        </section>
+        <section class="nc-setting">
+          <h4>General</h4>
+          <label><input type="checkbox" id="settingMirrorVideo" checked> Mirror my video</label>
+          <label><input type="checkbox" id="settingHardwareAcceleration" checked> Hardware acceleration</label>
+        </section>
+      </div>
+    </aside>
   </div>
 </section>
