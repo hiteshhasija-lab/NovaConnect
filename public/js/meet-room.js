@@ -47,6 +47,28 @@ socket.on('meet:admitted', async ({roomId,routerRtpCapabilities,iceServers})=>{
 });
 
 socket.on('meet:denied',()=>{cleanup();status.textContent='Meeting request denied by host.';enter.hidden=false;enter.disabled=false;});
+
+// Recording events
+socket.on('meet:recording-started',({recordingId,startedBy})=>{
+  status.textContent=`Recording started by ${startedBy}`;
+  // Show recording indicator
+  showRecordingIndicator(recordingId);
+});
+
+socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl})=>{
+  status.textContent=`Recording stopped by ${stoppedBy} (${formatDuration(duration)})`;
+  hideRecordingIndicator();
+  if (downloadUrl) {
+    showDownloadLink(downloadUrl, recordingId);
+  }
+});
+
+socket.on('meet:recording-status',({status})=>{
+  if (status && status.recordingId) {
+    updateRecordingStatus(status);
+  }
+});
+
 socket.on('meet:lobby-waiting',({peerId,userId,fullName})=>{if(joined){status.textContent=`${fullName} is waiting in lobby`;}});
 socket.on('meet:denied',()=>{cleanup();status.textContent='Meeting request denied by host.';enter.hidden=false;enter.disabled=false;});
 socket.on('meet:lobby-left',({peerId})=>{remove(peerId);});
@@ -203,4 +225,186 @@ function remove(id){peers.get(id)?.pc.close();peers.delete(id);document.getEleme
 function cleanup(){joined=false;inLobby=false;for(const id of [...peers.keys()])remove(id);stream?.getTracks().forEach(t=>t.stop());stream=null;videos.replaceChildren();enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;}
 function peer(id,name){if(peers.has(id))return peers.get(id);const pc=new RTCPeerConnection({iceServers});const p={pc,pending:[]};peers.set(id,p);for(const kind of['audio','video']){const track=stream?.getTracks().find(t=>t.kind===kind);if(track)pc.addTrack(track,stream);else pc.addTransceiver(kind,{direction:'recvonly'})}pc.onicecandidate=e=>{if(e.candidate)request('meet:signal',{to:id,candidate:e.candidate.toJSON()}).catch(e=>{if(joined)status.textContent=e.message})};pc.ontrack=e=>tile(id,name,e.streams[0]||new MediaStream([e.track]));pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')status.textContent='A participant could not connect. A TURN relay may be needed for this network.'};return p;}
 mic.onchange=()=>stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);camera.onchange=()=>stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);exit.onclick=()=>{socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup();status.textContent='You left the meeting.'};window.addEventListener('pagehide',()=>{socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup()});
-})();
+
+// Recording helper functions
+function showRecordingIndicator(recordingId) {
+  const indicator = document.createElement('div');
+  indicator.id = 'recordingIndicator';
+  indicator.className = 'meet-recording-indicator';
+  indicator.innerHTML = '<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
+  document.body.appendChild(indicator);
+  
+  let seconds = 0;
+  const timerEl = document.getElementById('recordingTimer');
+  if (timerEl) {
+    window.recordingTimerInterval = setInterval(() => {
+      seconds++;
+      const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+      const secs = (seconds % 60).toString().padStart(2, '0');
+      timerEl.textContent = `${mins}:${secs}`;
+    }, 1000);
+  }
+}
+
+function hideRecordingIndicator() {
+  const indicator = document.getElementById('recordingIndicator');
+  if (indicator) indicator.remove();
+  if (window.recordingTimerInterval) {
+    clearInterval(window.recordingTimerInterval);
+    window.recordingTimerInterval = null;
+  }
+}
+
+function showDownloadLink(downloadUrl, recordingId) {
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.className = 'meet-download-link btn btn-success mt-2';
+  link.target = '_blank';
+  link.textContent = `Download recording (${recordingId})`;
+  document.getElementById('meetStatus').parentNode.appendChild(link);
+}
+
+function formatDuration(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function showRecordingIndicator(recordingId) {
+  const indicator = document.createElement('div');
+  indicator.id = 'recordingIndicator';
+  indicator.className = 'meet-recording-indicator';
+  indicator.innerHTML = '<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
+  document.body.appendChild(indicator);
+  
+  let seconds = 0;
+  const timerEl = document.getElementById('recordingTimer');
+  if (timerEl) {
+    window.recordingTimerInterval = setInterval(() => {
+      seconds++;
+      const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+      const secs = (seconds % 60).toString().padStart(2, '0');
+      timerEl.textContent = `${mins}:${secs}`;
+    }, 1000);
+  }
+}
+
+function hideRecordingIndicator() {
+  const indicator = document.getElementById('recordingIndicator');
+  if (indicator) indicator.remove();
+  if (window.recordingTimerInterval) {
+    clearInterval(window.recordingTimerInterval);
+    window.recordingTimerInterval = null;
+  }
+}
+
+function showDownloadLink(downloadUrl, recordingId) {
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.className = 'meet-download-link btn btn-success mt-2';
+  link.target = '_blank';
+  link.textContent = `Download recording (${recordingId})`;
+  document.getElementById('meetStatus').parentNode.appendChild(link);
+}
+
+function formatDuration(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function updateRecordingStatus(status) {
+  // Update recording status UI if needed
+  if (status.recordingId && document.getElementById('recordingIndicator')) {
+    const statusEl = document.getElementById('recordingIndicator').querySelector('.recording-status');
+    if (statusEl) statusEl.textContent = status.status || '';
+  }
+}
+
+// Recording control buttons
+function addRecordingControls() {
+  const toolbar = document.querySelector('.meet-room-controls');
+  if (!toolbar) return;
+  
+  const recordBtn = document.createElement('button');
+  recordBtn.type = 'button';
+  recordBtn.className = 'btn btn-outline-danger';
+  recordBtn.id = 'recordBtn';
+  recordBtn.innerHTML = '<i class="bi bi-record-circle"></i> Record';
+  recordBtn.title = 'Start recording';
+  recordBtn.onclick = startRecording;
+  
+  const stopRecordBtn = document.createElement('button');
+  stopRecordBtn.type = 'button';
+  stopRecordBtn.className = 'btn btn-danger d-none';
+  stopRecordBtn.id = 'stopRecordBtn';
+  stopRecordBtn.innerHTML = '<i class="bi bi-stop-circle"></i> Stop';
+  stopRecordBtn.title = 'Stop recording';
+  stopRecordBtn.onclick = stopRecording;
+  
+  toolbar.appendChild(recordBtn);
+  toolbar.appendChild(stopRecordBtn);
+}
+
+async function startRecording() {
+  if (!isAdmitted) return;
+  const recordBtn = document.getElementById('recordBtn');
+  const stopRecordBtn = document.getElementById('stopRecordBtn');
+  
+  try {
+    recordBtn.disabled = true;
+    recordBtn.textContent = 'Starting…';
+    const result = await sfuRequest('meet:start-recording', { roomId: 'meet:' + code });
+    recordBtn.classList.add('d-none');
+    stopRecordBtn.classList.remove('d-none');
+    status.textContent = 'Recording started';
+  } catch (e) {
+    status.textContent = e.message;
+    recordBtn.disabled = false;
+  }
+}
+
+async function stopRecording() {
+  if (!current || !current.recordingId) return;
+  
+  try {
+    const stopRecordBtn = document.getElementById('stopRecordBtn');
+    stopRecordBtn.disabled = true;
+    stopRecordBtn.textContent = 'Stopping…';
+    
+    await sfuRequest('meet:stop-recording', { 
+      roomId: 'meet:' + code, 
+      recordingId: current.recordingId 
+    });
+    
+    // UI updates handled by meet:recording-stopped event
+  } catch (e) {
+    status.textContent = e.message;
+  }
+}
+
+function showDownloadLink(downloadUrl, recordingId) {
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.className = 'meet-download-link btn btn-success mt-2';
+  link.target = '_blank';
+  link.textContent = `Download recording (${recordingId})`;
+  document.getElementById('meetStatus').parentNode.appendChild(link);
+}
+
+function formatDuration(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function updateRecordingStatus(status) {
+  // Update recording status UI if needed
+  if (status.recordingId && document.getElementById('recordingIndicator')) {
+    const statusEl = document.getElementById('recordingIndicator').querySelector('.recording-status');
+    if (statusEl) statusEl.textContent = status.status || '';
+  }
+}

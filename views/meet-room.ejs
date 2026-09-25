@@ -16,6 +16,10 @@
       <button class="btn btn-primary" id="meetEnter">Join meeting</button>
       <button class="btn btn-danger" id="meetLeave" hidden>Leave meeting</button>
     </div>
+    <div class="meet-room-controls meet-recording-controls" id="recordingControls" hidden>
+      <button type="button" class="btn btn-outline-danger" id="recordBtn" title="Start recording"><i class="bi bi-record-circle"></i> Record</button>
+      <button type="button" class="btn btn-danger d-none" id="stopRecordBtn" title="Stop recording"><i class="bi bi-stop-circle"></i> Stop</button>
+    </div>
     <p id="meetStatus" role="status">Choose your microphone and camera settings, then join.</p>
   </div>
   <div class="meet-lobby" id="meetLobby" hidden>

@@ -21,4 +21,70 @@
 @keyframes spin { to { transform:rotate(360deg); } }
 @media(max-width:750px){.meet-top-actions{grid-template-columns:1fr}.meet-content{padding:24px 16px}.meet-section-title{align-items:flex-start;flex-direction:column}}
 
+.meet-recording-indicator {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--brand);
+  color: white;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  animation: pulse 2s infinite;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  background: white;
+  border-radius: 50%;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.meet-download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.meet-recording-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.meet-recording-controls .btn {
+  min-height: 36px;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media(max-width:750px){
+  .meet-top-actions{grid-template-columns:1fr}.meet-content{padding:24px 16px}.meet-section-title{align-items:flex-start;flex-direction:column}
+}
+
 (End of file - total 21 lines)

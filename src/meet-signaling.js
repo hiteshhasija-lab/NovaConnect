@@ -297,6 +297,53 @@ function createMeetSignaling(io, db) {
       return { success: true };
     });
 
+    // Recording handlers
+    handle('meet:start-recording', async ({ roomId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      // Check if user is meeting owner (creator of the link)
+      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
+      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can start recording');
+      
+      const roomId = 'meet:' + meetingId;
+      const result = await sfu.startRecording(roomId);
+      
+      // Notify all participants that recording started
+      io.to(`sfu:${roomId}`).emit('meet:recording-started', {
+        recordingId: result.recordingId,
+        startedBy: u.full_name,
+      });
+      
+      return { recordingId: result.recordingId };
+    });
+
+    handle('meet:stop-recording', async ({ roomId, recordingId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      // Check if user is meeting owner
+      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
+      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can stop recording');
+      
+      const result = await sfu.stopRecording(recordingId);
+      
+      // Notify all participants that recording stopped
+      io.to(`sfu:${roomId}`).emit('meet:recording-stopped', {
+        recordingId: result.recordingId,
+        stoppedBy: u.full_name,
+        duration: result.duration,
+        downloadUrl: result.url,
+      });
+      
+      return { success: true, recording: result };
+    });
+
+    handle('meet:get-recording-status', async ({ roomId, recordingId }, u) => {
+      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+      
+      const status = sfu.getRecordingStatus(recordingId);
+      return { status };
+    });
+
     socket.on('meet:leave', leave);
     socket.on('disconnect', leave);
   }
