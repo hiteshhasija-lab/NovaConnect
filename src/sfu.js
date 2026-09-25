@@ -257,6 +257,19 @@ function closePeerTransports(room, peerId) {
   roomObj.peers.delete(peerId);
 }
 
+async function resumeConsumer(roomId, peerId, consumerId) {
+  const room = getRoom(roomId);
+  if (!room) throw Error('Room not found');
+
+  const peer = room.peers.get(peerId);
+  if (!peer) throw Error('Peer not found');
+
+  const consumer = peer.consumers.get(consumerId);
+  if (!consumer) throw Error('Consumer not found');
+
+  await consumer.resume();
+}
+
 module.exports = {
   createWorker,
   getRouter,
@@ -267,6 +280,7 @@ module.exports = {
   connectTransport,
   produce,
   consume,
+  resumeConsumer,
   getRoomPeers,
   closePeerTransports,
   rooms,

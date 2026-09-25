@@ -227,7 +227,15 @@ function createSfuSignaling(io, db) {
     ioInstance = io;
   }
 
-  return { attach, setIo };
+  return { attach, setIo, roomUserMap, createTransport, connectTransport, produce, consume, getRoomPeers, closePeerTransports, resumeConsumer: async (roomId, peerId, consumerId) => {
+    const room = getRoom(roomId);
+    if (!room) throw Error('Room not found');
+    const peer = room.peers.get(peerId);
+    if (!peer) throw Error('Peer not found');
+    const consumer = peer.consumers.get(consumerId);
+    if (!consumer) throw Error('Consumer not found');
+    await consumer.resume();
+  } };
 }
 
 module.exports = { createSfuSignaling };
