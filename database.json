@@ -1,0 +1,20 @@
+{
+  "dev": {
+    "driver": "pg",
+    "host": "localhost",
+    "port": 5432,
+    "database": "novaconnect",
+    "user": "novadesk",
+    "password": "novadesk_dev_pw",
+    "migrationsTable": "pgmigrations"
+  },
+  "production": {
+    "driver": "pg",
+    "host": "NOVAAPP01",
+    "port": 5432,
+    "database": "novaconnect",
+    "user": "novaconnect",
+    "password": "iN5BNih5xa1xfpytVbxfSbd6",
+    "migrationsTable": "pgmigrations"
+  }
+}
