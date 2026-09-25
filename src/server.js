@@ -14,6 +14,8 @@ const express = require('express');
 const session = require('express-session');
 const RedisStore = require('connect-redis').RedisStore;
 const methodOverride = require('method-override');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const { attachUser } = require('./middleware/auth');
 const realtime = require('./realtime');
@@ -50,6 +52,44 @@ const HTTPS_PORT = cfg.HTTPS_PORT;
 const HOST = cfg.HOST;
 const TLS_KEY_PATH = cfg.TLS_KEY_PATH || path.join(__dirname, '..', 'certs', 'key.pem');
 const TLS_CERT_PATH = cfg.TLS_CERT_PATH || path.join(__dirname, '..', 'certs', 'cert.pem');
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, '..', 'views'));
+
+// Helmet for security headers (must be early)
+app.use(helmet({
+  contentSecurityPolicy: cfg.NODE_ENV === 'production' ? undefined : false,
+  crossOriginEmbedderPolicy: false,
+  hsts: cfg.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+}));
+
+// Trust proxy for rate limiting behind reverse proxy
+app.set('trust proxy', 1);
+
+// Global rate limiter (applies to all requests)
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // limit each IP to 1000 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  keyGenerator: (req) => req.ip,
+  skip: (req) => req.path === '/health', // Don't rate limit health checks
+});
+app.use(globalLimiter);
+
+// Stricter rate limiter for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts, please try again later.' },
+  keyGenerator: (req) => req.ip,
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));

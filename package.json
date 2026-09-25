@@ -1,6 +1,6 @@
 {
   "name": "novaconnect",
-  "version": "1.0.64",
+  "version": "1.0.65",
   "description": "NovaConnect: a team chat and collaboration app (channels, DMs, presence, threads, file sharing)",
   "main": "src/server.js",
   "scripts": {
@@ -34,7 +34,9 @@
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.21.0",
+    "express-rate-limit": "^7.1.5",
     "express-session": "^1.18.0",
+    "helmet": "^7.1.0",
     "ioredis": "^5.4.1",
     "knex": "^3.3.0",
     "meilisearch": "^0.32.0",
