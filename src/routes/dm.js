@@ -5,6 +5,7 @@ const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToConversation, emitToUser, resyncUserRooms } = require('../realtime');
 const { upload } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
+const { indexMessage, removeMessage } = require('../search');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -281,6 +282,9 @@ router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(re
   const message = await hydrateOne(row, req.session.user.id);
   emitToConversation(convo.id, parentId ? 'thread:message' : 'message:new', message);
   res.status(201).json(message);
+
+  const author = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.user.id);
+  indexMessage(row, author, null, convo, null).catch(() => {});
 
   // Same trigger as the server-decom channel, extended to a genuine 1:1 DM with novadesk-bot —
   // deliberately not a group DM (ambiguous who "the requester" is) and not "any DM mentioning

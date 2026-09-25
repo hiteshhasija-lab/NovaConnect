@@ -398,6 +398,8 @@ async function initDb() {
   await initSchema();
   await seedIfEmpty();
   await ensureDecomWorkflowSetup();
+  const { ensureIndex } = require('./search');
+  await ensureIndex().catch(e => console.error('Search index init failed:', e.message));
 }
 
 module.exports = { db, initDb, nowStr, offsetStr };

@@ -6,6 +6,7 @@ const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
 const { upload, uploadRoot } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
+const { indexMessage, updateMessage, removeMessage } = require('../search');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -141,6 +142,10 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
   emitToChannel(channel.id, parentId ? 'thread:message' : 'message:new', message);
   res.status(201).json(message);
 
+  const author = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.user.id);
+  const team = channel.team_id ? await db.prepare('SELECT id FROM teams WHERE id = ?').get(channel.team_id) : null;
+  indexMessage(row, author, channel, null, team).catch(() => {});
+
   if (channel.name === 'server-decom' && !parentId && body) {
     handleDecomTrigger({ channelId: channel.id }, req.session.user.id, body).catch(() => {});
   }
@@ -212,6 +217,10 @@ router.put('/api/messages/:id', async (req, res) => {
   if (ctx.channel) emitToChannel(ctx.channel.id, event, message);
   else emitToConversation(ctx.conversation.id, event, message);
   res.json(message);
+
+  const author = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.user.id);
+  const team = ctx.channel?.team_id ? await db.prepare('SELECT id FROM teams WHERE id = ?').get(ctx.channel.team_id) : null;
+  updateMessage(updated, author, ctx.channel, ctx.conversation, team).catch(() => {});
 });
 
 router.delete('/api/messages/:id', async (req, res) => {
@@ -231,6 +240,8 @@ router.delete('/api/messages/:id', async (req, res) => {
   if (ctx.channel) emitToChannel(ctx.channel.id, event, payload);
   else emitToConversation(ctx.conversation.id, event, payload);
   res.json({ ok: true });
+
+  removeMessage(ctx.msg.id).catch(() => {});
 });
 
 router.post('/api/messages/:id/pin', async (req, res) => {
