@@ -1,7 +1,8 @@
 // SFU-based meeting signaling with lobby support. Media goes through mediasoup SFU.
 function createMeetSignaling(io, db) {
   const sfu = require('./sfu-signaling');
-  const { getRoom } = require('./sfu');
+  const { getRoom, startRecording, stopRecording, getRecordingStatus } = require('./sfu');
+  const { nowStr } = require('./db');
 
   function attach(socket) {
     let roomCode = null;
@@ -300,32 +301,36 @@ function createMeetSignaling(io, db) {
     // Recording handlers
     handle('meet:start-recording', async ({ roomId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      
+
       // Check if user is meeting owner (creator of the link)
       const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
       if (!link || link.created_by !== u.id) throw Error('Only meeting owner can start recording');
-      
-      const roomId = 'meet:' + meetingId;
-      const result = await sfu.startRecording(roomId);
-      
+
+      const result = await startRecording(roomId);
+
       // Notify all participants that recording started
       io.to(`sfu:${roomId}`).emit('meet:recording-started', {
         recordingId: result.recordingId,
         startedBy: u.full_name,
       });
-      
+
       return { recordingId: result.recordingId };
     });
 
     handle('meet:stop-recording', async ({ roomId, recordingId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      
+
       // Check if user is meeting owner
       const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
       if (!link || link.created_by !== u.id) throw Error('Only meeting owner can stop recording');
-      
-      const result = await sfu.stopRecording(recordingId);
-      
+
+      const result = await stopRecording(recordingId);
+
+      await db.prepare(
+        `INSERT INTO recordings (id, room_id, meeting_link_code, started_by, status, storage_driver, storage_key, download_url, duration_ms, created_at)
+         VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)`
+      ).run(result.recordingId, roomId, meetingId, u.id, result.driver, result.key, result.url, result.duration, nowStr());
+
       // Notify all participants that recording stopped
       io.to(`sfu:${roomId}`).emit('meet:recording-stopped', {
         recordingId: result.recordingId,
@@ -333,14 +338,14 @@ function createMeetSignaling(io, db) {
         duration: result.duration,
         downloadUrl: result.url,
       });
-      
+
       return { success: true, recording: result };
     });
 
     handle('meet:get-recording-status', async ({ roomId, recordingId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      
-      const status = sfu.getRecordingStatus(recordingId);
+
+      const status = getRecordingStatus(recordingId);
       return { status };
     });
 

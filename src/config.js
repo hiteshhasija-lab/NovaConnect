@@ -50,6 +50,7 @@ const EnvSchema = z.object({
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
   MAX_FILE_SIZE: z.coerce.number().int().positive().default(100 * 1024 * 1024),
   LOCAL_UPLOAD_ROOT: z.string().optional(),
+  RECORDING_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
 
   // TLS (optional for production)
   TLS_KEY_PATH: z.string().optional(),

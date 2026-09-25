@@ -2,10 +2,12 @@
 // podman pod recreate (routine — cert rotation, IP changes) can't silently lose a pending
 // scheduled send. Polls rather than using per-row timers for the same reason: this process
 // may not be the one still running when a message eventually comes due.
-const { db, nowStr } = require('./db');
+const { db, nowStr, offsetStr } = require('./db');
 const { hydrateOne } = require('./messageUtils');
 const { emitToChannel, emitToConversation } = require('./realtime');
 const { recordMentions, channelMemberIds } = require('./routes/messages');
+const { getConfig } = require('./config');
+const { deleteFile } = require('./storage');
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -61,10 +63,28 @@ async function clearExpiredStatusMessages() {
   `).run(nowStr());
 }
 
+// Deletes recordings past RECORDING_RETENTION_DAYS — both the DB row and the underlying
+// storage object/file (via storage.js's own deleteFile, same one uploads went through).
+async function cleanupExpiredRecordings() {
+  const { RECORDING_RETENTION_DAYS } = getConfig();
+  const expired = await db.prepare(
+    `SELECT id, storage_key, storage_driver FROM recordings WHERE created_at <= ?`
+  ).all(offsetStr(-RECORDING_RETENTION_DAYS));
+  for (const rec of expired) {
+    try {
+      if (rec.storage_key) await deleteFile(rec.storage_key, rec.storage_driver);
+      await db.prepare('DELETE FROM recordings WHERE id = ?').run(rec.id);
+    } catch (e) {
+      console.error('Failed to clean up expired recording', rec.id, e.message);
+    }
+  }
+}
+
 function start() {
   const tick = () => Promise.all([
     deliverDue().catch(e => console.error('scheduler run failed:', e.message)),
-    clearExpiredStatusMessages().catch(e => console.error('status-message expiry sweep failed:', e.message))
+    clearExpiredStatusMessages().catch(e => console.error('status-message expiry sweep failed:', e.message)),
+    cleanupExpiredRecordings().catch(e => console.error('recording retention sweep failed:', e.message))
   ]);
   tick();
   setInterval(tick, POLL_INTERVAL_MS);

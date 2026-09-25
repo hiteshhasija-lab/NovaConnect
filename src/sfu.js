@@ -270,187 +270,193 @@ async function resumeConsumer(roomId, peerId, consumerId) {
   await consumer.resume();
 }
 
-// Recording functionality
+// ---------------- Recording ----------------
+// mediasoup's PlainTransport sends RTP to an external destination it's told about via
+// connect({ip, port}) — it has no in-process 'rtp' event. The standard pattern (mirroring
+// mediasoup's own official recording demo) is: one PlainTransport+Consumer per producer,
+// each pointed at its own loopback UDP port, and a single ffmpeg process fed an SDP file
+// describing every stream so it can receive them all and composite them into one output.
 const { spawn } = require('child_process');
 const fs = require('fs');
+const fsp = require('fs/promises');
+const os = require('os');
 const path = require('path');
-const { getConfig } = require('./config');
 const { uploadFile } = require('./storage');
 
-const recordings = new Map(); // recordingId -> { roomId, recorder, filePath, startTime, peerIds }
+const recordings = new Map(); // recordingId -> recorder state
 
-// Start recording a room
-async function startRecording(roomId, options = {}) {
+const RECORDING_PORT_START = 50000;
+const RECORDING_PORT_END = 50998;
+let nextRecordingPort = RECORDING_PORT_START;
+function allocateRecordingPort() {
+  const port = nextRecordingPort;
+  nextRecordingPort += 2;
+  if (nextRecordingPort > RECORDING_PORT_END) nextRecordingPort = RECORDING_PORT_START;
+  return port;
+}
+
+async function startRecording(roomId) {
   const room = getRoom(roomId);
   if (!room) throw new Error('Room not found');
 
-  const recordingId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const cfg = getConfig();
-  
-  // Create a plain RTP transport for recording (receives all audio/video)
-  const recordingTransport = await room.router.createPlainRtpTransport({
-    listenIp: { ip: '127.0.0.1', announcedIp: '127.0.0.1' },
-    rtcpMux: true,
-    comedia: false,
-  });
-
-  // Create a plain RTP producer for each active producer in the room
   const peerProducers = [];
-  for (const [peerId, peer] of room.peers.entries()) {
+  for (const peer of room.peers.values()) {
     for (const [producerId, producer] of peer.producers.entries()) {
-      peerProducers.push({ peerId, producerId, producer, kind: producer.kind });
+      peerProducers.push({ producerId, kind: producer.kind });
     }
   }
+  if (peerProducers.length === 0) throw new Error('No active producers to record');
 
-  if (peerProducers.length === 0) {
-    throw new Error('No active producers to record');
-  }
+  const recordingId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const streams = [];
 
-  const recorder = {
-    roomId,
-    recordingId,
-    transport: recordingTransport,
-    consumers: new Map(),
-    startTime: Date.now(),
-    peerIds: new Set(),
-  };
-
-  // Consume all producers into the recording transport
-  for (const { peerId, producerId, producer, kind } of peerProducers) {
-    try {
-      const consumer = await recordingTransport.consume({
-        producerId,
-        rtpCapabilities: room.router.rtpCapabilities,
-        paused: false,
-        appData: { sourcePeerId: producerId },
-      });
-
-      consumer.on('transportclose', () => {
-        consumer.close();
-      });
-
-      consumer.on('producerclose', () => {
-        consumer.close();
-      });
-
-      recorder.consumers.set(producerId, consumer);
-    }
-  }
-
-  // Pipe RTP to ffmpeg
-  const { recordingId: recId } = recorder;
-  const fileName = `recording-${recId}.webm`;
-  const tempDir = cfg.LOCAL_UPLOAD_ROOT || path.join(__dirname, '..', 'data', 'uploads');
-  const filePath = path.join(tempDir, fileName);
-  
-  // Ensure directory exists
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  // Create ffmpeg process
-  const ffmpeg = spawn('ffmpeg', [
-    '-y',
-    '-f', 'matroska',
-    '-i', 'pipe:0',
-    '-c:v', 'libvpx-vp9',
-    '-b:v', '2M',
-    '-c:a', 'libopus',
-    '-b:a', '128k',
-    '-f', 'webm',
-    filePath,
-  ], {
-    stdio: ['pipe', 'ignore', 'pipe'],
-  });
-
-  recorder.ffmpeg = ffmpeg;
-
-  ffmpeg.stderr.on('data', (data) => {
-    logger.debug({ recordingId: recId, stderr: data.toString() }, 'FFmpeg stderr');
-  });
-
-  ffmpeg.on('error', (err) => {
-    logger.error({ recId, err }, 'FFmpeg error');
-  });
-
-  ffmpeg.on('close', (code) => {
-    logger.info({ recId, code }, 'FFmpeg process closed');
-  });
-
-  // Pipe RTP from recording transport to ffmpeg
-  recordingTransport.on('rtp', (rtpPacket) => {
-    if (recorder.ffmpeg && !recorder.ffmpeg.killed) {
-      recorder.ffmpeg.stdin.write(rtpPacket);
-    }
-  });
-
-  recordings.set(recId, recorder);
-  logger.info({ recId, roomId, producerCount: peerProducers.length }, 'Recording started');
-
-  // Notify room participants
-  const room = getRoom(recordingTransport.appData?.roomId);
-  if (room) {
-    // Broadcast recording started event
-    // This would be handled by the signaling layer
-  }
-
-  return { recordingId: recId, filePath };
-}
-
-// Stop recording
-async function stopRecording(recordingId) {
-  const recorder = recordings.get(recordingId);
-  if (!recorder) {
-    throw new Error('Recording not found');
-  }
-
-  // Close all consumers
-  for (const consumer of recorder.consumers.values()) {
-    consumer.close();
-  }
-  recorder.consumers.clear();
-
-  // Close recording transport
-  recorder.transport.close();
-
-  // Close ffmpeg
-  if (recorder.ffmpeg && !recorder.ffmpeg.killed) {
-    recorder.ffmpeg.stdin.end();
-    await new Promise((resolve) => {
-      recorder.ffmpeg.once('close', resolve);
-      setTimeout(resolve, 5000); // Force kill after 5s
+  for (const { producerId, kind } of peerProducers) {
+    const port = allocateRecordingPort();
+    const transport = await room.router.createPlainTransport({
+      listenIp: { ip: '127.0.0.1' },
+      rtcpMux: true,
+      comedia: false,
+    });
+    await transport.connect({ ip: '127.0.0.1', port });
+    // paused: true — mediasoup's own recommendation, so we don't start sending RTP
+    // (and risk losing the first keyframe) before ffmpeg is actually listening.
+    const consumer = await transport.consume({
+      producerId,
+      rtpCapabilities: room.router.rtpCapabilities,
+      paused: true,
+    });
+    const codec = consumer.rtpParameters.codecs[0];
+    streams.push({
+      kind, port, transport, consumer,
+      payloadType: codec.payloadType,
+      codecName: codec.mimeType.split('/')[1].toUpperCase(),
+      clockRate: codec.clockRate,
+      channels: codec.channels,
     });
   }
 
-  const recording = recordings.get(recordingId);
+  const sdpLines = ['v=0', 'o=- 0 0 IN IP4 127.0.0.1', 's=NovaConnect Recording', 'c=IN IP4 127.0.0.1', 't=0 0'];
+  for (const s of streams) {
+    sdpLines.push(`m=${s.kind} ${s.port} RTP/AVP ${s.payloadType}`);
+    sdpLines.push(s.kind === 'audio'
+      ? `a=rtpmap:${s.payloadType} ${s.codecName}/${s.clockRate}/${s.channels || 2}`
+      : `a=rtpmap:${s.payloadType} ${s.codecName}/${s.clockRate}`);
+    sdpLines.push('a=recvonly');
+  }
+  const sdpPath = path.join(os.tmpdir(), `${recordingId}.sdp`);
+  await fsp.writeFile(sdpPath, sdpLines.join('\n') + '\n');
+
+  const tempDir = cfg.LOCAL_UPLOAD_ROOT || path.join(__dirname, '..', 'data', 'uploads');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  const webmPath = path.join(tempDir, `${recordingId}.webm`);
+
+  const videoStreams = streams.filter((s) => s.kind === 'video');
+  const audioStreams = streams.filter((s) => s.kind === 'audio');
+  const ffmpegArgs = ['-y', '-protocol_whitelist', 'file,udp,rtp', '-i', sdpPath];
+  const filterParts = [];
+  let videoMap = null;
+  let audioMap = null;
+
+  if (videoStreams.length === 1) {
+    videoMap = `${streams.indexOf(videoStreams[0])}:v`;
+  } else if (videoStreams.length > 1) {
+    // Simple fixed grid — real gallery/large-view composition is out of MVP scope (see roadmap v2).
+    const cols = Math.ceil(Math.sqrt(videoStreams.length));
+    const rows = Math.ceil(videoStreams.length / cols);
+    const tileW = Math.floor(1280 / cols);
+    const tileH = Math.floor(720 / rows);
+    videoStreams.forEach((s, i) => {
+      filterParts.push(`[${streams.indexOf(s)}:v]scale=${tileW}:${tileH}[v${i}]`);
+    });
+    const layout = videoStreams.map((_, i) => `${(i % cols) * tileW}_${Math.floor(i / cols) * tileH}`).join('|');
+    filterParts.push(`${videoStreams.map((_, i) => `[v${i}]`).join('')}xstack=inputs=${videoStreams.length}:layout=${layout}[vout]`);
+    videoMap = 'vout';
+  }
+  if (audioStreams.length === 1) {
+    audioMap = `${streams.indexOf(audioStreams[0])}:a`;
+  } else if (audioStreams.length > 1) {
+    filterParts.push(`${audioStreams.map((s) => `[${streams.indexOf(s)}:a]`).join('')}amix=inputs=${audioStreams.length}:normalize=0[aout]`);
+    audioMap = 'aout';
+  }
+
+  if (filterParts.length) ffmpegArgs.push('-filter_complex', filterParts.join(';'));
+  if (videoMap) ffmpegArgs.push('-map', filterParts.some((f) => f.includes('[vout]')) ? '[vout]' : videoMap);
+  if (audioMap) ffmpegArgs.push('-map', filterParts.some((f) => f.includes('[aout]')) ? '[aout]' : audioMap);
+  ffmpegArgs.push('-c:v', 'libvpx-vp9', '-b:v', '2M', '-c:a', 'libopus', '-b:a', '128k', '-f', 'webm', webmPath);
+
+  const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+  ffmpeg.stderr.on('data', (d) => logger.debug({ recordingId, stderr: d.toString() }, 'ffmpeg stderr'));
+  ffmpeg.on('error', (err) => logger.error({ recordingId, err }, 'ffmpeg spawn error'));
+
+  const recorder = { roomId, recordingId, streams, ffmpeg, sdpPath, webmPath, startTime: Date.now() };
+  recordings.set(recordingId, recorder);
+
+  // Give ffmpeg time to bind its input sockets before RTP starts arriving.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await Promise.all(streams.map((s) => s.consumer.resume()));
+
+  logger.info({ recordingId, roomId, streamCount: streams.length }, 'Recording started');
+  return { recordingId };
+}
+
+async function stopRecording(recordingId) {
+  const recorder = recordings.get(recordingId);
+  if (!recorder) throw new Error('Recording not found');
   recordings.delete(recordingId);
 
-  const duration = Date.now() - recorder.startTime;
-  const filePath = path.join(cfg.LOCAL_UPLOAD_ROOT || path.join(__dirname, '..', 'data', 'uploads'), `recording-${recordingId}.webm`);
+  for (const s of recorder.streams) {
+    s.consumer.close();
+    s.transport.close();
+  }
 
-  // Upload to storage if S3 configured
-  let storageResult = { driver: 'local', url: `/uploads/recording-${recordingId}.webm` };
-  if (cfg.STORAGE_DRIVER === 's3' && fs.existsSync(filePath)) {
+  if (recorder.ffmpeg && !recorder.ffmpeg.killed) {
+    recorder.ffmpeg.kill('SIGINT'); // ffmpeg's documented way to finalize/flush the container
+    await new Promise((resolve) => {
+      recorder.ffmpeg.once('close', resolve);
+      setTimeout(resolve, 8000);
+    });
+  }
+  await fsp.unlink(recorder.sdpPath).catch(() => {});
+
+  const duration = Date.now() - recorder.startTime;
+
+  // Second ffmpeg pass: transcode WebM (VP8/VP9+Opus, what mediasoup actually negotiates)
+  // to MP4 for broad playback compatibility, without touching the SFU's codec preferences.
+  let finalPath = recorder.webmPath;
+  let finalName = `${recordingId}.webm`;
+  let finalMime = 'video/webm';
+  if (fs.existsSync(recorder.webmPath)) {
+    const mp4Path = recorder.webmPath.replace(/\.webm$/, '.mp4');
     try {
-      const stats = fs.statSync(filePath);
-      const stored = await uploadFile({
-        path: filePath,
-        originalname: `recording-${recordingId}.webm`,
-        mimetype: 'video/webm',
-        size: stats.size,
+      await new Promise((resolve, reject) => {
+        const transcode = spawn('ffmpeg', ['-y', '-i', recorder.webmPath, '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', mp4Path]);
+        transcode.on('error', reject);
+        transcode.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg mp4 transcode exited ${code}`))));
       });
-      storageResult = { driver: stored.driver, url: stored.url, key: stored.key };
+      finalPath = mp4Path;
+      finalName = `${recordingId}.mp4`;
+      finalMime = 'video/mp4';
+      await fsp.unlink(recorder.webmPath).catch(() => {});
     } catch (err) {
-      logger.error({ recId: recordingId, err }, 'Failed to upload recording to S3');
+      logger.error({ recordingId, err }, 'MP4 transcode failed, keeping WebM');
     }
   }
 
-  logger.info({ recId: recordingId, duration }, 'Recording stopped');
+  let storageResult = { driver: 'local', url: `/uploads/${finalName}`, key: finalName };
+  if (fs.existsSync(finalPath)) {
+    try {
+      const stats = fs.statSync(finalPath);
+      const stored = await uploadFile({ path: finalPath, originalname: finalName, mimetype: finalMime, size: stats.size });
+      storageResult = { driver: stored.driver, url: stored.url, key: stored.key };
+    } catch (err) {
+      logger.error({ recordingId, err }, 'Failed to upload recording');
+    }
+  }
 
-  return { recordingId, filePath, duration, ...storageResult };
+  logger.info({ recordingId, duration }, 'Recording stopped');
+  return { recordingId, duration, ...storageResult };
 }
 
-// Get recording status
 function getRecordingStatus(recordingId) {
   const recorder = recordings.get(recordingId);
   if (!recorder) return null;
@@ -459,7 +465,7 @@ function getRecordingStatus(recordingId) {
     roomId: recorder.roomId,
     startTime: recorder.startTime,
     duration: Date.now() - recorder.startTime,
-    peerCount: recorder.peerIds.size,
+    streamCount: recorder.streams.length,
   };
 }
 

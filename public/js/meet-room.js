@@ -1,6 +1,7 @@
 (()=>{'use strict';
 const socket=io(),code=document.querySelector('[data-code]').dataset.code,peers=new Map(),status=document.getElementById('meetStatus'),videos=document.getElementById('meetVideos'),mic=document.getElementById('meetMic'),camera=document.getElementById('meetCamera'),enter=document.getElementById('meetEnter'),exit=document.getElementById('meetLeave');
-let stream=null,joined=false,joining=false,localPeerId=null,inLobby=false,isAdmitted=false,localStream=null;
+let stream=null,joined=false,joining=false,localPeerId=null,inLobby=false,isAdmitted=false,localStream=null,currentRecordingId=null;
+const recordingControls=document.getElementById('recordingControls'),recordBtn=document.getElementById('recordBtn'),stopRecordBtn=document.getElementById('stopRecordBtn');
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
 function tile(id,name,media,muted=false){let item=document.getElementById('peer-'+id);if(!item){item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;item.append(v);const p=document.createElement('p');p.textContent=name;item.append(p);videos.append(item)}item.querySelector('video').srcObject=media;item.querySelector('video').play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>item.querySelector('video').play()});}
 function remove(id){peers.get(id)?.pc.close();peers.delete(id);document.getElementById('peer-'+id)?.remove()}
@@ -18,6 +19,7 @@ socket.on('meet:admitted', async ({roomId,routerRtpCapabilities,iceServers})=>{
   iceServers=iceServers;
   joined=true;inLobby=false;isAdmitted=true;
   enter.hidden=true;exit.hidden=false;
+  if(recordingControls)recordingControls.hidden=false;
   status.textContent='Connected.';
   // Create local stream with muted audio/video by default
   try {
@@ -58,6 +60,9 @@ socket.on('meet:recording-started',({recordingId,startedBy})=>{
 socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl})=>{
   status.textContent=`Recording stopped by ${stoppedBy} (${formatDuration(duration)})`;
   hideRecordingIndicator();
+  currentRecordingId=null;
+  if(recordBtn){recordBtn.classList.remove('d-none');recordBtn.disabled=false;}
+  if(stopRecordBtn){stopRecordBtn.classList.add('d-none');stopRecordBtn.disabled=false;}
   if (downloadUrl) {
     showDownloadLink(downloadUrl, recordingId);
   }
@@ -197,6 +202,7 @@ enter.onclick=async()=>{
     mic.disabled=!stream?.getAudioTracks().length;
     camera.disabled=!stream?.getVideoTracks().length;
     if(stream)tile('local','You',stream,true);
+    if(recordingControls)recordingControls.hidden=false;
     status.textContent=r.peers.length?'Connected.':'You are the first participant. Share the meeting link to invite others.';
     for(const u of r.peers){const p=peer(u.id,u.name);await p.pc.setLocalDescription(await p.pc.createOffer());await request('sfu:signal',{to:u.id,description:p.pc.localDescription.toJSON()})}
   }catch(e){socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup();status.textContent=e.message}
@@ -227,13 +233,13 @@ function peer(id,name){if(peers.has(id))return peers.get(id);const pc=new RTCPee
 mic.onchange=()=>stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);camera.onchange=()=>stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);exit.onclick=()=>{socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup();status.textContent='You left the meeting.'};window.addEventListener('pagehide',()=>{socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup()});
 
 // Recording helper functions
-function showRecordingIndicator(recordingId) {
+function showRecordingIndicator() {
   const indicator = document.createElement('div');
   indicator.id = 'recordingIndicator';
   indicator.className = 'meet-recording-indicator';
   indicator.innerHTML = '<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
   document.body.appendChild(indicator);
-  
+
   let seconds = 0;
   const timerEl = document.getElementById('recordingTimer');
   if (timerEl) {
@@ -271,94 +277,22 @@ function formatDuration(ms) {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-function showRecordingIndicator(recordingId) {
-  const indicator = document.createElement('div');
-  indicator.id = 'recordingIndicator';
-  indicator.className = 'meet-recording-indicator';
-  indicator.innerHTML = '<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
-  document.body.appendChild(indicator);
-  
-  let seconds = 0;
-  const timerEl = document.getElementById('recordingTimer');
-  if (timerEl) {
-    window.recordingTimerInterval = setInterval(() => {
-      seconds++;
-      const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-      const secs = (seconds % 60).toString().padStart(2, '0');
-      timerEl.textContent = `${mins}:${secs}`;
-    }, 1000);
-  }
-}
-
-function hideRecordingIndicator() {
-  const indicator = document.getElementById('recordingIndicator');
-  if (indicator) indicator.remove();
-  if (window.recordingTimerInterval) {
-    clearInterval(window.recordingTimerInterval);
-    window.recordingTimerInterval = null;
-  }
-}
-
-function showDownloadLink(downloadUrl, recordingId) {
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.className = 'meet-download-link btn btn-success mt-2';
-  link.target = '_blank';
-  link.textContent = `Download recording (${recordingId})`;
-  document.getElementById('meetStatus').parentNode.appendChild(link);
-}
-
-function formatDuration(ms) {
-  const seconds = Math.floor(ms / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-function updateRecordingStatus(status) {
-  // Update recording status UI if needed
-  if (status.recordingId && document.getElementById('recordingIndicator')) {
+function updateRecordingStatus(recStatus) {
+  if (recStatus.recordingId && document.getElementById('recordingIndicator')) {
     const statusEl = document.getElementById('recordingIndicator').querySelector('.recording-status');
-    if (statusEl) statusEl.textContent = status.status || '';
+    if (statusEl) statusEl.textContent = recStatus.status || '';
   }
-}
-
-// Recording control buttons
-function addRecordingControls() {
-  const toolbar = document.querySelector('.meet-room-controls');
-  if (!toolbar) return;
-  
-  const recordBtn = document.createElement('button');
-  recordBtn.type = 'button';
-  recordBtn.className = 'btn btn-outline-danger';
-  recordBtn.id = 'recordBtn';
-  recordBtn.innerHTML = '<i class="bi bi-record-circle"></i> Record';
-  recordBtn.title = 'Start recording';
-  recordBtn.onclick = startRecording;
-  
-  const stopRecordBtn = document.createElement('button');
-  stopRecordBtn.type = 'button';
-  stopRecordBtn.className = 'btn btn-danger d-none';
-  stopRecordBtn.id = 'stopRecordBtn';
-  stopRecordBtn.innerHTML = '<i class="bi bi-stop-circle"></i> Stop';
-  stopRecordBtn.title = 'Stop recording';
-  stopRecordBtn.onclick = stopRecording;
-  
-  toolbar.appendChild(recordBtn);
-  toolbar.appendChild(stopRecordBtn);
 }
 
 async function startRecording() {
-  if (!isAdmitted) return;
-  const recordBtn = document.getElementById('recordBtn');
-  const stopRecordBtn = document.getElementById('stopRecordBtn');
-  
+  if (!isAdmitted || !recordBtn || !stopRecordBtn) return;
   try {
     recordBtn.disabled = true;
-    recordBtn.textContent = 'Starting…';
     const result = await sfuRequest('meet:start-recording', { roomId: 'meet:' + code });
+    currentRecordingId = result.recordingId;
     recordBtn.classList.add('d-none');
     stopRecordBtn.classList.remove('d-none');
+    stopRecordBtn.disabled = false;
     status.textContent = 'Recording started';
   } catch (e) {
     status.textContent = e.message;
@@ -367,44 +301,18 @@ async function startRecording() {
 }
 
 async function stopRecording() {
-  if (!current || !current.recordingId) return;
-  
+  if (!currentRecordingId || !stopRecordBtn) return;
   try {
-    const stopRecordBtn = document.getElementById('stopRecordBtn');
     stopRecordBtn.disabled = true;
-    stopRecordBtn.textContent = 'Stopping…';
-    
-    await sfuRequest('meet:stop-recording', { 
-      roomId: 'meet:' + code, 
-      recordingId: current.recordingId 
-    });
-    
-    // UI updates handled by meet:recording-stopped event
+    await sfuRequest('meet:stop-recording', { roomId: 'meet:' + code, recordingId: currentRecordingId });
+    // Button/indicator state resets on the meet:recording-stopped broadcast below,
+    // so it stays correct even if another participant is the one who actually sees this ack.
   } catch (e) {
     status.textContent = e.message;
+    stopRecordBtn.disabled = false;
   }
 }
 
-function showDownloadLink(downloadUrl, recordingId) {
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.className = 'meet-download-link btn btn-success mt-2';
-  link.target = '_blank';
-  link.textContent = `Download recording (${recordingId})`;
-  document.getElementById('meetStatus').parentNode.appendChild(link);
-}
-
-function formatDuration(ms) {
-  const seconds = Math.floor(ms / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-function updateRecordingStatus(status) {
-  // Update recording status UI if needed
-  if (status.recordingId && document.getElementById('recordingIndicator')) {
-    const statusEl = document.getElementById('recordingIndicator').querySelector('.recording-status');
-    if (statusEl) statusEl.textContent = status.status || '';
-  }
-}
+if (recordBtn) recordBtn.onclick = startRecording;
+if (stopRecordBtn) stopRecordBtn.onclick = stopRecording;
+})();
