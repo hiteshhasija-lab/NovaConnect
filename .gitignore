@@ -5,3 +5,4 @@ data/
 npm-debug.log*
 certs/
 ~$*.doc*
+database.json
