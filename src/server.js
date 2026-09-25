@@ -1,3 +1,7 @@
+require('dotenv').config();
+const { validateConfig } = require('./config');
+validateConfig();
+
 const { initDb, db } = require('./db');
 const { redis } = require('./redis');
 const { initTelemetry, shutdownTelemetry } = require('./telemetry');
@@ -37,12 +41,15 @@ process.on('uncaughtException', (err) => {
   shutdownTelemetry().finally(() => process.exit(1));
 });
 
+const { getConfig } = require('./config');
+const cfg = getConfig();
+
 const app = express();
-const PORT = process.env.PORT || 3000;
-const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
-const HOST = process.env.HOST || '0.0.0.0';
-const TLS_KEY_PATH = process.env.TLS_KEY_PATH || path.join(__dirname, '..', 'certs', 'key.pem');
-const TLS_CERT_PATH = process.env.TLS_CERT_PATH || path.join(__dirname, '..', 'certs', 'cert.pem');
+const PORT = cfg.PORT;
+const HTTPS_PORT = cfg.HTTPS_PORT;
+const HOST = cfg.HOST;
+const TLS_KEY_PATH = cfg.TLS_KEY_PATH || path.join(__dirname, '..', 'certs', 'key.pem');
+const TLS_CERT_PATH = cfg.TLS_CERT_PATH || path.join(__dirname, '..', 'certs', 'cert.pem');
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
@@ -91,7 +98,7 @@ app.use('/api/integrations', integrationsInRoutes);
 
 const sessionMiddleware = session({
   store: new RedisStore({ client: redis, prefix: 'nc:sess:' }),
-  secret: process.env.SESSION_SECRET || 'novaconnect-dev-secret-change-me',
+  secret: cfg.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: { maxAge: 1000 * 60 * 60 * 8 }

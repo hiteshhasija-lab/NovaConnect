@@ -1,10 +1,12 @@
 'use strict';
 
 const pino = require('pino');
+const { getConfig } = require('./config');
 const { getTracer } = require('./telemetry');
 
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const LOG_LEVEL = process.env.LOG_LEVEL || (NODE_ENV === 'production' ? 'info' : 'debug');
+const cfg = getConfig();
+const NODE_ENV = cfg.NODE_ENV;
+const LOG_LEVEL = cfg.LOG_LEVEL;
 const LOG_PRETTY = NODE_ENV !== 'production';
 
 const baseLogger = pino({

@@ -1,5 +1,8 @@
 'use strict';
 
+const { getConfig } = require('./config');
+const cfg = getConfig();
+
 const { diag, DiagConsoleLogger, DiagLogLevel, trace } = require('@opentelemetry/api');
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { Resource } = require('@opentelemetry/resources');
@@ -15,9 +18,8 @@ const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const SERVICE_NAME = 'novaconnect';
 const SERVICE_VERSION = process.env.NOVACONNECT_RELEASE_VERSION || process.env.npm_package_version || 'dev';
-const OTEL_EXPORTER_OTLP_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '';
-const OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || OTEL_EXPORTER_OTLP_ENDPOINT;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = cfg.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || '';
+const NODE_ENV = cfg.NODE_ENV;
 
 let sdk = null;
 let initialized = false;

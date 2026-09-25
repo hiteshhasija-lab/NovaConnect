@@ -1,6 +1,6 @@
 {
   "name": "novaconnect",
-  "version": "1.0.63",
+  "version": "1.0.64",
   "description": "NovaConnect: a team chat and collaboration app (channels, DMs, presence, threads, file sharing)",
   "main": "src/server.js",
   "scripts": {
@@ -44,7 +44,8 @@
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
     "socket.io": "^4.8.1",
-    "@socket.io/redis-adapter": "^8.3.0"
+    "@socket.io/redis-adapter": "^8.3.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "node-pg-migrate": "^7.5.0"
