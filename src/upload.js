@@ -1,17 +1,17 @@
+const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const multer = require('multer');
+const { uploadFile, MAX_FILE_SIZE, STORAGE_DRIVER } = require('./storage');
 
-const uploadRoot = path.join(__dirname, '..', 'data', 'uploads');
-if (!fs.existsSync(uploadRoot)) fs.mkdirSync(uploadRoot, { recursive: true });
+const TEMP_UPLOAD_ROOT = path.join(__dirname, '..', 'data', 'tmp_uploads');
+if (!fs.existsSync(TEMP_UPLOAD_ROOT)) fs.mkdirSync(TEMP_UPLOAD_ROOT, { recursive: true });
 
-const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const BLOCKED_EXTENSIONS = new Set(['.exe', '.sh', '.bat', '.cmd', '.com', '.msi', '.ps1', '.vbs', '.js', '.jar', '.app']);
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: uploadRoot,
+    destination: TEMP_UPLOAD_ROOT,
     filename: (req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
       cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
@@ -25,4 +25,4 @@ const upload = multer({
   }
 });
 
-module.exports = { upload, uploadRoot, MAX_FILE_SIZE };
+module.exports = { upload, MAX_FILE_SIZE, STORAGE_DRIVER, uploadFile };

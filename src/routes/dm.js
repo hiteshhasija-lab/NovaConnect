@@ -3,7 +3,7 @@ const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToConversation, emitToUser, resyncUserRooms } = require('../realtime');
-const { upload } = require('../upload');
+const { upload, uploadFile } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, removeMessage } = require('../search');
 
@@ -273,9 +273,11 @@ router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(re
   `).get(convo.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
+    const stored = await uploadFile(req.file);
     await db.prepare(`
-      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(row.id, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, req.session.user.id);
+      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(row.id, stored.key, req.file.originalname, req.file.mimetype, req.file.size, req.session.user.id, stored.driver, stored.key);
   }
 
   await db.prepare('UPDATE dm_participants SET is_hidden = 0, is_unread = CASE WHEN user_id = ? THEN 0 ELSE 1 END WHERE conversation_id = ?').run(req.session.user.id, convo.id);

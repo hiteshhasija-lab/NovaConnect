@@ -4,9 +4,10 @@ const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
-const { upload, uploadRoot } = require('../upload');
+const { upload, uploadFile, STORAGE_DRIVER } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
+const { getPublicUrl, deleteFile, LOCAL_UPLOAD_ROOT } = require('../storage');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -127,9 +128,11 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
   `).get(channel.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
+    const stored = await uploadFile(req.file);
     await db.prepare(`
-      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(row.id, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, req.session.user.id);
+      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(row.id, stored.key, req.file.originalname, req.file.mimetype, req.file.size, req.session.user.id, stored.driver, stored.key);
   }
 
   const memberIds = await channelMemberIds(channel);
@@ -364,7 +367,11 @@ router.get('/api/attachments/:id/download', async (req, res) => {
   if (!att) return res.status(404).render('error', { title: 'Not Found', message: 'Attachment not found.' });
   const ctx = await loadMessageWithAccess(att.message_id, req.session.user.id);
   if (!ctx) return res.status(403).render('error', { title: 'Access Denied', message: 'You cannot view this file.' });
-  res.download(path.join(uploadRoot, att.filename), att.original_name);
+  const url = getPublicUrl(att.storage_key || att.filename, att.storage_driver);
+  if (att.storage_driver === 's3' || STORAGE_DRIVER === 's3') {
+    return res.redirect(url);
+  }
+  res.download(path.join(LOCAL_UPLOAD_ROOT, att.storage_key || att.filename), att.original_name);
 });
 
 module.exports = router;

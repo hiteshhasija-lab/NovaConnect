@@ -213,8 +213,13 @@ CREATE TABLE IF NOT EXISTS attachments (
   mime_type TEXT,
   size INTEGER,
   uploaded_by INTEGER REFERENCES users(id),
+  storage_driver TEXT NOT NULL DEFAULT 'local',
+  storage_key TEXT,
   created_at TEXT NOT NULL ${TS_DEFAULT}
 );
+
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS storage_driver TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS storage_key TEXT;
 
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
