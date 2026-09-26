@@ -65,13 +65,16 @@ function attach(server, sessionMiddleware) {
   // an unhandled rejection that crashes the whole process (taking every connected user down
   // with it) the moment the database hiccups. Every listener body below is guarded accordingly.
   const calls = createCalls(io, db);
-  const meet = require('./meet-signaling').createMeetSignaling(io, db);
   const sfu = createSfuSignaling(io, db);
   sfu.setIo(io);
+  // meet-signaling.js owns all lobby/SFU-transport socket events (sfu:create-transport,
+  // sfu:produce, etc.) once a peer has gone through meet:join — it needs sfu-signaling's
+  // roomUserMap instance (passed in here) but NOT its .attach(), since attaching both would
+  // register two competing handlers for the same event names and race each other.
+  const meet = require('./meet-signaling').createMeetSignaling(io, db, sfu);
   io.on('connection', (socket) => {
     calls.attach(socket);
     meet.attach(socket);
-    sfu.attach(socket);
     const userId = socket.user.id;
 
     (async () => {

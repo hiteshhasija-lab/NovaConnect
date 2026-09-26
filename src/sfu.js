@@ -117,7 +117,7 @@ async function createTransport(room, peerId, direction) {
   if (!roomObj) throw new Error('Room not found');
 
   const transport = await roomObj.router.createWebRtcTransport({
-    listenIps: [{ ip: '0.0.0.0', announcedIp: null }],
+    listenIps: [{ ip: '0.0.0.0', announcedIp: cfg.MEDIASOUP_ANNOUNCED_IP || null }],
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
@@ -134,13 +134,15 @@ async function createTransport(room, peerId, direction) {
   }
 
   const peer = roomObj.peers.get(peerId);
-  const key = `${direction}-${transport.id}`;
-  peer.transports.set(key, transport);
+  // Keyed by the transport's own (globally-unique) id, matching the id returned to the
+  // client below — connectTransport/produce/consume all look transports up by that same
+  // id, so a direction-prefixed key here would make every one of those calls miss.
+  peer.transports.set(transport.id, transport);
 
   transport.on('dtlsstatechange', (dtlsState) => {
     if (dtlsState === 'failed' || dtlsState === 'closed') {
       transport.close();
-      peer.transports.delete(key);
+      peer.transports.delete(transport.id);
     }
   });
 
@@ -302,7 +304,7 @@ async function startRecording(roomId) {
   const peerProducers = [];
   for (const peer of room.peers.values()) {
     for (const [producerId, producer] of peer.producers.entries()) {
-      peerProducers.push({ producerId, kind: producer.kind });
+      peerProducers.push({ producerId, kind: producer.kind, producer });
     }
   }
   if (peerProducers.length === 0) throw new Error('No active producers to record');
@@ -310,7 +312,7 @@ async function startRecording(roomId) {
   const recordingId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const streams = [];
 
-  for (const { producerId, kind } of peerProducers) {
+  for (const { producerId, kind, producer } of peerProducers) {
     const port = allocateRecordingPort();
     const transport = await room.router.createPlainTransport({
       listenIp: { ip: '127.0.0.1' },
@@ -327,7 +329,7 @@ async function startRecording(roomId) {
     });
     const codec = consumer.rtpParameters.codecs[0];
     streams.push({
-      kind, port, transport, consumer,
+      kind, port, transport, consumer, producer,
       payloadType: codec.payloadType,
       codecName: codec.mimeType.split('/')[1].toUpperCase(),
       clockRate: codec.clockRate,
@@ -394,6 +396,27 @@ async function startRecording(roomId) {
   // Give ffmpeg time to bind its input sockets before RTP starts arriving.
   await new Promise((resolve) => setTimeout(resolve, 500));
   await Promise.all(streams.map((s) => s.consumer.resume()));
+  // A resumed video consumer only gets whatever frame the producer happens to be sending —
+  // ffmpeg's SDP demuxer can't determine VP8/VP9/H264 frame size without decoding an actual
+  // keyframe, and the producer's own keyframe interval may be tens of seconds away, so without
+  // this the recording can sit at "Could not find codec parameters... unspecified size"
+  // indefinitely. requestKeyFrame() forces one immediately.
+  await Promise.all(streams.filter((s) => s.kind === 'video').map((s) => s.consumer.requestKeyFrame()));
+
+  // TEMP DIAGNOSTIC — remove once video-recording packet flow is confirmed working.
+  for (const delay of [2000, 8000, 15000]) {
+    setTimeout(async () => {
+      for (const s of streams) {
+        try {
+          const producerStats = await s.producer.getStats();
+          const consumerStats = await s.consumer.getStats();
+          logger.info({ recordingId, delay, kind: s.kind, port: s.port, producerStats, consumerStats }, 'DIAG recording stream stats');
+        } catch (err) {
+          logger.error({ recordingId, delay, kind: s.kind, err }, 'DIAG stats fetch failed');
+        }
+      }
+    }, delay);
+  }
 
   logger.info({ recordingId, roomId, streamCount: streams.length }, 'Recording started');
   return { recordingId };

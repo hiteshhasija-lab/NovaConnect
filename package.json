@@ -11,7 +11,8 @@
     "migrate": "node-pg-migrate",
     "migrate:up": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",
-    "migrate:create": "node-pg-migrate create"
+    "migrate:create": "node-pg-migrate create",
+    "build:mediasoup-client-bundle": "esbuild --bundle --platform=browser --format=iife --global-name=mediasoupClientBundle --minify --target=es2020 node_modules/mediasoup-client/lib/index.js --outfile=public/js/vendor/mediasoup-client.min.js"
   },
   "license": "MIT",
   "dependencies": {
@@ -30,6 +31,7 @@
     "@opentelemetry/resources": "^1.23.0",
     "@opentelemetry/sdk-node": "^0.51.0",
     "@opentelemetry/semantic-conventions": "^1.23.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "bcryptjs": "^2.4.3",
     "connect-redis": "^8.0.1",
     "dayjs": "^1.11.13",
@@ -49,11 +51,12 @@
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
     "socket.io": "^4.8.1",
-    "@socket.io/redis-adapter": "^8.3.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "eslint": "^8.56.0",
+    "mediasoup-client": "^3.24.1",
     "node-pg-migrate": "^7.5.0"
   },
   "engines": {

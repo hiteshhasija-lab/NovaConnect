@@ -58,6 +58,12 @@ const EnvSchema = z.object({
 
   // WebRTC/ICE (optional)
   WEBRTC_ICE_SERVERS: z.string().optional(),
+  // Publicly-reachable IP for mediasoup's WebRTC transports to advertise in ICE candidates.
+  // Required whenever the server sits behind NAT/port-mapping (containers, cloud LBs) — without
+  // it, mediasoup advertises the container's own internal interface address, which browsers
+  // outside that network can never actually reach, so real media never flows even though
+  // signaling (join, produce registration) appears to succeed.
+  MEDIASOUP_ANNOUNCED_IP: z.string().optional(),
 }).passthrough();
 
 let validatedConfig = null;

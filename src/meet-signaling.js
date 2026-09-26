@@ -1,7 +1,14 @@
 // SFU-based meeting signaling with lobby support. Media goes through mediasoup SFU.
-function createMeetSignaling(io, db) {
-  const sfu = require('./sfu-signaling');
-  const { getRoom, startRecording, stopRecording, getRecordingStatus } = require('./sfu');
+// sfuInstance is the createSfuSignaling(io, db) instance from realtime.js — only its
+// roomUserMap is used (shared peer-mapping state); every actual media/room operation
+// below comes straight from ./sfu, since sfu-signaling.js's own copies are just
+// unchanged re-exports of the same functions.
+function createMeetSignaling(io, db, sfuInstance) {
+  const {
+    createRoom, getRoom, deleteRoom, createTransport, connectTransport,
+    produce, consume, resumeConsumer, getRoomPeers, closePeerTransports,
+    startRecording, stopRecording, getRecordingStatus,
+  } = require('./sfu');
   const { nowStr } = require('./db');
 
   function attach(socket) {
@@ -12,17 +19,20 @@ function createMeetSignaling(io, db) {
 
     function leave() {
       if (!roomCode) return;
-      const room = sfu.getRoom(roomCode);
+      const room = getRoom(roomCode);
       if (room) {
-        const mapping = sfu.roomUserMap?.get(socket.id);
+        const mapping = sfuInstance.roomUserMap?.get(socket.id);
         if (mapping) {
-          sfu.closePeerTransports(roomCode, mapping.peerId);
+          closePeerTransports(roomCode, mapping.peerId);
+          sfuInstance.roomUserMap.delete(socket.id);
           io.to(`sfu:${roomCode}`).emit('sfu:peer-left', {
             peerId: mapping.peerId,
             userId: socket.user.id,
             fullName: socket.user.full_name,
           });
         }
+        const roomAfter = getRoom(roomCode);
+        if (roomAfter && roomAfter.peers.size === 0) deleteRoom(roomCode);
       }
       if (roomCode) {
         socket.leave('meet:' + roomCode);
@@ -66,7 +76,7 @@ function createMeetSignaling(io, db) {
 
       // Get or create SFU room for this meeting code
       const roomId = 'meet:' + code;
-      const room = await sfu.createRoom(roomId);
+      const room = await createRoom(roomId);
       const peerId = `${u.id}-${socket.id}`;
 
       // Leave any previous room
@@ -78,17 +88,17 @@ function createMeetSignaling(io, db) {
       isAdmitted = false;
 
       // Track this socket's SFU membership
-      sfu.roomUserMap.set(socket.id, { roomId, peerId, userId: u.id, inLobby: true });
+      sfuInstance.roomUserMap.set(socket.id, { roomId, peerId, userId: u.id, inLobby: true });
 
       // Join socket.io rooms
       socket.join('meet:' + code);
       socket.join('sfu:' + roomCode);
 
       // Get existing peers in the SFU room (only admitted ones)
-      const peers = sfu.getRoomPeers(roomCode).filter(p => p !== peerId);
+      const peers = getRoomPeers(roomCode).filter(p => p !== peerId);
       const peerDetails = [];
       for (const pid of peers) {
-        for (const [sid, info] of sfu.roomUserMap.entries()) {
+        for (const [sid, info] of sfuInstance.roomUserMap.entries()) {
           if (info.peerId === pid && !info.inLobby) {
             peerDetails.push({
               peerId: pid,
@@ -121,13 +131,13 @@ function createMeetSignaling(io, db) {
     // Request to join from lobby (user clicks "Join Meeting" after preview)
     handle('meet:request-join', async ({ roomId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      
-      const room = sfu.getRoom(roomId);
+
+      const room = getRoom(roomId);
       if (!room) throw Error('Room not found');
-      
-      const mapping = sfu.roomUserMap.get(socket.id);
+
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping) throw Error('Not in lobby');
-      
+
       mapping.inLobby = false;
       inLobby = false;
       isAdmitted = true;
@@ -149,13 +159,13 @@ function createMeetSignaling(io, db) {
     // Lobby: request to join (from waiting user)
     handle('meet:lobby-request', async ({ roomId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      
-      const room = sfu.getRoom(roomId);
+
+      const room = getRoom(roomId);
       if (!room) throw Error('Room not found');
-      
-      const mapping = sfu.roomUserMap.get(socket.id);
+
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping || !mapping.inLobby) throw Error('Not in lobby');
-      
+
       // Notify meeting owner/admins that someone is waiting
       io.to(`sfu:${roomId}`).emit('meet:lobby-waiting', {
         peerId: mapping.peerId,
@@ -169,15 +179,15 @@ function createMeetSignaling(io, db) {
     // Meeting owner admits user from lobby
     handle('meet:admit', async ({ roomId, peerId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      
-      const room = sfu.getRoom(roomId);
+
+      const room = getRoom(roomId);
       if (!room) throw Error('Room not found');
-      
+
       // Check if user is meeting owner (creator of the link)
       const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
       if (!link || link.created_by !== u.id) throw Error('Only meeting owner can admit participants');
-      
-      const targetMapping = Array.from(sfu.roomUserMap.values()).find(m => m.peerId === peerId && m.roomId === roomId);
+
+      const targetMapping = Array.from(sfuInstance.roomUserMap.values()).find(m => m.peerId === peerId && m.roomId === roomId);
       if (!targetMapping || !targetMapping.inLobby) throw Error('User not in lobby');
       
       targetMapping.inLobby = false;
@@ -206,18 +216,18 @@ function createMeetSignaling(io, db) {
       const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
       if (!link || link.created_by !== u.id) throw Error('Only meeting owner can deny participants');
       
-      const targetMapping = Array.from(sfu.roomUserMap.values()).find(m => m.peerId === peerId && m.roomId === roomId);
+      const targetMapping = Array.from(sfuInstance.roomUserMap.values()).find(m => m.peerId === peerId && m.roomId === roomId);
       if (!targetMapping || !targetMapping.inLobby) throw Error('User not in lobby');
-      
+
       // Notify the denied user
       io.to(`user:${targetMapping.userId}`).emit('meet:denied', { roomId });
-      
+
       // Clean up
-      sfu.closePeerTransports(roomId, peerId);
-      const idx = Array.from(sfu.roomUserMap.entries()).findIndex(([_, m]) => m.peerId === peerId && m.roomId === roomId);
+      closePeerTransports(roomId, peerId);
+      const idx = Array.from(sfuInstance.roomUserMap.entries()).findIndex(([_, m]) => m.peerId === peerId && m.roomId === roomId);
       if (idx >= 0) {
-        const [sid] = Array.from(sfu.roomUserMap.entries())[idx];
-        sfu.roomUserMap.delete(sid);
+        const [sid] = Array.from(sfuInstance.roomUserMap.entries())[idx];
+        sfuInstance.roomUserMap.delete(sid);
       }
       
       io.to(`sfu:${roomId}`).emit('meet:lobby-left', { peerId });
@@ -233,7 +243,7 @@ function createMeetSignaling(io, db) {
       if (!link || link.created_by !== u.id) throw Error('Only meeting owner can view lobby');
       
       const waiting = [];
-      for (const [sid, mapping] of sfu.roomUserMap.entries()) {
+      for (const [sid, mapping] of sfuInstance.roomUserMap.entries()) {
         if (mapping.roomId === roomId && mapping.inLobby) {
           waiting.push({
             peerId: mapping.peerId,
@@ -246,27 +256,27 @@ function createMeetSignaling(io, db) {
       return { waiting };
     });
 
-    // SFU signaling events (delegate to sfu-signaling)
+    // SFU signaling events (real mediasoup transport/producer/consumer operations)
     handle('sfu:create-transport', async ({ roomId, direction }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfu.roomUserMap.get(socket.id);
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
-      return await sfu.createTransport(roomId, `${u.id}-${socket.id}`, direction);
+      return await createTransport(roomId, `${u.id}-${socket.id}`, direction);
     });
 
     handle('sfu:connect-transport', async ({ roomId, transportId, dtlsParameters }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfu.roomUserMap.get(socket.id);
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
-      await sfu.connectTransport(roomId, `${u.id}-${socket.id}`, transportId, dtlsParameters);
+      await connectTransport(roomId, `${u.id}-${socket.id}`, transportId, dtlsParameters);
       return { success: true };
     });
 
     handle('sfu:produce', async ({ roomId, transportId, kind, rtpParameters, appData }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfu.roomUserMap.get(socket.id);
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
-      const producerId = await sfu.produce(roomId, `${u.id}-${socket.id}`, transportId, kind, rtpParameters, {
+      const producerId = await produce(roomId, `${u.id}-${socket.id}`, transportId, kind, rtpParameters, {
         ...appData,
         sourcePeerId: `${u.id}-${socket.id}`,
         sourceUserId: u.id,
@@ -277,9 +287,9 @@ function createMeetSignaling(io, db) {
 
     handle('sfu:consume', async ({ roomId, transportId, producerId, rtpCapabilities, appData }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfu.roomUserMap.get(socket.id);
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
-      return await sfu.consume(roomId, `${u.id}-${socket.id}`, transportId, producerId, rtpCapabilities, {
+      return await consume(roomId, `${u.id}-${socket.id}`, transportId, producerId, rtpCapabilities, {
         ...appData,
         sourcePeerId: appData?.sourcePeerId,
       });
@@ -287,9 +297,9 @@ function createMeetSignaling(io, db) {
 
     handle('sfu:resume-consumer', async ({ roomId, consumerId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfu.roomUserMap.get(socket.id);
+      const mapping = sfuInstance.roomUserMap.get(socket.id);
       if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
-      await sfu.resumeConsumer(roomId, `${u.id}-${socket.id}`, consumerId);
+      await resumeConsumer(roomId, `${u.id}-${socket.id}`, consumerId);
       return { success: true };
     });
 
