@@ -1,0 +1,39 @@
+name: Build Windows desktop installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'electron-app/**'
+      - '.github/workflows/build-windows-desktop.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows installer
+        run: npm run dist:win
+        env:
+          # Bakes a default server address into the installer so users aren't prompted on
+          # first launch. Set this repo variable (Settings > Secrets and variables > Actions >
+          # Variables) to your real NovaConnect URL, e.g. https://novaconnect.example.com.
+          NOVACONNECT_DEFAULT_SERVER_URL: ${{ vars.NOVACONNECT_DEFAULT_SERVER_URL }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaConnect-Windows-Installer
+          path: electron-app/dist/*.exe
