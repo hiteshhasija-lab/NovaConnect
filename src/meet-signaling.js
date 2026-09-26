@@ -335,18 +335,22 @@ function createMeetSignaling(io, db, sfuInstance) {
       if (!link || link.created_by !== u.id) throw Error('Only meeting owner can stop recording');
 
       const result = await stopRecording(recordingId);
+      // Served by the signed-in-only download route in routes/meet.js, not the raw storage URL.
+      if (!result.failed) result.url = `/api/recordings/${encodeURIComponent(result.recordingId)}/download`;
 
       await db.prepare(
         `INSERT INTO recordings (id, room_id, meeting_link_code, started_by, status, storage_driver, storage_key, download_url, duration_ms, created_at)
-         VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)`
-      ).run(result.recordingId, roomId, meetingId, u.id, result.driver, result.key, result.url, result.duration, nowStr());
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(result.recordingId, roomId, meetingId, u.id, result.failed ? 'failed' : 'completed',
+        result.driver || null, result.key || null, result.url || null, result.duration, nowStr());
 
       // Notify all participants that recording stopped
       io.to(`sfu:${roomId}`).emit('meet:recording-stopped', {
         recordingId: result.recordingId,
         stoppedBy: u.full_name,
         duration: result.duration,
-        downloadUrl: result.url,
+        downloadUrl: result.url || null,
+        failed: Boolean(result.failed),
       });
 
       return { success: true, recording: result };

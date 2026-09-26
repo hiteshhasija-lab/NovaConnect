@@ -304,7 +304,7 @@ async function startRecording(roomId) {
   const peerProducers = [];
   for (const peer of room.peers.values()) {
     for (const [producerId, producer] of peer.producers.entries()) {
-      peerProducers.push({ producerId, kind: producer.kind, producer });
+      peerProducers.push({ producerId, kind: producer.kind });
     }
   }
   if (peerProducers.length === 0) throw new Error('No active producers to record');
@@ -312,7 +312,7 @@ async function startRecording(roomId) {
   const recordingId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const streams = [];
 
-  for (const { producerId, kind, producer } of peerProducers) {
+  for (const { producerId, kind } of peerProducers) {
     const port = allocateRecordingPort();
     const transport = await room.router.createPlainTransport({
       listenIp: { ip: '127.0.0.1' },
@@ -329,7 +329,7 @@ async function startRecording(roomId) {
     });
     const codec = consumer.rtpParameters.codecs[0];
     streams.push({
-      kind, port, transport, consumer, producer,
+      kind, port, transport, consumer,
       payloadType: codec.payloadType,
       codecName: codec.mimeType.split('/')[1].toUpperCase(),
       clockRate: codec.clockRate,
@@ -360,7 +360,9 @@ async function startRecording(roomId) {
   let audioMap = null;
 
   if (videoStreams.length === 1) {
-    videoMap = `${streams.indexOf(videoStreams[0])}:v`;
+    // All streams arrive through ONE input (the SDP file), so they're addressed as
+    // 0:<stream index in SDP order> — "N:v" would mean a nonexistent input file N.
+    videoMap = `0:${streams.indexOf(videoStreams[0])}`;
   } else if (videoStreams.length > 1) {
     // Simple fixed grid — real gallery/large-view composition is out of MVP scope (see roadmap v2).
     const cols = Math.ceil(Math.sqrt(videoStreams.length));
@@ -368,16 +370,16 @@ async function startRecording(roomId) {
     const tileW = Math.floor(1280 / cols);
     const tileH = Math.floor(720 / rows);
     videoStreams.forEach((s, i) => {
-      filterParts.push(`[${streams.indexOf(s)}:v]scale=${tileW}:${tileH}[v${i}]`);
+      filterParts.push(`[0:${streams.indexOf(s)}]scale=${tileW}:${tileH}[v${i}]`);
     });
     const layout = videoStreams.map((_, i) => `${(i % cols) * tileW}_${Math.floor(i / cols) * tileH}`).join('|');
     filterParts.push(`${videoStreams.map((_, i) => `[v${i}]`).join('')}xstack=inputs=${videoStreams.length}:layout=${layout}[vout]`);
     videoMap = 'vout';
   }
   if (audioStreams.length === 1) {
-    audioMap = `${streams.indexOf(audioStreams[0])}:a`;
+    audioMap = `0:${streams.indexOf(audioStreams[0])}`;
   } else if (audioStreams.length > 1) {
-    filterParts.push(`${audioStreams.map((s) => `[${streams.indexOf(s)}:a]`).join('')}amix=inputs=${audioStreams.length}:normalize=0[aout]`);
+    filterParts.push(`${audioStreams.map((s) => `[0:${streams.indexOf(s)}]`).join('')}amix=inputs=${audioStreams.length}:normalize=0[aout]`);
     audioMap = 'aout';
   }
 
@@ -402,21 +404,6 @@ async function startRecording(roomId) {
   // this the recording can sit at "Could not find codec parameters... unspecified size"
   // indefinitely. requestKeyFrame() forces one immediately.
   await Promise.all(streams.filter((s) => s.kind === 'video').map((s) => s.consumer.requestKeyFrame()));
-
-  // TEMP DIAGNOSTIC — remove once video-recording packet flow is confirmed working.
-  for (const delay of [2000, 8000, 15000]) {
-    setTimeout(async () => {
-      for (const s of streams) {
-        try {
-          const producerStats = await s.producer.getStats();
-          const consumerStats = await s.consumer.getStats();
-          logger.info({ recordingId, delay, kind: s.kind, port: s.port, producerStats, consumerStats }, 'DIAG recording stream stats');
-        } catch (err) {
-          logger.error({ recordingId, delay, kind: s.kind, err }, 'DIAG stats fetch failed');
-        }
-      }
-    }, delay);
-  }
 
   logger.info({ recordingId, roomId, streamCount: streams.length }, 'Recording started');
   return { recordingId };
@@ -465,19 +452,26 @@ async function stopRecording(recordingId) {
     }
   }
 
+  // No file (or an empty one) means ffmpeg captured nothing — report that instead of handing
+  // out a download link to a file that doesn't exist.
+  if (!fs.existsSync(finalPath) || fs.statSync(finalPath).size === 0) {
+    logger.error({ recordingId, duration }, 'Recording produced no file');
+    return { recordingId, duration, failed: true };
+  }
+
+  // If the upload itself fails, the file is still where ffmpeg wrote it (the local upload
+  // root), which the /uploads route serves.
   let storageResult = { driver: 'local', url: `/uploads/${finalName}`, key: finalName };
-  if (fs.existsSync(finalPath)) {
-    try {
-      const stats = fs.statSync(finalPath);
-      const stored = await uploadFile({ path: finalPath, originalname: finalName, mimetype: finalMime, size: stats.size });
-      storageResult = { driver: stored.driver, url: stored.url, key: stored.key };
-    } catch (err) {
-      logger.error({ recordingId, err }, 'Failed to upload recording');
-    }
+  try {
+    const stats = fs.statSync(finalPath);
+    const stored = await uploadFile({ path: finalPath, originalname: finalName, mimetype: finalMime, size: stats.size });
+    storageResult = { driver: stored.driver, url: stored.url, key: stored.key };
+  } catch (err) {
+    logger.error({ recordingId, err }, 'Failed to upload recording');
   }
 
   logger.info({ recordingId, duration }, 'Recording stopped');
-  return { recordingId, duration, ...storageResult };
+  return { recordingId, duration, failed: false, ...storageResult };
 }
 
 function getRecordingStatus(recordingId) {

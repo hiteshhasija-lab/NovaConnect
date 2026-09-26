@@ -73,8 +73,10 @@ socket.on('meet:recording-started',({recordingId,startedBy})=>{
   showRecordingIndicator(recordingId);
 });
 
-socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl})=>{
-  status.textContent=`Recording stopped by ${stoppedBy} (${formatDuration(duration)})`;
+socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl,failed})=>{
+  status.textContent=failed
+    ? `Recording stopped by ${stoppedBy}, but it failed: no video or audio was captured.`
+    : `Recording stopped by ${stoppedBy} (${formatDuration(duration)})`;
   hideRecordingIndicator();
   currentRecordingId=null;
   if(recordBtn){recordBtn.classList.remove('d-none');recordBtn.disabled=false;}
