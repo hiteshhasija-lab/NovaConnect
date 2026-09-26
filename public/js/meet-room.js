@@ -1,6 +1,6 @@
 (()=>{'use strict';
 const socket=io(),code=document.querySelector('[data-code]').dataset.code,peers=new Map(),status=document.getElementById('meetStatus'),videos=document.getElementById('meetVideos'),mic=document.getElementById('meetMic'),camera=document.getElementById('meetCamera'),enter=document.getElementById('meetEnter'),exit=document.getElementById('meetLeave');
-let stream=null,joined=false,joining=false,localPeerId=null,inLobby=false,isAdmitted=false,localStream=null,currentRecordingId=null;
+let stream=null,joined=false,joining=false,localPeerId=null,inLobby=false,isAdmitted=false,localStream=null,currentRecordingId=null,iceServers=[];
 const recordingControls=document.getElementById('recordingControls'),recordBtn=document.getElementById('recordBtn'),stopRecordBtn=document.getElementById('stopRecordBtn');
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
 function tile(id,name,media,muted=false){let item=document.getElementById('peer-'+id);if(!item){item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;item.append(v);const p=document.createElement('p');p.textContent=name;item.append(p);videos.append(item)}item.querySelector('video').srcObject=media;item.querySelector('video').play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>item.querySelector('video').play()});}
@@ -15,8 +15,8 @@ socket.on('sfu:signal',async({from,name,description,candidate})=>{if(!joined)ret
 socket.on('sfu:left',cleanup);socket.on('disconnect',()=>{if(joined){cleanup();status.textContent='Disconnected. Join again when your connection returns.'}});
 
 // Lobby events
-socket.on('meet:admitted', async ({roomId,routerRtpCapabilities,iceServers})=>{
-  iceServers=iceServers;
+socket.on('meet:admitted', async ({roomId,routerRtpCapabilities,iceServers:admittedIceServers})=>{
+  iceServers=admittedIceServers;
   joined=true;inLobby=false;isAdmitted=true;
   enter.hidden=true;exit.hidden=false;
   if(recordingControls)recordingControls.hidden=false;
