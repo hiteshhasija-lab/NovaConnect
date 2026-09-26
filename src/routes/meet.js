@@ -17,11 +17,12 @@ router.get('/api/meet/links/:code',async(req,res)=>{
  const row=await db.prepare('SELECT code,title FROM meet_links WHERE code=? AND active=1').get(req.params.code);
  if(!row)return res.status(404).json({error:'Meeting not found or no longer available.'});res.json(row);
 });
-// Recordings are served through here (signed-in users only), like chat attachments —
-// nothing serves the local upload folder directly.
+// Recordings are served through here, like chat attachments — nothing serves the local upload
+// folder directly. Only the meeting's owner (creator of the meeting link) may download them.
 router.get('/api/recordings/:id/download',async(req,res)=>{
- const rec=await db.prepare("SELECT storage_key,storage_driver,created_at FROM recordings WHERE id=? AND status='completed'").get(req.params.id);
+ const rec=await db.prepare("SELECT r.storage_key,r.storage_driver,r.created_at,m.created_by FROM recordings r JOIN meet_links m ON m.code=r.meeting_link_code WHERE r.id=? AND r.status='completed'").get(req.params.id);
  if(!rec||!rec.storage_key)return res.status(404).render('error',{title:'Not Found',message:'Recording not found.'});
+ if(rec.created_by!==req.session.user.id)return res.status(403).render('error',{title:'Access Denied',message:'Only the meeting owner can download this recording.'});
  if(rec.storage_driver==='s3'||STORAGE_DRIVER==='s3')return res.redirect(await getPublicUrl(rec.storage_key,rec.storage_driver));
  res.download(path.join(LOCAL_UPLOAD_ROOT,rec.storage_key),`NovaConnect recording ${String(rec.created_at).replace(/:/g,'-')}${path.extname(rec.storage_key)}`);
 });

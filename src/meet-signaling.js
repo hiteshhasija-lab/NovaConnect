@@ -344,14 +344,16 @@ function createMeetSignaling(io, db, sfuInstance) {
       ).run(result.recordingId, roomId, meetingId, u.id, result.failed ? 'failed' : 'completed',
         result.driver || null, result.key || null, result.url || null, result.duration, nowStr());
 
-      // Notify all participants that recording stopped
-      io.to(`sfu:${roomId}`).emit('meet:recording-stopped', {
+      // Notify all participants that recording stopped. Only the owner (who is the one stopping
+      // it) gets the download link — the download route refuses everyone else anyway.
+      const stoppedEvent = {
         recordingId: result.recordingId,
         stoppedBy: u.full_name,
         duration: result.duration,
-        downloadUrl: result.url || null,
         failed: Boolean(result.failed),
-      });
+      };
+      socket.to(`sfu:${roomId}`).emit('meet:recording-stopped', { ...stoppedEvent, downloadUrl: null });
+      socket.emit('meet:recording-stopped', { ...stoppedEvent, downloadUrl: result.url || null });
 
       return { success: true, recording: result };
     });
