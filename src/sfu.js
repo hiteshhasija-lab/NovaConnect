@@ -206,11 +206,14 @@ async function consume(room, peerId, transportId, producerId, rtpCapabilities, a
 
   const producer = roomObj.peers.get(appData.sourcePeerId)?.producers?.get(producerId);
   if (!producer) throw new Error('Producer not found');
+  if (!roomObj.router.canConsume({ producerId, rtpCapabilities })) throw new Error('Cannot consume this stream');
 
   const consumer = await transport.consume({
     producerId,
     rtpCapabilities,
-    paused: false,
+    // Starts paused; the client resumes it once its track is wired up, which also makes
+    // mediasoup ask the sender for a fresh keyframe so video appears immediately.
+    paused: true,
     appData,
   });
 
@@ -235,6 +238,22 @@ async function consume(room, peerId, transportId, producerId, rtpCapabilities, a
     type: consumer.type,
     producerPaused: consumer.producerPaused,
   };
+}
+
+// Every producer in the room except the asking peer's own — what a newly admitted peer
+// needs to consume to see and hear everyone already in the meeting.
+function listProducers(roomId, exceptPeerId) {
+  const room = rooms.get(roomId);
+  if (!room) return [];
+  const out = [];
+  for (const [peerId, peer] of room.peers.entries()) {
+    if (peerId === exceptPeerId) continue;
+    for (const producer of peer.producers.values()) {
+      if (producer.closed) continue;
+      out.push({ producerId: producer.id, peerId, kind: producer.kind, fullName: producer.appData.sourceFullName || '' });
+    }
+  }
+  return out;
 }
 
 function getRoomPeers(roomId) {
@@ -501,6 +520,7 @@ module.exports = {
   stopRecording,
   getRecordingStatus,
   getRoomPeers,
+  listProducers,
   closePeerTransports,
   rooms,
 };

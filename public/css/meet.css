@@ -18,6 +18,12 @@
 .meet-lobby-message { margin:0;color:var(--text-muted);font-size:1rem; }
 .meet-lobby-denied { color:var(--brand);margin-top:16px; }
 .meet-lobby-actions { margin-top:16px;display:flex;gap:12px; }
+.meet-lobby-queue { margin:0 0 20px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--brand);border-radius:12px; }
+.meet-lobby-queue h2 { font-size:1rem;font-weight:600;margin:0 0 10px; }
+.meet-lobby-queue ul { list-style:none;margin:0;padding:0; }
+.meet-lobby-queue li { display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--border); }
+.meet-lobby-queue li:first-child { border-top:0; }
+.meet-lobby-queue li span { flex:1;min-width:0;overflow-wrap:anywhere; }
 @keyframes spin { to { transform:rotate(360deg); } }
 @media(max-width:750px){.meet-top-actions{grid-template-columns:1fr}.meet-content{padding:24px 16px}.meet-section-title{align-items:flex-start;flex-direction:column}}
 

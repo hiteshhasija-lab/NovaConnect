@@ -1,7 +1,7 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=2">
+<link rel="stylesheet" href="/css/meet.css?v=3">
 <link rel="stylesheet" href="/css/calls.css?v=3">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
@@ -9,7 +9,7 @@
     <a href="/app" class="nc-btn-text">Back to NovaConnect</a>
   </header>
   <div class="meet-room-preview">
-    <p>Meeting ID: <%= link.code %> · Group call (SFU) · Unlimited participants</p>
+    <p>Meeting ID: <%= link.code %> · Group call</p>
     <div class="meet-room-controls">
       <label><input id="meetMic" type="checkbox" checked> Microphone</label>
       <label><input id="meetCamera" type="checkbox" checked> Camera</label>
@@ -25,16 +25,20 @@
   <div class="meet-lobby" id="meetLobby" hidden>
     <div class="meet-lobby-waiting">
       <div class="meet-lobby-spinner"></div>
-      <p class="meet-lobby-message">Waiting for host to admit you…</p>
+      <p class="meet-lobby-message">Waiting for the meeting owner to let you in…</p>
     </div>
   </div>
+  <aside class="meet-lobby-queue" id="meetLobbyQueue" hidden aria-live="polite">
+    <h2>Waiting to join</h2>
+    <ul id="meetLobbyList"></ul>
+  </aside>
   <div class="meet-videos" id="meetVideos"></div>
 </main>
 <%- include('call-panel') %>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
 <script src="/js/group-call.js?v=1"></script>
-<script src="/js/meet-room.js?v=5"></script>
+<script src="/js/meet-room.js?v=6"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

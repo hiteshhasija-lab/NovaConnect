@@ -1,76 +1,170 @@
 (()=>{'use strict';
-const socket=io(),code=document.querySelector('[data-code]').dataset.code,peers=new Map(),status=document.getElementById('meetStatus'),videos=document.getElementById('meetVideos'),mic=document.getElementById('meetMic'),camera=document.getElementById('meetCamera'),enter=document.getElementById('meetEnter'),exit=document.getElementById('meetLeave');
-let stream=null,joined=false,joining=false,localPeerId=null,inLobby=false,isAdmitted=false,localStream=null,currentRecordingId=null,iceServers=[],device=null,sendTransport=null;
+// Meeting room: everyone sends and receives media through the mediasoup SFU on the server.
+// Joining goes through a lobby — the meeting owner (creator of the link) enters straight away,
+// everyone else waits until the owner admits them.
+const socket=io(),code=document.querySelector('[data-code]').dataset.code,status=document.getElementById('meetStatus'),videos=document.getElementById('meetVideos'),mic=document.getElementById('meetMic'),camera=document.getElementById('meetCamera'),enter=document.getElementById('meetEnter'),exit=document.getElementById('meetLeave');
+const lobby=document.getElementById('meetLobby'),lobbyQueue=document.getElementById('meetLobbyQueue'),lobbyList=document.getElementById('meetLobbyList');
 const recordingControls=document.getElementById('recordingControls'),recordBtn=document.getElementById('recordBtn'),stopRecordBtn=document.getElementById('stopRecordBtn');
+let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,device=null,sendTransport=null,recvTransport=null,recvReady=false,currentRecordingId=null;
+const remotePeers=new Map();   // peerId -> { name, consumers: Map(consumerId -> consumer) }
+const consumedProducers=new Set();
+let pendingProducers=[];       // producers announced before our receive transport existed
+const waitingPeople=new Map(); // owner only: peerId -> fullName
 
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
-function sfuRequest(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'SFU request failed.'))))}
-function tile(id,name,media,muted=false){let item=document.getElementById('peer-'+id);if(!item){item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;item.append(v);const p=document.createElement('p');p.textContent=name;item.append(p);videos.append(item)}item.querySelector('video').srcObject=media;item.querySelector('video').play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>item.querySelector('video').play()});}
-function remove(id){peers.get(id)?.pc.close();peers.delete(id);document.getElementById('peer-'+id)?.remove()}
-function cleanup(){joined=false;inLobby=false;isAdmitted=false;for(const id of [...peers.keys()])remove(id);stream?.getTracks().forEach(t=>t.stop());stream=null;sendTransport?.close();sendTransport=null;device=null;videos.replaceChildren();enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;}
-function peer(id,name){if(peers.has(id))return peers.get(id);const pc=new RTCPeerConnection({iceServers});const p={pc,pending:[]};peers.set(id,p);for(const kind of['audio','video']){const track=stream?.getTracks().find(t=>t.kind===kind);if(track)pc.addTrack(track,stream);else pc.addTransceiver(kind,{direction:'recvonly'})}pc.onicecandidate=e=>{if(e.candidate)request('meet:signal',{to:id,candidate:e.candidate.toJSON()}).catch(e=>{if(joined)status.textContent=e.message})};pc.ontrack=e=>tile(id,name,e.streams[0]||new MediaStream([e.track]));pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')status.textContent='A participant could not connect. A TURN relay may be needed for this network.'};return p;}
 
-// Real mediasoup-client integration. This exists solely so the server has a genuine
-// Producer (with real, negotiated RTP parameters) to feed into recording's PlainTransport
-// consumers — seeing/hearing other participants is handled entirely by the P2P mesh above.
+function tile(id,name,media,muted=false){
+  let item=document.getElementById('peer-'+id);
+  if(!item){item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;item.append(v);const p=document.createElement('p');p.textContent=name;item.append(p);videos.append(item)}
+  const v=item.querySelector('video');v.srcObject=media;
+  v.play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>v.play()});
+}
+
+function removePeer(peerId){
+  const p=remotePeers.get(peerId);
+  if(p)for(const c of p.consumers.values()){consumedProducers.delete(c.producerId);c.close()}
+  remotePeers.delete(peerId);
+  document.getElementById('peer-'+peerId)?.remove();
+}
+
+function cleanup(){
+  joined=false;joining=false;waiting=false;isOwner=false;roomId=null;recvReady=false;pendingProducers=[];
+  for(const id of [...remotePeers.keys()])removePeer(id);
+  consumedProducers.clear();waitingPeople.clear();renderLobbyQueue();
+  stream?.getTracks().forEach(t=>t.stop());stream=null;
+  sendTransport?.close();sendTransport=null;recvTransport?.close();recvTransport=null;device=null;
+  videos.replaceChildren();lobby.hidden=true;
+  if(recordingControls)recordingControls.hidden=true;
+  enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;
+}
+
 async function ensureDevice(routerRtpCapabilities){
   if(device)return device;
   device=new mediasoupClientBundle.Device();
   await device.load({routerRtpCapabilities});
   return device;
 }
-async function produceMedia(roomId){
+
+async function produceMedia(){
   if(!stream||!device||sendTransport)return;
-  const info=await sfuRequest('sfu:create-transport',{roomId,direction:'send'});
+  const info=await request('sfu:create-transport',{roomId,direction:'send'});
   const transport=device.createSendTransport(info);
   sendTransport=transport;
   transport.on('connect',({dtlsParameters},callback,errback)=>{
-    sfuRequest('sfu:connect-transport',{roomId,transportId:transport.id,dtlsParameters}).then(()=>callback()).catch(errback);
+    request('sfu:connect-transport',{roomId,transportId:transport.id,dtlsParameters}).then(()=>callback()).catch(errback);
   });
   transport.on('produce',({kind,rtpParameters},callback,errback)=>{
-    sfuRequest('sfu:produce',{roomId,transportId:transport.id,kind,rtpParameters}).then(r=>callback({id:r.producerId})).catch(errback);
+    request('sfu:produce',{roomId,transportId:transport.id,kind,rtpParameters}).then(r=>callback({id:r.producerId})).catch(errback);
   });
-  for(const track of stream.getTracks()){
-    await transport.produce({track});
-  }
+  for(const track of stream.getTracks())await transport.produce({track});
 }
 
-socket.on('sfu:peer-joined', async ({peerId,userId,fullName})=>{if(peerId===localPeerId)return;const p=peer(peerId,fullName);await p.pc.setLocalDescription(await p.pc.createOffer());await request('sfu:signal',{to:peerId,description:p.pc.localDescription.toJSON()})});
-socket.on('meet:peer-joined', async ({peerId,userId,fullName})=>{if(peerId===localPeerId)return;const p=peer(peerId,fullName);await p.pc.setLocalDescription(await p.pc.createOffer());await request('sfu:signal',{to:peerId,description:p.pc.localDescription.toJSON()})});
-socket.on('sfu:peer-left',({peerId})=>remove(peerId));
-socket.on('sfu:signal',async({from,name,description,candidate})=>{if(!joined&&!inLobby)return;try{const p=peer(from,name);if(description){await p.pc.setRemoteDescription(description);for(const c of p.pending)await p.pc.addIceCandidate(c);p.pending=[];if(description.type==='offer'){await p.pc.setLocalDescription(await p.pc.createAnswer());await request('sfu:signal',{to:from,description:p.pc.localDescription.toJSON()})}}else if(candidate){if(p.pc.remoteDescription)await p.pc.addIceCandidate(candidate);else p.pending.push(candidate)}}catch(e){status.textContent=e.message}});
-socket.on('sfu:left',cleanup);
-socket.on('disconnect',()=>{if(joined||inLobby){cleanup();status.textContent='Disconnected. Join again when your connection returns.'}});
+async function createRecvTransport(){
+  const info=await request('sfu:create-transport',{roomId,direction:'recv'});
+  const transport=device.createRecvTransport(info);
+  recvTransport=transport;
+  transport.on('connect',({dtlsParameters},callback,errback)=>{
+    request('sfu:connect-transport',{roomId,transportId:transport.id,dtlsParameters}).then(()=>callback()).catch(errback);
+  });
+}
+
+// Receives one remote stream (a participant's audio or video) from the SFU and shows it in their tile.
+async function consumeProducer({producerId,peerId,fullName}){
+  if(!joined||!recvTransport||consumedProducers.has(producerId))return;
+  consumedProducers.add(producerId);
+  try{
+    const r=await request('sfu:consume',{roomId,transportId:recvTransport.id,producerId,rtpCapabilities:device.rtpCapabilities,appData:{sourcePeerId:peerId}});
+    const consumer=await recvTransport.consume({id:r.id,producerId:r.producerId,kind:r.kind,rtpParameters:r.rtpParameters});
+    if(!joined){consumer.close();return}
+    let p=remotePeers.get(peerId);
+    if(!p){p={name:fullName||'Participant',consumers:new Map()};remotePeers.set(peerId,p)}
+    p.consumers.set(consumer.id,consumer);
+    tile(peerId,p.name,new MediaStream([...p.consumers.values()].map(c=>c.track)));
+    await request('sfu:resume-consumer',{roomId,consumerId:consumer.id});
+  }catch(e){consumedProducers.delete(producerId);if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}
+}
+
+// Called once we are actually in the meeting — straight away for the owner, on admission for others.
+async function enterMeeting(){
+  if(joined||!roomId)return;
+  joined=true;joining=false;waiting=false;
+  lobby.hidden=true;enter.hidden=true;exit.hidden=false;
+  mic.disabled=!stream?.getAudioTracks().length;camera.disabled=!stream?.getVideoTracks().length;
+  if(recordingControls)recordingControls.hidden=!isOwner;
+  if(stream)tile('local','You',stream,true);
+  status.textContent='Connected.';
+  try{
+    if(isOwner){
+      const l=await request('meet:lobby-list',{roomId});
+      for(const w of l.waiting)waitingPeople.set(w.peerId,w.fullName);
+      renderLobbyQueue();
+    }
+    await createRecvTransport();
+    recvReady=true;
+    const {producers}=await request('sfu:get-producers',{roomId});
+    const queued=pendingProducers;pendingProducers=[];
+    for(const p of [...producers,...queued])await consumeProducer(p);
+    if(!producers.length&&!remotePeers.size)status.textContent='You are the first participant. Share the meeting link to invite others.';
+    try{await produceMedia()}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
+  }catch(e){leaveMeeting();status.textContent=e.message}
+}
+
+function leaveMeeting(){socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup()}
+
+// Owner's list of people waiting in the lobby, with Admit / Deny.
+function renderLobbyQueue(){
+  if(!lobbyQueue)return;
+  lobbyList.replaceChildren();
+  for(const [peerId,name] of waitingPeople){
+    const li=document.createElement('li');
+    const who=document.createElement('span');who.textContent=name;
+    const admit=document.createElement('button');admit.type='button';admit.className='btn btn-primary btn-sm';admit.textContent='Admit';
+    const deny=document.createElement('button');deny.type='button';deny.className='btn btn-outline-secondary btn-sm';deny.textContent='Deny';
+    const decide=async(event,btns)=>{btns.forEach(b=>b.disabled=true);try{await request(event,{roomId,peerId});waitingPeople.delete(peerId);renderLobbyQueue()}catch(e){status.textContent=e.message;waitingPeople.delete(peerId);renderLobbyQueue()}};
+    admit.onclick=()=>decide('meet:admit',[admit,deny]);
+    deny.onclick=()=>decide('meet:deny',[admit,deny]);
+    li.append(who,admit,deny);lobbyList.append(li);
+  }
+  lobbyQueue.hidden=!joined||!isOwner||waitingPeople.size===0;
+}
+
+socket.on('sfu:new-producer',p=>{if(!joined)return;if(!recvReady)pendingProducers.push(p);else consumeProducer(p)});
+socket.on('sfu:peer-joined',({fullName})=>{if(joined)status.textContent=`${fullName} joined.`});
+socket.on('sfu:peer-left',({peerId,fullName})=>{if(!remotePeers.has(peerId)&&!document.getElementById('peer-'+peerId))return;removePeer(peerId);if(joined)status.textContent=`${fullName||'A participant'} left.`});
+socket.on('disconnect',()=>{if(joined||waiting||joining){cleanup();status.textContent='Disconnected. Join again when your connection returns.'}});
 
 // Lobby events
-socket.on('meet:admitted', async ({roomId,routerRtpCapabilities,iceServers:admittedIceServers})=>{
-  iceServers=admittedIceServers;
-  joined=true;inLobby=false;isAdmitted=true;
-  enter.hidden=true;exit.hidden=false;
-  if(recordingControls)recordingControls.hidden=false;
-  status.textContent='Connected.';
-  try {
-    if(mic.checked||camera.checked){
-      stream=await navigator.mediaDevices.getUserMedia({audio:true,video:true});
-      localStream=stream;
-      stream.getAudioTracks().forEach(t=>t.enabled=false); // muted by default
-      stream.getVideoTracks().forEach(t=>t.enabled=false); // video off by default
-      mic.checked=false;camera.checked=false;
-    }
-    if(stream)tile('local','You',stream,true);
-    if(stream){
-      await ensureDevice(routerRtpCapabilities);
-      try{await produceMedia(roomId)}catch(e){status.textContent='Media publish failed: '+e.message}
-    }
-  }catch(e){socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup();status.textContent=e.message}
-});
+socket.on('meet:admitted',()=>{if(waiting||joining)enterMeeting()});
+socket.on('meet:denied',()=>{cleanup();status.textContent='The meeting owner declined your request to join.'});
+socket.on('meet:lobby-waiting',({peerId,fullName})=>{if(!joined||!isOwner)return;waitingPeople.set(peerId,fullName);renderLobbyQueue();status.textContent=`${fullName} is waiting to join.`});
+socket.on('meet:lobby-left',({peerId})=>{if(waitingPeople.delete(peerId))renderLobbyQueue()});
 
-socket.on('meet:denied',()=>{cleanup();status.textContent='Meeting request denied by host.';enter.hidden=false;enter.disabled=false;});
+enter.onclick=async()=>{
+  if(joining||joined||waiting)return;
+  joining=true;enter.disabled=true;status.textContent='Connecting…';
+  try{
+    if(mic.checked||camera.checked)stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
+    if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
+    const r=await request('meet:join',{code});
+    roomId=r.roomId;isOwner=r.isOwner;
+    await ensureDevice(r.routerRtpCapabilities);
+    const a=await request('meet:request-join',{roomId});
+    if(a.admitted)return enterMeeting();
+    joining=false;waiting=true;
+    lobby.hidden=false;enter.hidden=true;exit.hidden=false;
+    status.textContent='Waiting for the meeting owner to let you in…';
+  }catch(e){leaveMeeting();status.textContent=e.message}
+};
 
-// Recording events
-socket.on('meet:recording-started',({recordingId,startedBy})=>{
+mic.onchange=()=>stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);
+camera.onchange=()=>stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);
+exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
+window.addEventListener('pagehide',leaveMeeting);
+
+// Recording events (recording controls are shown to the meeting owner only)
+socket.on('meet:recording-started',({startedBy})=>{
   status.textContent=`Recording started by ${startedBy}`;
-  showRecordingIndicator(recordingId);
+  showRecordingIndicator();
 });
 
 socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl,failed})=>{
@@ -81,179 +175,65 @@ socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl,
   currentRecordingId=null;
   if(recordBtn){recordBtn.classList.remove('d-none');recordBtn.disabled=false;}
   if(stopRecordBtn){stopRecordBtn.classList.add('d-none');stopRecordBtn.disabled=false;}
-  if (downloadUrl) {
-    showDownloadLink(downloadUrl, recordingId);
-  }
+  if(downloadUrl)showDownloadLink(downloadUrl,recordingId);
 });
 
-socket.on('meet:recording-status',({status})=>{
-  if (status && status.recordingId) {
-    updateRecordingStatus(status);
-  }
-});
-
-socket.on('meet:lobby-waiting',({peerId,userId,fullName})=>{if(joined){status.textContent=`${fullName} is waiting in lobby`;}});
-socket.on('meet:lobby-left',({peerId})=>{remove(peerId);});
-
-function showJoinMeetingButton(){
-  const joinBtn=document.createElement('button');
-  joinBtn.className='btn btn-primary mt-2';
-  joinBtn.textContent='Join Meeting';
-  joinBtn.id='meetJoinBtn';
-  joinBtn.onclick=async()=>{
-    joinBtn.disabled=true;
-    joinBtn.textContent='Requesting entry…';
-    try{
-      await sfuRequest('meet:request-join',{roomId:'meet:'+code});
-      status.textContent='Waiting for host to admit you…';
-    }catch(e){
-      status.textContent=e.message;
-      joinBtn.disabled=false;
-      joinBtn.textContent='Join Meeting';
-    }
-  };
-  const statusEl=document.getElementById('meetStatus');
-  statusEl.parentNode.insertBefore(joinBtn,statusEl.nextSibling);
-}
-
-// Join Meeting button click handler
-enter.onclick=async()=>{
-  if(joining)return;
-  if(inLobby){
-    const joinBtn=document.getElementById('meetJoinBtn');
-    if(joinBtn){
-      joinBtn.disabled=true;
-      joinBtn.textContent='Requesting entry…';
-      try{
-        await sfuRequest('meet:request-join',{roomId:'meet:'+code});
-        status.textContent='Waiting for host to admit you…';
-        document.getElementById('meetJoinBtn').remove();
-      }catch(e){
-        status.textContent=e.message;
-      }
-    }
-    return;
-  }
-  joining=true;
-  enter.disabled=true;
-  status.textContent='Connecting…';
-  try{
-    if(mic.checked||camera.checked){
-      stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
-      localStream=stream;
-    }
-    if(!joining){stream?.getTracks().forEach(t=>t.stop());return}
-    // meet-signaling.js always puts a new peer in a lobby state first (meet:join), then
-    // requires meet:request-join to actually admit them — there's no separate host-approval
-    // UI yet, so we self-admit immediately, which also matches the "instant join" UX this
-    // page has always shown. sfu:join (the old flat join) talks to a different, legacy
-    // module (sfu-signaling.js) that races meet-signaling.js's handlers for the same events
-    // and doesn't share its lobby/admission state, so it can never work for real media.
-    const r=await request('meet:join',{code});
-    await request('meet:request-join',{roomId:r.roomId});
-    iceServers=r.iceServers;
-    joined=true;
-    joining=false;
-    enter.hidden=true;
-    exit.hidden=false;
-    mic.disabled=!stream?.getAudioTracks().length;
-    camera.disabled=!stream?.getVideoTracks().length;
-    if(stream)tile('local','You',stream,true);
-    if(recordingControls)recordingControls.hidden=false;
-    status.textContent=r.peers.length?'Connected.':'You are the first participant. Share the meeting link to invite others.';
-    if(stream){
-      try{
-        await ensureDevice(r.routerRtpCapabilities);
-        await produceMedia(r.roomId);
-      }catch(e){status.textContent='Media publish failed: '+e.message}
-    }
-    for(const u of r.peers){const p=peer(u.peerId,u.fullName);await p.pc.setLocalDescription(await p.pc.createOffer());await request('sfu:signal',{to:u.peerId,description:p.pc.localDescription.toJSON()})}
-  }catch(e){socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup();status.textContent=e.message}
-};
-
-mic.onchange=()=>stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);camera.onchange=()=>stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);exit.onclick=()=>{socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup();status.textContent='You left the meeting.'};window.addEventListener('pagehide',()=>{socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup()});
-
-// Recording helper functions
-function showRecordingIndicator() {
-  const indicator = document.createElement('div');
-  indicator.id = 'recordingIndicator';
-  indicator.className = 'meet-recording-indicator';
-  indicator.innerHTML = '<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
+function showRecordingIndicator(){
+  hideRecordingIndicator();
+  const indicator=document.createElement('div');
+  indicator.id='recordingIndicator';
+  indicator.className='meet-recording-indicator';
+  indicator.innerHTML='<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
   document.body.appendChild(indicator);
-
-  let seconds = 0;
-  const timerEl = document.getElementById('recordingTimer');
-  if (timerEl) {
-    window.recordingTimerInterval = setInterval(() => {
-      seconds++;
-      const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-      const secs = (seconds % 60).toString().padStart(2, '0');
-      timerEl.textContent = `${mins}:${secs}`;
-    }, 1000);
-  }
+  let seconds=0;
+  const timerEl=document.getElementById('recordingTimer');
+  window.recordingTimerInterval=setInterval(()=>{
+    seconds++;
+    timerEl.textContent=`${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
+  },1000);
 }
 
-function hideRecordingIndicator() {
-  const indicator = document.getElementById('recordingIndicator');
-  if (indicator) indicator.remove();
-  if (window.recordingTimerInterval) {
-    clearInterval(window.recordingTimerInterval);
-    window.recordingTimerInterval = null;
-  }
+function hideRecordingIndicator(){
+  document.getElementById('recordingIndicator')?.remove();
+  if(window.recordingTimerInterval){clearInterval(window.recordingTimerInterval);window.recordingTimerInterval=null}
 }
 
-function showDownloadLink(downloadUrl, recordingId) {
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.className = 'meet-download-link btn btn-success mt-2';
-  link.target = '_blank';
-  link.textContent = `Download recording (${recordingId})`;
-  document.getElementById('meetStatus').parentNode.appendChild(link);
+function showDownloadLink(downloadUrl,recordingId){
+  const link=document.createElement('a');
+  link.href=downloadUrl;
+  link.className='meet-download-link btn btn-success mt-2';
+  link.target='_blank';
+  link.textContent=`Download recording (${recordingId})`;
+  status.parentNode.appendChild(link);
 }
 
-function formatDuration(ms) {
-  const seconds = Math.floor(ms / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+function formatDuration(ms){
+  const seconds=Math.floor(ms/1000);
+  return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
 }
 
-function updateRecordingStatus(recStatus) {
-  if (recStatus.recordingId && document.getElementById('recordingIndicator')) {
-    const statusEl = document.getElementById('recordingIndicator').querySelector('.recording-status');
-    if (statusEl) statusEl.textContent = recStatus.status || '';
-  }
-}
-
-async function startRecording() {
-  if ((!joined && !isAdmitted) || !recordBtn || !stopRecordBtn) return;
-  try {
-    recordBtn.disabled = true;
-    const result = await sfuRequest('meet:start-recording', { roomId: 'meet:' + code });
-    currentRecordingId = result.recordingId;
+async function startRecording(){
+  if(!joined||!isOwner)return;
+  try{
+    recordBtn.disabled=true;
+    const result=await request('meet:start-recording',{roomId});
+    currentRecordingId=result.recordingId;
     recordBtn.classList.add('d-none');
     stopRecordBtn.classList.remove('d-none');
-    stopRecordBtn.disabled = false;
-    status.textContent = 'Recording started';
-  } catch (e) {
-    status.textContent = e.message;
-    recordBtn.disabled = false;
-  }
+    stopRecordBtn.disabled=false;
+    status.textContent='Recording started';
+  }catch(e){status.textContent=e.message;recordBtn.disabled=false}
 }
 
-async function stopRecording() {
-  if (!currentRecordingId || !stopRecordBtn) return;
-  try {
-    stopRecordBtn.disabled = true;
-    await sfuRequest('meet:stop-recording', { roomId: 'meet:' + code, recordingId: currentRecordingId });
-    // Button/indicator state resets on the meet:recording-stopped broadcast below,
-    // so it stays correct even if another participant is the one who actually sees this ack.
-  } catch (e) {
-    status.textContent = e.message;
-    stopRecordBtn.disabled = false;
-  }
+async function stopRecording(){
+  if(!currentRecordingId)return;
+  try{
+    stopRecordBtn.disabled=true;
+    // Button/indicator state resets on the meet:recording-stopped event.
+    await request('meet:stop-recording',{roomId,recordingId:currentRecordingId});
+  }catch(e){status.textContent=e.message;stopRecordBtn.disabled=false}
 }
 
-if (recordBtn) recordBtn.onclick = startRecording;
-if (stopRecordBtn) stopRecordBtn.onclick = stopRecording;
+if(recordBtn)recordBtn.onclick=startRecording;
+if(stopRecordBtn)stopRecordBtn.onclick=stopRecording;
 })();
