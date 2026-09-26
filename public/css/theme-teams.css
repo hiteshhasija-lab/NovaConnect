@@ -1,0 +1,57 @@
+/* NovaConnect: Microsoft Teams-inspired theme — purple rail, neutral surfaces, rounded avatars. */
+:root {
+ --brand:#5b5fc7;--brand-dark:#464775;--brand-rgb:91,95,199;--brand-dark-rgb:70,71,117;
+ --bg:#f5f5f5;--surface:#fff;--surface-2:#eeeef7;--border:#e1e1e6;--text:#242424;--text-muted:#616161;
+ --glow-1:rgba(91,95,199,.10);--glow-2:rgba(70,71,117,.08);--glow-3:rgba(139,92,246,.06);
+ --brand-action:#5b5fc7;--brand-action-hover:#464775;
+ --bs-primary:#5b5fc7;--bs-primary-rgb:91,95,199;--bs-link-color:#5b5fc7;--bs-link-hover-color:#464775;
+}
+[data-bs-theme="dark"] {
+ --brand:#8b8cc7;--brand-dark:#33344a;--brand-rgb:139,140,199;--brand-dark-rgb:51,52,74;
+ --bg:#1f1f1f;--surface:#292929;--surface-2:#333333;--border:#484848;--text:#f5f5f5;--text-muted:#c7c7c7;
+ --surface-glass:rgba(41,41,41,.9);--surface-glass-dense:rgba(41,41,41,.96);
+ --glow-1:rgba(139,140,199,.10);--glow-2:rgba(51,52,74,.10);--glow-3:rgba(139,92,246,.06);
+ --bs-primary:#8b8cc7;--bs-primary-rgb:139,140,199;--bs-link-color:#8b8cc7;--bs-link-hover-color:#b0b1e0;
+}
+
+/* Teams' signature dark-purple left rail with a solid white left-edge accent on the active item. */
+.rail { background:#464775; }
+[data-bs-theme="dark"] .rail { background:#211f38; }
+.rail-btn { color:#d6d6f5; position:relative; border-radius:.25rem; }
+.rail-btn:hover { background:rgba(255,255,255,.08); color:#fff; }
+.rail-btn.active { background:rgba(255,255,255,.12); color:#fff; }
+.rail-btn.active::before { content:''; position:absolute; left:-.6rem; top:.35rem; bottom:.35rem; width:3px; border-radius:2px; background:#fff; }
+.rail-badge { background:#c4314b; }
+
+.btn-primary,.login-btn-primary { --bs-btn-bg:#5b5fc7;--bs-btn-border-color:#5b5fc7;--bs-btn-hover-bg:#464775;--bs-btn-hover-border-color:#464775;--bs-btn-active-bg:#33344a;--bs-btn-active-border-color:#33344a;--bs-btn-disabled-bg:#5b5fc7;--bs-btn-disabled-border-color:#5b5fc7;--bs-btn-color:#fff;--bs-btn-hover-color:#fff;--bs-btn-active-color:#fff;--bs-btn-focus-shadow-rgb:91,95,199; }
+.btn-outline-primary { --bs-btn-color:var(--brand);--bs-btn-border-color:var(--brand);--bs-btn-hover-bg:#5b5fc7;--bs-btn-hover-border-color:#5b5fc7;--bs-btn-hover-color:white;--bs-btn-active-bg:#464775;--bs-btn-active-border-color:#464775;--bs-btn-active-color:white; }
+.chat-action-primary,.meet-top-actions .meet-create,.meeting-mark,.composer-send-btn { background:var(--brand-action);color:white;border-color:var(--brand-action); }
+.login-btn-primary { background:#5b5fc7;color:white;box-shadow:0 4px 14px #5b5fc733; }
+.login-btn-primary:hover { background:#464775;color:white; }
+.form-control:focus,.form-select:focus { border-color:var(--brand);box-shadow:0 0 0 .2rem rgba(var(--brand-rgb),.18); }
+.form-check-input:checked { background-color:var(--brand-action);border-color:var(--brand-action); }
+.dropdown-item.active,.dropdown-item:active { background:var(--brand-action);color:white; }
+.text-primary { color:var(--brand)!important; }.bg-primary,.text-bg-primary { background-color:var(--brand-action)!important;color:white!important; }
+.section-title { color:var(--brand); }
+
+/* Rounded, initials-style avatars in Teams' flat purple/violet palette. */
+.user-avatar { background:linear-gradient(135deg,#5b5fc7,#8b8cc7); border-radius:50%; }
+
+.meet-schedule i,.meet-join i { color:var(--brand); }
+.nc-call,.meet-video { background:#292929;border-color:#484848; }.nc-call-kind { color:#d6d6f5; }.nc-call-status { color:#eeeef7; }
+.nc-call video,.meet-video video { background:#1f1f1f; }.nc-call-controls .btn-outline-light[aria-pressed="true"] { background:#eeeef7;color:#33344a; }
+#railPeople { font-size:.744rem;min-height:0;padding:.5rem 0 .35rem;gap:.15rem; }
+#railPeople svg { width:1.65rem;height:1.65rem; }
+
+/* Preserve the original login background image defined in style.css. */
+.login-card { background:rgba(31,31,31,.9);box-shadow:0 16px 48px #0005;border-color:#5b5fc7; }
+.login-title { background:linear-gradient(135deg,#fff,#c7c8ec);background-clip:text;-webkit-background-clip:text; }
+.rewrite-popover-label svg,.ai-empty-mark svg { color:var(--brand); }
+.rewrite-style-chip:hover,.ai-suggestion-chip:hover { border-color:var(--brand);color:var(--brand); }
+.ai-empty-title,.ai-msg-avatar { background:linear-gradient(135deg,#5b5fc7,#8b8cc7); }
+
+/* Neutral profile avatar in the navigation rail, in both color modes. */
+.rail-avatar-btn > .user-avatar { background:#e1e1e6; color:#464775; }
+
+/* Teams-style rounded, card-like message bubbles instead of flat rows. */
+.msg-bubble,.chat-message,.message-item { border-radius:.75rem; }
