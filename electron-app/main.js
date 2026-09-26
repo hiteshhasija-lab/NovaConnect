@@ -4,9 +4,11 @@ const Store = require('electron-store');
 
 const store = new Store({ defaults: { serverUrl: '' } });
 
-// Set this at build time (e.g. `NOVACONNECT_DEFAULT_SERVER_URL=https://meet.example.com npm run dist:win`)
-// so a distributed installer already points at your server and users are never prompted on first run.
-const BUILT_IN_DEFAULT_SERVER_URL = process.env.NOVACONNECT_DEFAULT_SERVER_URL || '';
+// Baked into the packaged package.json at build time
+// (`npm run dist:win -- -c.extraMetadata.novaconnectDefaultServerUrl=https://novaconnect.example.com`)
+// so a distributed installer already points at your server and users aren't prompted on first run.
+// An env var alone wouldn't work: it'd be read on the user's machine at runtime, not at build time.
+const BUILT_IN_DEFAULT_SERVER_URL = require('./package.json').novaconnectDefaultServerUrl || '';
 
 let mainWindow = null;
 let settingsWindow = null;

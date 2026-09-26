@@ -1,0 +1,49 @@
+name: Build desktop apps (Windows + macOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'electron-app/**'
+      - '.github/workflows/build-desktop-apps.yml'
+
+# To bake a default server address into the builds (so users aren't prompted on first launch),
+# set a repo variable: Settings > Secrets and variables > Actions > Variables >
+# NOVACONNECT_DEFAULT_SERVER_URL, e.g. https://novaconnect.example.com. Leave it unset to prompt.
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Build Windows installer
+        run: npm run dist:win -- "-c.extraMetadata.novaconnectDefaultServerUrl=${{ vars.NOVACONNECT_DEFAULT_SERVER_URL }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaConnect-Windows-Installer
+          path: electron-app/dist/*.exe
+
+  macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: electron-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Build macOS DMGs (Apple Silicon + Intel)
+        run: npm run dist:mac -- "-c.extraMetadata.novaconnectDefaultServerUrl=${{ vars.NOVACONNECT_DEFAULT_SERVER_URL }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaConnect-macOS-DMGs
+          path: electron-app/dist/*.dmg
