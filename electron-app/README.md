@@ -60,6 +60,11 @@ Neither build is signed with a paid certificate, so each OS warns once:
   ("Apple could not verify…") → click **Done**, then **System Settings → Privacy & Security**,
   scroll down to NovaConnect, click **Open Anyway**. The Mac app is ad-hoc signed
   (`scripts/adhoc-sign-mac.js`); without that, macOS would call a downloaded copy "damaged".
+- **macOS Local Network access:** macOS blocks apps from reaching LAN addresses (like
+  `10.0.0.x`) until allowed. Click **Allow** when asked to "find devices on local networks". If
+  the app shows "Can't reach NovaConnect … ERR_ADDRESS_UNREACHABLE" while the server works in a
+  browser, turn NovaConnect on in **System Settings → Privacy & Security → Local Network**,
+  then click **Try again**. A reinstalled or rebuilt copy may need this again.
 
 Removing these warnings needs a code-signing certificate (Windows) and an Apple
 "Developer ID Application" certificate plus notarization (macOS).
