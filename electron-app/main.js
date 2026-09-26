@@ -132,20 +132,32 @@ ipcMain.handle('settings:save', (_e, { serverUrl }) => {
   return true;
 });
 
-app.whenReady().then(() => {
-  createTray();
-  if (getServerUrl()) {
-    createMainWindow();
-  } else {
-    openSettingsWindow();
-  }
-
-  app.on('activate', () => {
-    if (mainWindow) { mainWindow.show(); }
-    else if (getServerUrl()) { createMainWindow(); }
+// Closing the window only hides it to the tray, so a user double-clicking the shortcut again
+// would otherwise start a second, windowless copy. Hand off to the running one instead.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    else if (settingsWindow) { settingsWindow.focus(); }
     else { openSettingsWindow(); }
   });
-});
+
+  app.whenReady().then(() => {
+    createTray();
+    if (getServerUrl()) {
+      createMainWindow();
+    } else {
+      openSettingsWindow();
+    }
+
+    app.on('activate', () => {
+      if (mainWindow) { mainWindow.show(); }
+      else if (getServerUrl()) { createMainWindow(); }
+      else { openSettingsWindow(); }
+    });
+  });
+}
 
 app.on('before-quit', () => { isQuitting = true; });
 app.on('window-all-closed', () => {
