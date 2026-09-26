@@ -1,8 +1,62 @@
 <%- include('partials/head') %>
 <%- include('partials/topbar') %>
 <div class="container py-4">
-  <h4 class="section-title"><i class="bi bi-people me-2"></i>Manage Users</h4>
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="section-title mb-0"><i class="bi bi-people me-2"></i>Manage Users</h4>
+    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#addUserForm" aria-expanded="<%= error ? 'true' : 'false' %>" aria-controls="addUserForm">
+      <i class="bi bi-person-plus me-1"></i>Add user
+    </button>
+  </div>
   <p><a href="/admin/reports">Review chat concerns</a></p>
+
+  <% if (added) { %><div class="alert alert-success py-2 small">User @<%= added %> was created. They can sign in now.</div><% } %>
+
+  <div class="collapse<%= error ? ' show' : '' %> mb-3" id="addUserForm">
+    <div class="card card-body">
+      <h6 class="mb-3">Add a new user</h6>
+      <% if (error) { %><div class="alert alert-danger py-2 small"><%= error %></div><% } %>
+      <form method="POST" action="/admin/users" autocomplete="off">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small" for="newFullName">Full name *</label>
+            <input type="text" class="form-control form-control-sm" id="newFullName" name="full_name" value="<%= form.full_name || '' %>" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small" for="newUsername">Username *</label>
+            <input type="text" class="form-control form-control-sm" id="newUsername" name="username" value="<%= form.username || '' %>" required autocapitalize="none" spellcheck="false">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small" for="newEmail">Email</label>
+            <input type="email" class="form-control form-control-sm" id="newEmail" name="email" value="<%= form.email || '' %>">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small" for="newTitle">Title</label>
+            <input type="text" class="form-control form-control-sm" id="newTitle" name="title" value="<%= form.title || '' %>">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small" for="newRole">Role</label>
+            <select class="form-select form-select-sm" id="newRole" name="role">
+              <option value="member" <%= form.role !== 'admin' ? 'selected' : '' %>>Member</option>
+              <option value="admin" <%= form.role === 'admin' ? 'selected' : '' %>>Admin</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small" for="newPassword">Password * <span class="text-muted">(8+ characters)</span></label>
+            <input type="password" class="form-control form-control-sm" id="newPassword" name="password" minlength="8" required autocomplete="new-password">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small" for="newConfirmPassword">Confirm password *</label>
+            <input type="password" class="form-control form-control-sm" id="newConfirmPassword" name="confirm_password" minlength="8" required autocomplete="new-password">
+          </div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm">Create user</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#addUserForm">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="card">
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">
