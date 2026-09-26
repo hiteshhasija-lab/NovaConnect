@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, session, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, session, shell, nativeImage } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -95,7 +95,15 @@ function createMainWindow() {
     return { action: 'deny' };
   });
 
-  mainWindow.loadURL(getServerUrl());
+  // Without this, an unreachable/mistyped server just leaves an empty window with no hint of
+  // what went wrong. -3 (ERR_ABORTED) is a navigation superseded by another (e.g. a redirect),
+  // not a real failure.
+  mainWindow.webContents.on('did-fail-load', (_e, code, description, url, isMainFrame) => {
+    if (!isMainFrame || code === -3) return;
+    showLoadError(url, description);
+  });
+
+  loadServer();
 
   // Minimize-to-tray on close, matching Teams' own "stay signed in in the background" behavior,
   // rather than fully quitting (which would drop socket connections / miss notifications).
@@ -107,8 +115,28 @@ function createMainWindow() {
   });
 }
 
+function showLoadError(url, description) {
+  mainWindow.loadFile(path.join(__dirname, 'error.html'), { query: { url, error: description } });
+}
+
+function loadServer() {
+  // A server address with no host behind it on the LAN (no ARP reply) never fails — the TCP
+  // connect just hangs — so did-fail-load alone would leave the window empty indefinitely.
+  const url = getServerUrl();
+  const timer = setTimeout(() => {
+    mainWindow.webContents.stop();
+    showLoadError(url, 'The server did not respond within 15 seconds.');
+  }, 15000);
+  mainWindow.webContents.once('did-stop-loading', () => clearTimeout(timer));
+  mainWindow.loadURL(url).catch(() => {});
+}
+
 function createTray() {
-  tray = new Tray(path.join(__dirname, 'build', 'icon.png'));
+  // Tray/menu-bar icons are 16pt; macOS draws the image at its full pixel size, so the 1024px
+  // app icon must be scaled down (at 2x for sharpness on Retina/high-DPI displays).
+  const full = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png'));
+  const trayIcon = nativeImage.createFromBuffer(full.resize({ width: 32, height: 32 }).toPNG(), { scaleFactor: 2 });
+  tray = new Tray(trayIcon);
   tray.setToolTip('NovaConnect');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open NovaConnect', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
@@ -120,11 +148,13 @@ function createTray() {
 }
 
 ipcMain.handle('settings:get', () => ({ serverUrl: getServerUrl() }));
+ipcMain.handle('app:retry', () => { if (mainWindow) loadServer(); });
+ipcMain.handle('app:open-settings', () => { openSettingsWindow(); });
 ipcMain.handle('settings:save', (_e, { serverUrl }) => {
   store.set('serverUrl', serverUrl);
   settingsWindow?.close();
   if (mainWindow) {
-    mainWindow.loadURL(serverUrl);
+    loadServer();
     mainWindow.show();
   } else {
     createMainWindow();

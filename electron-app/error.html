@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>NovaConnect — Can't connect</title>
+<style>
+  body {
+    margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #242424;
+  }
+  .card {
+    background: #fff; border: 1px solid #e1e1e6; border-radius: 10px; padding: 32px 36px;
+    max-width: 440px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,.06);
+  }
+  img { width: 64px; height: 64px; margin-bottom: 12px; }
+  h1 { font-size: 18px; margin: 0 0 8px; color: #464775; }
+  p { font-size: 13px; color: #616161; margin: 0 0 6px; line-height: 1.5; word-break: break-all; }
+  code { background: #eeeef7; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .row { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
+  button { font-size: 13px; padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; }
+  .primary { background: #5b5fc7; color: #fff; }
+  .primary:hover { background: #464775; }
+  .secondary { background: #eeeef7; color: #464775; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img src="build/icon.png" alt="">
+    <h1>Can't reach NovaConnect</h1>
+    <p>Couldn't connect to <code id="url"></code></p>
+    <p id="error"></p>
+    <p>Check that the server is running and this computer is on the same network, or change the server address.</p>
+    <div class="row">
+      <button class="secondary" id="settings">Change server</button>
+      <button class="primary" id="retry">Try again</button>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    document.getElementById('url').textContent = params.get('url') || '(no server set)';
+    document.getElementById('error').textContent = params.get('error') || '';
+    document.getElementById('retry').onclick = () => window.novaconnectSettings.retry();
+    document.getElementById('settings').onclick = () => window.novaconnectSettings.openSettings();
+  </script>
+</body>
+</html>

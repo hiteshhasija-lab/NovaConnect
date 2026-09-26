@@ -1,7 +1,7 @@
 {
   "name": "novaconnect-desktop",
   "productName": "NovaConnect",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "NovaConnect desktop client for Windows — a thin native shell around the NovaConnect web app, the same architecture Teams/Slack/Discord desktop clients use.",
   "main": "main.js",
   "private": true,
@@ -27,6 +27,7 @@
       "main.js",
       "preload.js",
       "settings.html",
+      "error.html",
       "build/icon.png",
       "package.json"
     ],
