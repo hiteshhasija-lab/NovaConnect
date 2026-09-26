@@ -14,7 +14,7 @@ function createSfuSignaling(io, db) {
     // Join SFU room
     socket.on('sfu:join', async ({ roomId }, callback) => {
       try {
-        if (!roomId) return callback?.({ error: 'roomId required' });
+        if (!roomId) return callback?.({ ok: false, error: 'roomId required' });
 
         const room = await createRoom(roomId);
         const peerId = `${userId}-${socket.id}`;
@@ -50,13 +50,14 @@ function createSfuSignaling(io, db) {
         }
 
         callback?.({
+          ok: true,
           peerId,
           peers: peerDetails,
           routerRtpCapabilities: room.router.rtpCapabilities,
         });
       } catch (err) {
         logger.error({ err, roomId, userId }, 'SFU join failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 
@@ -65,14 +66,14 @@ function createSfuSignaling(io, db) {
       try {
         const mapping = roomUserMap.get(socket.id);
         if (!mapping || mapping.roomId !== roomId) {
-          return callback?.({ error: 'Not in room' });
+          return callback?.({ ok: false, error: 'Not in room' });
         }
 
         const transportInfo = await createTransport(roomId, mapping.peerId, direction);
-        callback?.(transportInfo);
+        callback?.({ ok: true, ...transportInfo });
       } catch (err) {
         logger.error({ err, roomId, userId: socket.user.id }, 'Create transport failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 
@@ -81,14 +82,14 @@ function createSfuSignaling(io, db) {
       try {
         const mapping = roomUserMap.get(socket.id);
         if (!mapping || mapping.roomId !== roomId) {
-          return callback?.({ error: 'Not in room' });
+          return callback?.({ ok: false, error: 'Not in room' });
         }
 
         await connectTransport(roomId, mapping.peerId, transportId, dtlsParameters);
-        callback?.({ success: true });
+        callback?.({ ok: true, success: true });
       } catch (err) {
         logger.error({ err, roomId, userId: socket.user.id }, 'Connect transport failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 
@@ -97,7 +98,7 @@ function createSfuSignaling(io, db) {
       try {
         const mapping = roomUserMap.get(socket.id);
         if (!mapping || mapping.roomId !== roomId) {
-          return callback?.({ error: 'Not in room' });
+          return callback?.({ ok: false, error: 'Not in room' });
         }
 
         const producerId = await produce(roomId, mapping.peerId, transportId, kind, rtpParameters, {
@@ -116,10 +117,10 @@ function createSfuSignaling(io, db) {
           kind,
         });
 
-        callback?.({ producerId });
+        callback?.({ ok: true, producerId });
       } catch (err) {
         logger.error({ err, roomId, userId: socket.user.id }, 'Produce failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 
@@ -128,7 +129,7 @@ function createSfuSignaling(io, db) {
       try {
         const mapping = roomUserMap.get(socket.id);
         if (!mapping || mapping.roomId !== roomId) {
-          return callback?.({ error: 'Not in room' });
+          return callback?.({ ok: false, error: 'Not in room' });
         }
 
         const consumerInfo = await consume(roomId, mapping.peerId, transportId, producerId, rtpCapabilities, {
@@ -136,10 +137,10 @@ function createSfuSignaling(io, db) {
           sourcePeerId: appData?.sourcePeerId,
         });
 
-        callback?.(consumerInfo);
+        callback?.({ ok: true, ...consumerInfo });
       } catch (err) {
         logger.error({ err, roomId, userId: socket.user.id }, 'Consume failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 
@@ -148,23 +149,23 @@ function createSfuSignaling(io, db) {
       try {
         const mapping = roomUserMap.get(socket.id);
         if (!mapping || mapping.roomId !== roomId) {
-          return callback?.({ error: 'Not in room' });
+          return callback?.({ ok: false, error: 'Not in room' });
         }
 
         const room = getRoom(roomId);
-        if (!room) return callback?.({ error: 'Room not found' });
+        if (!room) return callback?.({ ok: false, error: 'Room not found' });
 
         const peer = room.peers.get(mapping.peerId);
-        if (!peer) return callback?.({ error: 'Peer not found' });
+        if (!peer) return callback?.({ ok: false, error: 'Peer not found' });
 
         const consumer = peer.consumers.get(consumerId);
-        if (!consumer) return callback?.({ error: 'Consumer not found' });
+        if (!consumer) return callback?.({ ok: false, error: 'Consumer not found' });
 
         await consumer.resume();
-        callback?.({ success: true });
+        callback?.({ ok: true, success: true });
       } catch (err) {
         logger.error({ err, roomId, userId: socket.user.id }, 'Resume consumer failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 
@@ -175,10 +176,10 @@ function createSfuSignaling(io, db) {
         if (mapping && mapping.roomId === roomId) {
           await handleLeave(roomId, mapping.peerId, userId, fullName);
         }
-        callback?.({ success: true });
+        callback?.({ ok: true, success: true });
       } catch (err) {
         logger.error({ err, roomId, userId: socket.user.id }, 'SFU leave failed');
-        callback?.({ error: err.message });
+        callback?.({ ok: false, error: err.message });
       }
     });
 

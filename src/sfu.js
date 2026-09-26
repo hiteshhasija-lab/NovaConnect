@@ -1,6 +1,6 @@
 'use strict';
 
-const { Worker } = require('mediasoup');
+const mediasoup = require('mediasoup');
 const { logger } = require('./logger');
 const { getConfig } = require('./config');
 
@@ -59,7 +59,7 @@ const rooms = new Map(); // roomId -> { peers: Map, router }
 async function createWorker() {
   if (worker) return worker;
 
-  worker = await Worker.create(MEDIASOUP_WORKER_SETTINGS);
+  worker = await mediasoup.createWorker(MEDIASOUP_WORKER_SETTINGS);
 
   worker.on('died', () => {
     logger.error('mediasoup worker died, exiting in 2 seconds...');
