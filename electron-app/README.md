@@ -51,6 +51,21 @@ So users are never asked for the server on first launch:
 
 This is written into the packaged app's `package.json` at build time.
 
+### Mac signing
+
+`scripts/sign-mac.js` runs after packaging. It gives the app's executables their own Mach-O
+UUIDs (electron-builder otherwise ships Electron's prebuilt ones, shared by every Electron app,
+and macOS applies Local Network rules by that ID), then signs the app:
+
+- With `NOVACONNECT_MAC_SIGN_IDENTITY` set to a certificate name from your keychain (e.g.
+  `"Apple Development: Name (TEAMID)"`), it signs with that certificate. The distributed 1.0.6
+  DMGs were built this way.
+- Otherwise it ad-hoc signs (what CI does).
+
+```
+NOVACONNECT_MAC_SIGN_IDENTITY="Apple Development: Name (TEAMID)" npm run dist:mac -- -c.directories.output=/tmp/novaconnect-build
+```
+
 ## Installing — unsigned builds
 
 Neither build is signed with a paid certificate, so each OS warns once:
@@ -58,13 +73,15 @@ Neither build is signed with a paid certificate, so each OS warns once:
 - **Windows:** "Windows protected your PC" → **More info** → **Run anyway**.
 - **macOS:** open the DMG and drag NovaConnect to Applications. The first launch is blocked
   ("Apple could not verify…") → click **Done**, then **System Settings → Privacy & Security**,
-  scroll down to NovaConnect, click **Open Anyway**. The Mac app is ad-hoc signed
-  (`scripts/adhoc-sign-mac.js`); without that, macOS would call a downloaded copy "damaged".
+  scroll down to NovaConnect, click **Open Anyway**. The Mac app must be signed (see Mac
+  signing above); without that, macOS would call a downloaded copy "damaged".
 - **macOS Local Network access:** macOS blocks apps from reaching LAN addresses (like
   `10.0.0.x`) until allowed. Click **Allow** when asked to "find devices on local networks". If
   the app shows "Can't reach NovaConnect … ERR_ADDRESS_UNREACHABLE" while the server works in a
   browser, turn NovaConnect on in **System Settings → Privacy & Security → Local Network**,
-  then click **Try again**. A reinstalled or rebuilt copy may need this again.
+  then click **Try again**. A reinstalled or rebuilt copy may need this again. If even Chrome
+  can't reach the server, the Mac's local-network rules themselves are stuck — restarting the
+  Mac (or an app update, which makes macOS rebuild them) cleared that during testing.
 
 Removing these warnings needs a code-signing certificate (Windows) and an Apple
 "Developer ID Application" certificate plus notarization (macOS).
