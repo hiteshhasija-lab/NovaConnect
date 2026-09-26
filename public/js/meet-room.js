@@ -109,7 +109,8 @@ async function enterMeeting(){
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
 
-function leaveMeeting(){socket.emit('sfu:leave',{roomId:'meet:'+code});cleanup()}
+// meet:leave, not sfu:leave — the server's request handlers ignore events sent without an ack.
+function leaveMeeting(){if(joined||waiting||joining)socket.emit('meet:leave');cleanup()}
 
 // Owner's list of people waiting in the lobby, with Admit / Deny.
 function renderLobbyQueue(){
@@ -143,13 +144,16 @@ enter.onclick=async()=>{
   if(joining||joined||waiting)return;
   joining=true;enter.disabled=true;status.textContent='Connecting…';
   try{
+    // Browsers only offer camera/microphone on https (or localhost); on plain http, join to watch and listen.
+    const noDevices=(mic.checked||camera.checked)&&!navigator.mediaDevices?.getUserMedia;
+    if(noDevices){mic.checked=false;camera.checked=false}
     if(mic.checked||camera.checked)stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
     const r=await request('meet:join',{code});
     roomId=r.roomId;isOwner=r.isOwner;
     await ensureDevice(r.routerRtpCapabilities);
     const a=await request('meet:request-join',{roomId});
-    if(a.admitted)return enterMeeting();
+    if(a.admitted){await enterMeeting();if(noDevices&&joined)status.textContent='Joined without camera and microphone: your browser only allows them on a secure (https) connection.';return}
     joining=false;waiting=true;
     lobby.hidden=false;enter.hidden=true;exit.hidden=false;
     status.textContent='Waiting for the meeting owner to let you in…';
