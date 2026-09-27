@@ -1,6 +1,14 @@
 (function () {
   'use strict';
-  window.createNovaCalls = function (socket, notify) {
+  // Mute/camera buttons show an icon; these keep the icon, label and pressed state in sync.
+  // Shared with group-calls.js, which uses the same call panel.
+  window.setCallToggle = function (button, off, label) {
+    button.setAttribute('aria-pressed', String(off));
+    button.setAttribute('aria-label', label); button.title = label;
+    const [on, offIcon] = button.querySelectorAll('svg');
+    if (on && offIcon) { on.hidden = off; offIcon.hidden = !off; } else button.textContent = label;
+  };
+  window.createNovaCalls = function (socket, notify, { otherCallActive = () => false } = {}) {
     const panel = document.getElementById('callPanel');
     const $ = id => document.getElementById(id);
     let current = null;
@@ -18,6 +26,7 @@
     function show(c, text) {
       lastFocus = document.activeElement;
       panel.hidden = false;
+      $('callGrid').hidden = true; $('callMedia1to1').hidden = false;
       $('callName').textContent = c.name;
       $('callKind').textContent = c.mode === 'video' ? 'Video call' : 'Audio call';
       status(text);
@@ -28,11 +37,10 @@
       $('callCamera').hidden = true;
       $('callPlayback').hidden = true;
       $('callStopSharing').hidden = true;
+      $('callScreenShare').hidden = true;
       $('callAccept').disabled = false;
-      $('callMute').textContent = 'Mute';
-      $('callCamera').textContent = 'Turn camera off';
-      $('callMute').setAttribute('aria-pressed', 'false');
-      $('callCamera').setAttribute('aria-pressed', 'false');
+      setCallToggle($('callMute'), false, 'Mute');
+      setCallToggle($('callCamera'), false, 'Turn camera off');
       (c.incoming ? $('callAccept') : $('callHangup')).focus();
     }
     function cleanup(c, message) {
@@ -72,6 +80,7 @@
       $('callRemote').hidden = c.mode !== 'video';
       $('callMute').hidden = false;
       $('callCamera').hidden = !c.camera || !!c.display;
+      $('callScreenShare').hidden = !navigator.mediaDevices.getDisplayMedia;
       const pc = c.pc = new RTCPeerConnection({ iceServers: config.iceServers });
       c.candidates = [];
       stream.getTracks().forEach(t => {
@@ -138,7 +147,7 @@
     }
     socket.on('call:incoming', data => {
       // Another tab may be originating this user's call. Do not disturb it.
-      if (current) return;
+      if (current || otherCallActive()) return;
       const c = current = { conversationId: data.conversationId, id: data.id, name: data.caller.name, mode: data.mode, incoming: true, queue: Promise.resolve() };
       show(c, 'Incoming call'); timeout(c);
     });
@@ -181,20 +190,22 @@
       } catch (e) { if (current === c) stop(c, e.message); }
     };
     $('callDecline').onclick = $('callHangup').onclick = () => { if (current) stop(current); };
+    // The panel's buttons are shared with group calls, so each handler acts only on a 1:1 call.
     $('callMute').onclick = () => {
       const tracks = current?.stream?.getAudioTracks() || [];
-      const enabled = !tracks[0]?.enabled;
+      if (!tracks.length) return;
+      const enabled = !tracks[0].enabled;
       tracks.forEach(t => { t.enabled = enabled; });
-      $('callMute').textContent = enabled ? 'Mute' : 'Unmute';
-      $('callMute').setAttribute('aria-pressed', String(!enabled));
+      setCallToggle($('callMute'), !enabled, enabled ? 'Mute' : 'Unmute');
     };
     $('callCamera').onclick = () => {
       const tracks = current?.stream?.getVideoTracks() || [];
-      const enabled = !tracks[0]?.enabled;
+      if (!tracks.length) return;
+      const enabled = !tracks[0].enabled;
       tracks.forEach(t => { t.enabled = enabled; });
-      $('callCamera').textContent = enabled ? 'Turn camera off' : 'Turn camera on';
-      $('callCamera').setAttribute('aria-pressed', String(!enabled));
+      setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
     };
+    $('callScreenShare').onclick = () => { if (current && (!current.incoming || current.accepted)) controller.share(current.conversationId, current.name); };
     $('callPlayback').onclick = () => { $('callRemote').play().then(() => { $('callPlayback').hidden = true; }).catch(() => {}); };
     window.addEventListener('pagehide', () => { if (current) stop(current); });
     async function stopSharing(c) {
@@ -232,8 +243,8 @@
         display?.getTracks().forEach(t => t.stop());
         if (e.name !== 'NotAllowedError') notify(e);
       }
-    }, async start(conversationId, mode, name, display = null) {
-      if (current) { display?.getTracks().forEach(t => t.stop()); return notify(new Error('Finish your current call first.')); }
+    }, active: () => !!current, async start(conversationId, mode, name, display = null) {
+      if (current || otherCallActive()) { display?.getTracks().forEach(t => t.stop()); return notify(new Error('Finish your current call first.')); }
       const c = current = { mode, name, display, conversationId, queue: Promise.resolve() };
       show(c, 'Requesting microphone access…'); timeout(c);
       try {

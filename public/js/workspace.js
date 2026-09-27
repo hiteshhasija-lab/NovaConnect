@@ -237,10 +237,13 @@
 
   // ---------------- socket ----------------
   const socket = io({ withCredentials: true });
-  const calls = window.createNovaCalls(socket, showToastError);
+  // 1:1 calls (peer-to-peer) and group-chat calls (through the SFU) share the call panel; one at a time.
+  let groupCalls = null;
+  const calls = window.createNovaCalls(socket, showToastError, { otherCallActive: () => !!groupCalls?.active() });
+  groupCalls = window.createNovaGroupCalls(socket, showToastError, { otherCallActive: () => calls.active() });
   const meetings = window.createMeetings({ api, currentUser: NC.currentUser, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); if (state.view === 'meet') meetHub.refresh(); api('/api/dm').then(list=>{state.conversations=list;if(state.view==='chat')renderSidebar();}).catch(showToastError); } });
   const meetHub=createMeetHub({api,meetings,escapeHtml,calendar:()=>document.getElementById('railCalendar').click()});
-  const chatHeader = window.createChatHeader({ api, currentUser: NC.currentUser, calls, navigate: navigateToDm, preferences: saveChatPreferences, removed: removeChatFromView, meetings, notify: showToastError });
+  const chatHeader = window.createChatHeader({ api, currentUser: NC.currentUser, calls, groupCalls, navigate: navigateToDm, preferences: saveChatPreferences, removed: removeChatFromView, meetings, notify: showToastError });
   const chatList=createChatList({escapeHtml,avatarHtml,currentUser:NC.currentUser,presence:id=>state.presence[id],onOpen:navigateToDm,onNew:openNewChatModal,onMeet:()=>document.getElementById('railMeet').click(),onMenu:async(button,c)=>{try{const active=await api('/api/dm/'+c.id);if(button.isConnected)chatHeader.menu(button,active);}catch(e){showToastError(e)}}});
   function applyChatPreferences(id, values) {
     const c = findConversation(id); if (c) Object.assign(c, values);

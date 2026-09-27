@@ -39,9 +39,10 @@
 }
 
 /* Group call grid */
+.nc-call:has(#callGrid:not([hidden])) { width: min(820px, calc(100vw - 32px)); }
 .nc-call-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 .nc-video-tile {
@@ -231,3 +232,5 @@
   .nc-call-panel { right: 16px; left: 16px; width: auto; bottom: 72px; max-height: 50vh; }
   .nc-toolbar-group.nc-toolbar-participants { margin-left: 0; width: 100%; justify-content: flex-end; }
 }
+/* Your own camera in a group call, mirrored like the 1:1 preview */
+.nc-video-tile video.nc-video-local { transform: scaleX(-1); }

@@ -48,3 +48,7 @@
 .concern-link { border:0; background:transparent; color:var(--brand,#0755d9); text-decoration:underline; padding:0; font:inherit; }
 .concern-help,.concern-privacy-help,.concern-privacy { font-size:14px; }
 @media(max-width:600px) { .concern-body{padding:8px 20px 18px;font-size:16px;}.concern-dialog header{padding:20px;}.concern-dialog h2{font-size:23px;} }
+
+.chat-call-join { align-self:center; border:0; border-radius:6px; padding:6px 12px; margin-right:4px; background:#237b4b; color:#fff; font-weight:600; white-space:nowrap; cursor:pointer; }
+.chat-call-join:hover { background:#1c6a40; }
+.chat-call-join:focus-visible { outline:2px solid var(--brand,#0755d9); outline-offset:2px; }

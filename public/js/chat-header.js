@@ -7,8 +7,15 @@
     people: '<circle cx="8" cy="6" r="3"/><circle cx="17" cy="7" r="2.7"/><path d="M2 17v-2c0-3 2-5 6-5 2 0 4 1 5 3a7 7 0 0 0-2 7H7c-3 0-5-1-5-3zM16 11c4 0 6 2 6 4a7 7 0 0 0-8-2z"/><circle cx="18" cy="19" r="5"/><path d="M18 16v6m-3-3h6" stroke="var(--surface,white)" stroke-width="1.7"/>',
     search: '<circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m15 15 7 7" fill="none" stroke="currentColor" stroke-width="1.6"/>'
   };
-  window.createChatHeader = function ({ api, currentUser, calls, navigate, preferences, removed, meetings, notify }) {
+  window.createChatHeader = function ({ api, currentUser, calls, groupCalls, navigate, preferences, removed, meetings, notify }) {
     let open = null;
+    // "Join" appears in a group chat's header while a call is running there and you are not in it.
+    function paintJoin(el) {
+      const call = groupCalls.running(el.dataset.conversationId);
+      el.hidden = !call || groupCalls.inCall(el.dataset.conversationId);
+      if (call) el.textContent = 'Join call · ' + call.count;
+    }
+    groupCalls?.onChange(id => document.querySelectorAll('.chat-call-join').forEach(el => { if (Number(el.dataset.conversationId) === id) paintJoin(el); }));
     function close(restore = true) {
       if (!open) return;
       const old = open; open = null;
@@ -220,6 +227,16 @@
           const b = button(mode, mode === 'video' ? 'Video call' : 'Audio call');
           b.onclick = () => { close(); calls.start(active.conversation.id, mode, others[0].full_name); }; tools.appendChild(b);
         }
+      } else if (active.conversation.is_group && groupCalls) {
+        const id = active.conversation.id, title = active.conversation.name || others.map(u => u.full_name).join(', ');
+        const join = document.createElement('button'); join.type = 'button'; join.className = 'chat-call-join'; join.dataset.conversationId = id; join.hidden = true;
+        join.onclick = () => { close(); groupCalls.start(id, groupCalls.running(id)?.mode || 'video', title); };
+        tools.appendChild(join);
+        for (const mode of ['video', 'audio']) {
+          const b = button(mode, mode === 'video' ? 'Group video call' : 'Group audio call');
+          b.onclick = () => { close(); groupCalls.start(id, mode, title); }; tools.appendChild(b);
+        }
+        paintJoin(join); groupCalls.refresh(id);
       }
       const people = button('people', 'Add people'); people.setAttribute('aria-haspopup', 'dialog'); people.setAttribute('aria-expanded', 'false'); people.onclick = () => group(people, active); tools.appendChild(people);
       const divider = document.createElement('span'); divider.className = 'chat-tool-divider'; divider.setAttribute('aria-hidden','true'); tools.appendChild(divider);

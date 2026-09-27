@@ -189,26 +189,28 @@ function createMeetSignaling(io, db, sfuInstance) {
       return { waiting };
     });
 
-    // SFU signaling events (real mediasoup transport/producer/consumer operations)
-    handle('sfu:create-transport', async ({ roomId, direction }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
+    // SFU signaling events (real mediasoup transport/producer/consumer operations). These serve
+    // any SFU room this socket has been admitted to — a meeting (meet:join) or a group call in
+    // chat (group-calls.js) — as recorded in its roomUserMap entry.
+    function admitted(roomId) {
       const mapping = sfuInstance.roomUserMap.get(socket.id);
-      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
+      if (!mapping || mapping.roomId !== roomId || mapping.inLobby) throw Error('Not admitted to this call');
+      return mapping;
+    }
+
+    handle('sfu:create-transport', async ({ roomId, direction }, u) => {
+      admitted(roomId);
       return await createTransport(roomId, `${u.id}-${socket.id}`, direction);
     });
 
     handle('sfu:connect-transport', async ({ roomId, transportId, dtlsParameters }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
-      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
+      admitted(roomId);
       await connectTransport(roomId, `${u.id}-${socket.id}`, transportId, dtlsParameters);
       return { success: true };
     });
 
     handle('sfu:produce', async ({ roomId, transportId, kind, rtpParameters, appData }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
-      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
+      const mapping = admitted(roomId);
       const producerId = await produce(roomId, `${u.id}-${socket.id}`, transportId, kind, rtpParameters, {
         ...appData,
         sourcePeerId: `${u.id}-${socket.id}`,
@@ -224,16 +226,12 @@ function createMeetSignaling(io, db, sfuInstance) {
 
     // What a newly admitted peer should consume: every stream already in the meeting.
     handle('sfu:get-producers', async ({ roomId }) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
-      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
+      const mapping = admitted(roomId);
       return { producers: listProducers(roomId, mapping.peerId) };
     });
 
     handle('sfu:consume', async ({ roomId, transportId, producerId, rtpCapabilities, appData }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
-      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
+      admitted(roomId);
       return await consume(roomId, `${u.id}-${socket.id}`, transportId, producerId, rtpCapabilities, {
         ...appData,
         sourcePeerId: appData?.sourcePeerId,
@@ -241,9 +239,7 @@ function createMeetSignaling(io, db, sfuInstance) {
     });
 
     handle('sfu:resume-consumer', async ({ roomId, consumerId }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
-      if (!mapping || mapping.inLobby) throw Error('Not admitted to meeting');
+      admitted(roomId);
       await resumeConsumer(roomId, `${u.id}-${socket.id}`, consumerId);
       return { success: true };
     });

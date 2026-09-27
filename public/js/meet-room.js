@@ -5,10 +5,7 @@
 const socket=io(),code=document.querySelector('[data-code]').dataset.code,status=document.getElementById('meetStatus'),videos=document.getElementById('meetVideos'),mic=document.getElementById('meetMic'),camera=document.getElementById('meetCamera'),enter=document.getElementById('meetEnter'),exit=document.getElementById('meetLeave');
 const lobby=document.getElementById('meetLobby'),lobbyQueue=document.getElementById('meetLobbyQueue'),lobbyList=document.getElementById('meetLobbyList');
 const recordingControls=document.getElementById('recordingControls'),recordBtn=document.getElementById('recordBtn'),stopRecordBtn=document.getElementById('stopRecordBtn');
-let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,device=null,sendTransport=null,recvTransport=null,recvReady=false,currentRecordingId=null;
-const remotePeers=new Map();   // peerId -> { name, consumers: Map(consumerId -> consumer) }
-const consumedProducers=new Set();
-let pendingProducers=[];       // producers announced before our receive transport existed
+let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,routerRtpCapabilities=null,session=null,currentRecordingId=null;
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
@@ -21,67 +18,18 @@ function tile(id,name,media,muted=false){
 }
 
 function removePeer(peerId){
-  const p=remotePeers.get(peerId);
-  if(p)for(const c of p.consumers.values()){consumedProducers.delete(c.producerId);c.close()}
-  remotePeers.delete(peerId);
+  session?.removePeer(peerId);
   document.getElementById('peer-'+peerId)?.remove();
 }
 
 function cleanup(){
-  joined=false;joining=false;waiting=false;isOwner=false;roomId=null;recvReady=false;pendingProducers=[];
-  for(const id of [...remotePeers.keys()])removePeer(id);
-  consumedProducers.clear();waitingPeople.clear();renderLobbyQueue();
+  joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
+  session?.close();session=null;
+  waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
-  sendTransport?.close();sendTransport=null;recvTransport?.close();recvTransport=null;device=null;
   videos.replaceChildren();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
   enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;
-}
-
-async function ensureDevice(routerRtpCapabilities){
-  if(device)return device;
-  device=new mediasoupClientBundle.Device();
-  await device.load({routerRtpCapabilities});
-  return device;
-}
-
-async function produceMedia(){
-  if(!stream||!device||sendTransport)return;
-  const info=await request('sfu:create-transport',{roomId,direction:'send'});
-  const transport=device.createSendTransport(info);
-  sendTransport=transport;
-  transport.on('connect',({dtlsParameters},callback,errback)=>{
-    request('sfu:connect-transport',{roomId,transportId:transport.id,dtlsParameters}).then(()=>callback()).catch(errback);
-  });
-  transport.on('produce',({kind,rtpParameters},callback,errback)=>{
-    request('sfu:produce',{roomId,transportId:transport.id,kind,rtpParameters}).then(r=>callback({id:r.producerId})).catch(errback);
-  });
-  for(const track of stream.getTracks())await transport.produce({track});
-}
-
-async function createRecvTransport(){
-  const info=await request('sfu:create-transport',{roomId,direction:'recv'});
-  const transport=device.createRecvTransport(info);
-  recvTransport=transport;
-  transport.on('connect',({dtlsParameters},callback,errback)=>{
-    request('sfu:connect-transport',{roomId,transportId:transport.id,dtlsParameters}).then(()=>callback()).catch(errback);
-  });
-}
-
-// Receives one remote stream (a participant's audio or video) from the SFU and shows it in their tile.
-async function consumeProducer({producerId,peerId,fullName}){
-  if(!joined||!recvTransport||consumedProducers.has(producerId))return;
-  consumedProducers.add(producerId);
-  try{
-    const r=await request('sfu:consume',{roomId,transportId:recvTransport.id,producerId,rtpCapabilities:device.rtpCapabilities,appData:{sourcePeerId:peerId}});
-    const consumer=await recvTransport.consume({id:r.id,producerId:r.producerId,kind:r.kind,rtpParameters:r.rtpParameters});
-    if(!joined){consumer.close();return}
-    let p=remotePeers.get(peerId);
-    if(!p){p={name:fullName||'Participant',consumers:new Map()};remotePeers.set(peerId,p)}
-    p.consumers.set(consumer.id,consumer);
-    tile(peerId,p.name,new MediaStream([...p.consumers.values()].map(c=>c.track)));
-    await request('sfu:resume-consumer',{roomId,consumerId:consumer.id});
-  }catch(e){consumedProducers.delete(producerId);if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}
 }
 
 // Called once we are actually in the meeting — straight away for the owner, on admission for others.
@@ -99,13 +47,12 @@ async function enterMeeting(){
       for(const w of l.waiting)waitingPeople.set(w.peerId,w.fullName);
       renderLobbyQueue();
     }
-    await createRecvTransport();
-    recvReady=true;
-    const {producers}=await request('sfu:get-producers',{roomId});
-    const queued=pendingProducers;pendingProducers=[];
-    for(const p of [...producers,...queued])await consumeProducer(p);
-    if(!producers.length&&!remotePeers.size)status.textContent='You are the first participant. Share the meeting link to invite others.';
-    try{await produceMedia()}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
+    session=window.createSfuSession({request,roomId,routerRtpCapabilities,
+      onPeerStream:(peerId,name,media)=>tile(peerId,name,media),
+      onError:e=>{if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}});
+    const existing=await session.start();
+    if(!existing&&!session.peerCount)status.textContent='You are the first participant. Share the meeting link to invite others.';
+    try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
 
@@ -129,9 +76,9 @@ function renderLobbyQueue(){
   lobbyQueue.hidden=!joined||!isOwner||waitingPeople.size===0;
 }
 
-socket.on('sfu:new-producer',p=>{if(!joined)return;if(!recvReady)pendingProducers.push(p);else consumeProducer(p)});
+socket.on('sfu:new-producer',p=>{if(joined)session?.newProducer(p)});
 socket.on('sfu:peer-joined',({fullName})=>{if(joined)status.textContent=`${fullName} joined.`});
-socket.on('sfu:peer-left',({peerId,fullName})=>{if(!remotePeers.has(peerId)&&!document.getElementById('peer-'+peerId))return;removePeer(peerId);if(joined)status.textContent=`${fullName||'A participant'} left.`});
+socket.on('sfu:peer-left',({peerId,fullName})=>{if(!session?.hasPeer(peerId)&&!document.getElementById('peer-'+peerId))return;removePeer(peerId);if(joined)status.textContent=`${fullName||'A participant'} left.`});
 socket.on('disconnect',()=>{if(joined||waiting||joining){cleanup();status.textContent='Disconnected. Join again when your connection returns.'}});
 
 // Lobby events
@@ -150,8 +97,7 @@ enter.onclick=async()=>{
     if(mic.checked||camera.checked)stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
     const r=await request('meet:join',{code});
-    roomId=r.roomId;isOwner=r.isOwner;
-    await ensureDevice(r.routerRtpCapabilities);
+    roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;
     const a=await request('meet:request-join',{roomId});
     if(a.admitted){await enterMeeting();if(noDevices&&joined)status.textContent='Joined without camera and microphone: your browser only allows them on a secure (https) connection.';return}
     joining=false;waiting=true;

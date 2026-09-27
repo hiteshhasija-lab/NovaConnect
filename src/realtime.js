@@ -3,6 +3,7 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const { redis } = require('./redis');
 const { db, nowStr } = require('./db');
 const { createCalls } = require('./calls');
+const { createGroupCalls } = require('./group-calls');
 const { createSfuSignaling } = require('./sfu-signaling');
 
 let io = null;
@@ -64,9 +65,11 @@ function attach(server, sessionMiddleware) {
   // socket.io does not catch a rejected promise returned from an async listener — it becomes
   // an unhandled rejection that crashes the whole process (taking every connected user down
   // with it) the moment the database hiccups. Every listener body below is guarded accordingly.
-  const calls = createCalls(io, db);
+  // 1:1 calls and group-chat calls each refuse someone who is already in the other kind.
+  const calls = createCalls(io, db, { inGroupCall: id => groupCalls.isBusy(id) });
   const sfu = createSfuSignaling(io, db);
   sfu.setIo(io);
+  const groupCalls = createGroupCalls(io, db, sfu, { inDirectCall: id => calls.isBusy(id) });
   // meet-signaling.js owns all lobby/SFU-transport socket events (sfu:create-transport,
   // sfu:produce, etc.) once a peer has gone through meet:join — it needs sfu-signaling's
   // roomUserMap instance (passed in here) but NOT its .attach(), since attaching both would
@@ -75,6 +78,7 @@ function attach(server, sessionMiddleware) {
   io.on('connection', (socket) => {
     calls.attach(socket);
     meet.attach(socket);
+    groupCalls.attach(socket);
     const userId = socket.user.id;
 
     (async () => {

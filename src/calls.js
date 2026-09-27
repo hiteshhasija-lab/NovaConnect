@@ -2,7 +2,7 @@ const { randomUUID } = require('node:crypto');
 
 // One active call per user, bound to the browser tabs that place/answer it.
 // Media travels over WebRTC; this module only relays authenticated signaling.
-function createCalls(io, db, { ringMs = 30000, connectMs = 45000 } = {}) {
+function createCalls(io, db, { ringMs = 30000, connectMs = 45000, inGroupCall = () => false } = {}) {
   const calls = new Map();
   const busy = new Map();
   const attempts = new Map();
@@ -62,7 +62,7 @@ function createCalls(io, db, { ringMs = 30000, connectMs = 45000 } = {}) {
       const peers = await io.in(`user:${other.id}`).fetchSockets();
       if (!peers.length) throw new Error('This person is offline.');
       if (!socket.connected) throw new Error('Disconnected.');
-      if (busy.has(user.id) || busy.has(other.id)) throw new Error('You or this person are already in a call.');
+      if (busy.has(user.id) || busy.has(other.id) || inGroupCall(user.id) || inGroupCall(other.id)) throw new Error('You or this person are already in a call.');
       const call = { id: randomUUID(), from: user.id, to: other.id, callerSocket: socket.id, calleeSocket: null, state: 'ringing', mode: data.mode, conversationId, ready: new Set() };
       calls.set(call.id, call); busy.set(user.id, call.id); busy.set(other.id, call.id);
       arm(call, ringMs, 'No answer');
@@ -110,6 +110,6 @@ function createCalls(io, db, { ringMs = 30000, connectMs = 45000 } = {}) {
       if (!busy.has(socket.user.id)) attempts.delete(socket.user.id);
     });
   }
-  return { attach };
+  return { attach, isBusy: id => busy.has(id) };
 }
 module.exports = { createCalls };
