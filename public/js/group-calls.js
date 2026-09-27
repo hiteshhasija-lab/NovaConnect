@@ -65,6 +65,7 @@
       c.stream?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
+      changed(c.conversationId);
       grid.querySelectorAll('.nc-video-tile').forEach(t => t.remove());
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
@@ -94,6 +95,7 @@
         const r = await request('gcall:join', { id: c.id });
         if (current !== c) { request('gcall:leave', { id: c.id }).catch(() => {}); return; }
         c.joined = true; c.joining = false;
+        changed(c.conversationId); // the header's Join button hides once we are in
         show(c, 'Connecting…');
         tile('local', 'You', stream, true);
         c.session = createSfuSession({
