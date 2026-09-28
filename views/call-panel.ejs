@@ -1,10 +1,19 @@
-<link rel="stylesheet" href="/css/calls.css?v=4">
+<link rel="stylesheet" href="/css/calls.css?v=5">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
     <h2 id="callName"></h2>
     <p class="nc-call-status" id="callStatus" role="status" aria-live="polite"></p>
     <button type="button" class="nc-call-close" id="callClose" aria-label="Close call panel" hidden>×</button>
+    <div class="nc-call-view">
+      <button type="button" class="nc-call-view-btn" id="callMaximize" aria-pressed="false" aria-label="Maximize call" title="Maximize">
+        <svg class="icon-max" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+        <svg class="icon-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" hidden><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>
+      </button>
+      <button type="button" class="nc-call-view-btn" id="callFullscreen" aria-label="Full screen" title="Full screen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+    </div>
   </div>
 
   <div class="nc-call-media" id="callMedia">

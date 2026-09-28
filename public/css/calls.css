@@ -234,3 +234,26 @@
 }
 /* Your own camera in a group call, mirrored like the 1:1 preview */
 .nc-video-tile video.nc-video-local { transform: scaleX(-1); }
+
+/* View controls: maximize to fill the window, or go full screen */
+.nc-call-view { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.nc-call-view-btn {
+  width: 32px; height: 32px; display: grid; place-items: center; padding: 6px;
+  border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer;
+}
+.nc-call-view-btn:hover { background: rgba(255,255,255,.12); }
+.nc-call-view-btn:focus-visible { outline: 2px solid #b7baf7; outline-offset: 2px; }
+.nc-call-view-btn svg { width: 18px; height: 18px; }
+.nc-call.nc-call-max, .nc-call:fullscreen {
+  inset: 12px; width: auto; max-height: none; display: flex; flex-direction: column;
+}
+.nc-call:fullscreen { inset: 0; border: 0; border-radius: 0; }
+.nc-call-max .nc-call-media, .nc-call:fullscreen .nc-call-media { flex: 1; min-height: 0; }
+.nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 { height: 100%; grid-template-columns: 3fr 1fr; align-items: start; }
+.nc-call-max .nc-call-media-1to1 video, .nc-call:fullscreen .nc-call-media-1to1 video { max-height: calc(100dvh - 190px); }
+.nc-call-max .nc-call-media-1to1 #callRemote, .nc-call:fullscreen .nc-call-media-1to1 #callRemote { height: calc(100dvh - 190px); }
+.nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-content: start; }
+.nc-call video { cursor: zoom-in; }
+@media (max-width: 600px) {
+  .nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 { grid-template-columns: 1fr; }
+}
