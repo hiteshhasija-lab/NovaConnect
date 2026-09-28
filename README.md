@@ -49,28 +49,47 @@ This is the messaging core, not a full Teams parity build — no group audio/vid
 - This is a self-contained local app — reset by deleting the `data/` folder (uploaded files) and dropping the `novaconnect` Postgres database.
 
 
-## Direct-message calling
+## Calls and meetings
 
-Open a one-to-one direct message and select **Call** (audio) or **Video**. The other person must have NovaConnect open. They can accept or decline; either participant can mute, switch their camera off during a video call, or end the call. Incoming calls appear across the recipient's open workspace tabs; answering one dismisses the others. Unanswered calls expire after 30 seconds. Calls end when the participating tab disconnects, reloads, or leaves the workspace.
+All calls — 1:1 chats, group chats and channel "Meet now" meetings — and meeting-link meetings send
+their audio and video through the **mediasoup SFU** on the server, not browser to browser.
 
-Calls use browser WebRTC for media and authenticated Socket.IO events for signaling. Membership and active accounts are checked on the server, and signaling is restricted to the originating and answering tabs. No recording or persistent call history is added. This first version supports two people, not group/channel calls. Call state is in memory: run one Node process; multi-instance deployment needs shared call coordination and a Socket.IO adapter before enabling calls across instances.
+- **Where things live:** `src/sfu.js` (rooms, transports, producers/consumers, recording,
+  active-speaker detection); `src/group-calls.js` (who is in which call, ringing, channel posts,
+  "Call ended / Missed call" posts); `src/meet-signaling.js` (meeting lobby, the `sfu:*` media
+  events and the in-call extras for any call room); `src/callPosts.js` (posting into a chat or
+  channel). In the browser: `public/js/sfu-client.js` (send/receive session), `group-calls.js`
+  (call panel), `meet-room.js` (meeting page), `call-extras.js` (raise hand, reactions, chat,
+  participants, active speaker — shared by both).
+- **Behaviour:** a 1:1 call rings the other person and ends when either hangs up; a group-chat
+  call rings everyone and anyone in the chat can join while it runs; a channel meeting rings nobody
+  and is announced in the channel. Camera/screen can be shared (the screen is a separate stream, so
+  the camera keeps going); camera-off and mute are shown to everyone; in-call chat from a chat or
+  channel is saved there. The same person may join the same call from two devices.
+- **Call state is in memory** (one Node process). A restart ends running calls; stale "Started a
+  meeting" posts are rewritten to "Meeting ended" on startup.
+- **Network:** browsers need **HTTPS** for camera, microphone and screen sharing. Media flows over
+  UDP 40000–49999 to `MEDIASOUP_ANNOUNCED_IP` (the address clients can reach). `public/js/calls.js`
+  and `src/calls.js` are the older browser-to-browser calls, kept only for pages that haven't
+  reloaded since 1.0.105 (plus the call panel's Maximize/Full screen controls); `WEBRTC_ICE_SERVERS`
+  applies only to those.
 
-### Deployment
+## Releasing
 
-- Use a trusted **HTTPS** URL (localhost is suitable for local testing). Browsers require a secure context and permission to access the microphone/camera.
-- Configure `WEBRTC_ICE_SERVERS` as a JSON array of RTCIceServer objects in the app process/container environment. It defaults to `[]`, suitable only when peers can connect directly (for example on the same network).
-- For calls across NAT/firewalls, supply your organization's STUN and TURN service. Example shape (replace these placeholders):
+Releases go through the upgrade pipeline on NOVAAPP01 (`~/novaconnect-upgrades/upgrade-novaconnect.sh`).
+From a developer machine, after bumping `src/version.js` and `package.json` together, committing
+and pushing:
 
-  ```text
-  WEBRTC_ICE_SERVERS=[{"urls":"stun:relay.example.com:3478"},{"urls":["turn:relay.example.com:3478","turns:relay.example.com:5349"],"username":"call-user","credential":"temporary-turn-credential"}]
-  ```
+```bash
+scripts/release.sh 1.0.110 "Why this release." "One line for the release notes." "path/file.js: what changed." "..."
+```
 
-  ICE configuration is sent only to authenticated active users. TURN credentials must be client-usable relay credentials; never put administrative secrets here. Short-lived credentials are preferable for production (this static configuration must be rotated externally). Relay provisioning is separate from the app code.
-- No new npm dependencies or schema changes are required; include the updated `src`, `views`, and `public` files in the usual release overlay.
-
-### Validation
-
-Run `node --test test/calls.test.js`. Before deploying, use two accounts in separate browsers over HTTPS: verify audio/video in both directions, reject/cancel, no-answer timeout, mute/camera toggles, busy handling, answering across multiple tabs, and disconnect cleanup. Repeat from different networks with TURN configured. Automated signaling tests do not replace a real microphone/camera and network test.
+It refuses to run unless local HEAD is `origin/main` and both version files match, builds the
+release directory (overlay tarball from `git archive`, manifest, notes, checksums), runs `--check`
+then `--yes` (health check and automatic rollback), prints the post-deploy checklist and updates
+`STABLE-RELEASE.json`. Overlay releases only: new dependencies need `localhost/novaconnect:base`
+rebuilt first, and schema changes need `"databaseChanges": true`. SSH key, user and hosts can be
+overridden with `NOVACONNECT_SSH_KEY`, `NOVACONNECT_SSH_USER`, `NOVACONNECT_HOSTS`.
 
 
 ## Chat header, meetings and concerns
