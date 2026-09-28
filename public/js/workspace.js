@@ -791,7 +791,28 @@
     if (m) { if (m[1] === 'channel') navigateToChannel(m[2]); else navigateToDm(m[2]); }
   });
 
-  function showToastError(e) { alert(e.message || 'Something went wrong.'); }
+  // In-app error notice (bottom centre) instead of a blocking browser alert(): stays until
+  // dismissed or 7s pass (paused while hovered); the same message isn't stacked twice.
+  function showToastError(e) {
+    const text = (e && e.message) || 'Something went wrong.';
+    let region = document.getElementById('ncToasts');
+    if (!region) {
+      region = document.createElement('div'); region.id = 'ncToasts'; region.className = 'nc-toasts';
+      document.body.appendChild(region);
+    }
+    [...region.children].forEach(t => { if (t.dataset.text === text) t.remove(); });
+    while (region.children.length >= 3) region.firstElementChild.remove();
+    const toast = document.createElement('div'); toast.className = 'nc-toast'; toast.setAttribute('role', 'alert'); toast.dataset.text = text;
+    const icon = document.createElement('i'); icon.className = 'bi bi-exclamation-circle-fill'; icon.setAttribute('aria-hidden', 'true');
+    const msg = document.createElement('span'); msg.textContent = text;
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'nc-toast-close'; close.setAttribute('aria-label', 'Dismiss'); close.textContent = '×';
+    let timer;
+    const dismiss = () => { clearTimeout(timer); toast.classList.add('nc-toast-out'); setTimeout(() => toast.remove(), 200); };
+    const arm = () => { clearTimeout(timer); timer = setTimeout(dismiss, 7000); };
+    close.onclick = dismiss;
+    toast.onmouseenter = () => clearTimeout(timer); toast.onmouseleave = arm;
+    toast.append(icon, msg, close); region.appendChild(toast); arm();
+  }
 
   function renderAll() {
     closeThread();

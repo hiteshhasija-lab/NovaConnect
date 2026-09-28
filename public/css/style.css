@@ -597,3 +597,27 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 .presence-brb { background:transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%2210%22%20r%3D%2210%22%20fill%3D%22%23eaa300%22%2F%3E%3Cpath%20d%3D%22M10%205v5l3%202%22%20fill%3D%22none%22%20stroke%3D%22white%22%20stroke-width%3D%222.3%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat; }
 .people-presence { display:inline-block;flex:0 0 12px;width:12px;height:12px; }
 .user-menu .presence-dot { position:static;border:none;width:16px;height:16px;vertical-align:middle;margin-right:0.6rem; }
+
+/* In-app error notices (workspace.js showToastError), replacing browser alert() pop-ups. */
+.nc-toasts {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1100;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
+}
+.nc-toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
+  max-width: 560px; padding: 12px 10px 12px 14px; border-radius: 10px;
+  background: #2b2d3f; color: #f5f6ff; border-left: 4px solid #d13438;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .3); font-size: .95rem; line-height: 1.4;
+  animation: nc-toast-in .2s ease-out;
+}
+.nc-toast .bi { color: #ff6b70; margin-top: 2px; }
+.nc-toast span { flex: 1; overflow-wrap: anywhere; }
+.nc-toast-close {
+  border: 0; background: transparent; color: inherit; font-size: 1.25rem; line-height: 1;
+  padding: 0 4px; border-radius: 6px; cursor: pointer; opacity: .8;
+}
+.nc-toast-close:hover, .nc-toast-close:focus-visible { opacity: 1; background: rgba(255, 255, 255, .12); }
+.nc-toast-out { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+@keyframes nc-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .nc-toast { animation: none; } .nc-toast-out { transition: none; } }
