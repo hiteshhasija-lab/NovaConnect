@@ -10,4 +10,10 @@ if (location.protocol === 'file:') {
     retry: () => ipcRenderer.invoke('app:retry'),
     openSettings: () => ipcRenderer.invoke('app:open-settings'),
   });
+  // Screen-share picker (picker.html).
+  contextBridge.exposeInMainWorld('novaconnectPicker', {
+    get: () => ipcRenderer.invoke('picker:get'),
+    choose: (id) => ipcRenderer.invoke('picker:choose', id),
+    openPrivacySettings: () => ipcRenderer.invoke('picker:open-privacy'),
+  });
 }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, session, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, session, shell, nativeImage, desktopCapturer, systemPreferences } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -18,6 +18,77 @@ let isQuitting = false;
 function getServerUrl() {
   return store.get('serverUrl') || BUILT_IN_DEFAULT_SERVER_URL || '';
 }
+
+// Camera, microphone and screen sharing only work over https. Installs that saved the plain-http
+// address of the server this build points at are moved to its https address on startup.
+function upgradeSavedServerToHttps() {
+  try {
+    const saved = store.get('serverUrl');
+    const builtIn = BUILT_IN_DEFAULT_SERVER_URL && new URL(BUILT_IN_DEFAULT_SERVER_URL);
+    if (!saved || !builtIn || builtIn.protocol !== 'https:') return;
+    const current = new URL(saved);
+    if (current.protocol === 'http:' && current.hostname === builtIn.hostname) store.set('serverUrl', builtIn.origin);
+  } catch {}
+}
+
+// Screen sharing. Unlike a browser, Electron has no built-in screen picker: getDisplayMedia()
+// fails unless the app chooses the source itself. This shows our own picker (screens and
+// windows, with thumbnails) and hands the chosen source back to the page.
+let pickerWindow = null;
+let pendingPick = null; // { sources, screenAccess, chosen }
+
+function pickDisplaySource() {
+  return new Promise(async (resolve) => {
+    if (pickerWindow) { pickerWindow.focus(); resolve(null); return; }
+    let sources = [];
+    try {
+      sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 400, height: 250 } });
+    } catch {}
+    // On macOS, without Screen Recording permission only the wallpaper/app's own windows come back.
+    const screenAccess = process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted';
+    pendingPick = { sources: sources.filter(s => s.name), screenAccess, chosen: null };
+    pickerWindow = new BrowserWindow({
+      parent: mainWindow || undefined,
+      modal: process.platform !== 'darwin',
+      width: 760,
+      height: 560,
+      minimizable: false,
+      maximizable: false,
+      title: 'Share your screen',
+      icon: path.join(__dirname, 'build', 'icon.png'),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    pickerWindow.setMenuBarVisibility(false);
+    pickerWindow.loadFile(path.join(__dirname, 'picker.html'));
+    pickerWindow.on('closed', () => {
+      const chosen = pendingPick?.chosen || null;
+      pickerWindow = null;
+      pendingPick = null;
+      resolve(chosen);
+    });
+  });
+}
+
+ipcMain.handle('picker:get', () => ({
+  screenAccess: pendingPick?.screenAccess || 'granted',
+  sources: (pendingPick?.sources || []).map(s => ({
+    id: s.id,
+    name: s.name,
+    kind: s.id.startsWith('screen:') ? 'screen' : 'window',
+    thumbnail: s.thumbnail.toDataURL(),
+  })),
+}));
+ipcMain.handle('picker:choose', (_e, id) => {
+  if (pendingPick) pendingPick.chosen = pendingPick.sources.find(s => s.id === id) || null;
+  pickerWindow?.close();
+});
+ipcMain.handle('picker:open-privacy', () => {
+  if (process.platform === 'darwin') shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+});
 
 function openSettingsWindow() {
   if (settingsWindow) {
@@ -88,6 +159,11 @@ function createMainWindow() {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     const allowed = ['media', 'notifications', 'display-capture'];
     callback(allowed.includes(permission));
+  });
+  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    const source = await pickDisplaySource();
+    // No video stream means the page's getDisplayMedia() rejects, same as cancelling a browser picker.
+    callback(source ? { video: source } : {});
   });
 
   // Keep the app inside its own window for its own pages; anything the page opens as a new
@@ -176,6 +252,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    upgradeSavedServerToHttps();
     createTray();
     if (getServerUrl()) {
       createMainWindow();
