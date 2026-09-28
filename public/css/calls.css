@@ -31,13 +31,6 @@
   background: #0c1020; border-radius: 12px;
 }
 
-/* 1:1 call layout */
-.nc-call-media-1to1 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.nc-call-media-1to1 #callLocal {
-  position: static; width: 100%; max-height: 45vh;
-  transform: scaleX(-1); border: 1px solid #8990b8;
-}
-
 /* Group call grid */
 .nc-call:has(#callGrid:not([hidden])) { width: min(820px, calc(100vw - 32px)); }
 .nc-call-grid {
@@ -254,36 +247,37 @@
    element scales down, leaving the video short of the window). */
 #callPanel.nc-call.nc-call-max, #callPanel.nc-call:fullscreen { width: auto; zoom: 1; }
 .nc-call-max .nc-call-media, .nc-call:fullscreen .nc-call-media { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 {
-  flex: 1; min-height: 0; grid-template-columns: 3fr 1fr; grid-template-rows: minmax(0, 1fr); align-items: start;
-}
-.nc-call-max .nc-call-media-1to1 video, .nc-call:fullscreen .nc-call-media-1to1 video { max-height: 100%; }
-.nc-call-max .nc-call-media-1to1 #callRemote, .nc-call:fullscreen .nc-call-media-1to1 #callRemote { height: 100%; }
 .nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { flex: 1; min-height: 0; overflow: auto; }
 .nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-content: start; }
 .nc-call video { cursor: zoom-in; }
-@media (max-width: 600px) {
-  .nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 { grid-template-columns: 1fr; }
-}
 
-/* Screen sharing in a 1:1 call: the shared screen (or, for the presenter, the other person) fills
-   the call area and the other video floats small in the corner. Set by calls.js layout(). */
-.nc-call-pip .nc-call-media-1to1 { display: block; position: relative; }
-.nc-call-pip .nc-call-media-1to1 #callRemote { width: 100%; height: auto; max-height: 60vh; object-fit: contain; }
-.nc-call-pip.nc-call-max .nc-call-media-1to1 #callRemote,
-.nc-call-pip:fullscreen .nc-call-media-1to1 #callRemote { height: 100%; max-height: none; }
-.nc-call-pip .nc-call-media-1to1 #callLocal {
+/* 1:1 call stage, laid out like Teams (calls.js arrange()): the main video fills the stage, the
+   others float as small tiles in the bottom-right corner. */
+.nc-call-stage { position: relative; }
+.nc-stage-main video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 45vh; object-fit: cover; }
+.nc-stage-main video.nc-screen-video { object-fit: contain; }
+.nc-stage-tiles {
   position: absolute; right: 10px; bottom: 10px; z-index: 1;
-  width: 24%; min-width: 120px; height: auto; max-height: 30%;
-  border: 1px solid #8990b8; box-shadow: 0 4px 16px #0008;
+  display: flex; gap: 8px; align-items: flex-end;
 }
-/* Your own screen preview is not a camera: don't mirror it. */
-.nc-local-screen .nc-call-media-1to1 #callLocal { transform: none; }
-
-/* The other person's video in a 1:1 call stays rendered but invisible and out of the layout until
-   a real frame arrives (calls.js), so audio calls and not-yet-started video show no empty box.
+.nc-stage-tiles video {
+  display: block; width: 132px; aspect-ratio: 16 / 9; height: auto; max-height: none; object-fit: cover;
+  border: 1px solid #8990b8; border-radius: 8px; box-shadow: 0 4px 16px #0008;
+}
+.nc-stage-tiles video.nc-screen-video { object-fit: contain; }
+/* Nothing on the stage (e.g. an audio call where only you share): tiles sit in normal flow. */
+.nc-stage-main:empty { display: none; }
+.nc-stage-main:empty + .nc-stage-tiles { position: static; justify-content: flex-end; }
+.nc-stage-tiles:empty { display: none; }
+/* Your camera is mirrored like a mirror; a screen never is. */
+.nc-call video.nc-self-video { transform: scaleX(-1); }
+/* Parked videos keep decoding (so arrange() can tell when a picture arrives) but take no space.
    Not display:none — Chromium doesn't decode video for an element that isn't rendered. */
-.nc-call #callRemote.nc-video-waiting {
-  position: absolute !important; width: 2px !important; height: 2px !important;
-  opacity: 0; pointer-events: none; border: 0;
-}
+.nc-stage-park { position: absolute; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
+.nc-stage-park video { width: 2px; height: 2px; }
+/* Maximized / full screen: the stage fills the panel. */
+.nc-call-max .nc-call-stage, .nc-call:fullscreen .nc-call-stage { flex: 1; min-height: 0; }
+.nc-call-max .nc-stage-main, .nc-call:fullscreen .nc-stage-main { height: 100%; }
+.nc-call-max .nc-stage-main video, .nc-call:fullscreen .nc-stage-main video { height: 100%; max-height: none; aspect-ratio: auto; }
+.nc-call-max .nc-stage-tiles video, .nc-call:fullscreen .nc-stage-tiles video { width: clamp(160px, 18vw, 280px); }
+@media (max-width: 600px) { .nc-stage-tiles video { width: 96px; } }

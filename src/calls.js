@@ -112,6 +112,15 @@ function createCalls(io, db, { ringMs = 30000, connectMs = 45000, inGroupCall = 
       io.to(caller ? call.calleeSocket : call.callerSocket).emit('call:share', { id: call.id, sharing: data.sharing === true });
       return {};
     });
+    // Camera on/off, so the other side shows the presenter/person tile or not (a disabled camera
+    // still sends black frames, so the picture alone can't tell).
+    handle('call:camera', data => {
+      const call = boundCall(socket, data.id);
+      if (call.state === 'ringing') throw new Error('Call has not been accepted.');
+      const caller = socket.id === call.callerSocket;
+      io.to(caller ? call.calleeSocket : call.callerSocket).emit('call:camera', { id: call.id, on: data.on === true });
+      return {};
+    });
     socket.on('disconnect', () => {
       for (const call of calls.values()) {
         if (call.callerSocket === socket.id || call.calleeSocket === socket.id) end(call, 'Connection lost');

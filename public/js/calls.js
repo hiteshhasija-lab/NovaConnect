@@ -59,10 +59,7 @@
       lastFocus = document.activeElement;
       panel.hidden = false;
       $('callGrid').hidden = true; $('callMedia1to1').hidden = false;
-      // No empty video boxes: your preview appears once your camera starts (video calls only),
-      // the other person's once a real frame of their video arrives (see the resize handler).
-      $('callLocal').hidden = true;
-      $('callRemote').hidden = false; $('callRemote').classList.add('nc-video-waiting');
+      arrange(c);
       $('callName').textContent = c.name;
       $('callKind').textContent = c.mode === 'video' ? 'Video call' : 'Audio call';
       status(text);
@@ -79,18 +76,39 @@
       setCallToggle($('callCamera'), false, 'Turn camera off');
       (c.incoming ? $('callAccept') : $('callHangup')).focus();
     }
-    // Presentation layout while either side shares its screen (calls.css .nc-call-pip): the shared
-    // screen (or, for the presenter, the other person) fills the area, the other video floats small.
-    function layout(c) {
+    // Teams-style 1:1 layout. One video fills the stage — a screen the other person shares, else
+    // their camera, else (until their picture arrives) your own camera — and the rest float as small
+    // tiles in the corner: your camera, their camera while they share, a preview of what you share.
+    // Everything else is parked: rendered but invisible, so a remote video can be seen to start
+    // (a remote track can report itself live without any picture, e.g. in audio calls).
+    const hasPicture = v => !!v.srcObject && v.videoWidth > 0;
+    function arrange(c) {
       if (current !== c) return;
-      panel.classList.toggle('nc-call-pip', !!(c.display || c.remoteSharing));
-      panel.classList.toggle('nc-local-screen', !!c.display);
+      const remoteCam = hasPicture($('callRemote')) && !c.remoteCameraOff;
+      const remoteScreen = !!c.remoteSharing && hasPicture($('callRemoteScreen'));
+      const myCam = !!c.camera && c.camera.readyState === 'live' && c.camera.enabled;
+      if (remoteCam) c.remoteSeen = true;
+      // Your own camera only fills the stage until their picture first appears (like Teams' preview).
+      const main = remoteScreen ? $('callRemoteScreen') : remoteCam ? $('callRemote')
+        : myCam && !c.display && !c.remoteSeen ? $('callLocal') : null;
+      const tiles = [
+        remoteScreen && remoteCam ? $('callRemote') : null,
+        myCam && main !== $('callLocal') ? $('callLocal') : null,
+        c.display ? $('callLocalScreen') : null,
+      ].filter(Boolean);
+      const place = (v, box) => { if (v.parentNode !== box) box.appendChild(v); if (v.paused && v.srcObject) v.play().catch(() => {}); };
+      for (const v of [$('callRemote'), $('callRemoteScreen'), $('callLocal'), $('callLocalScreen')]) {
+        if (v === main) place(v, $('callStageMain'));
+        else if (tiles.includes(v)) place(v, $('callTiles'));
+        else place(v, $('callPark'));
+      }
+      tiles.forEach(v => $('callTiles').appendChild(v)); // keep tile order
       $('callKind').textContent = c.display ? 'You are sharing your screen'
         : c.remoteSharing ? c.name + ' is sharing their screen'
         : c.mode === 'video' ? 'Video call' : 'Audio call';
     }
     function announceShare(c) {
-      layout(c);
+      arrange(c);
       if (c.id && c.pc?.connectionState === 'connected') request('call:share', { id: c.id, sharing: !!c.display }).catch(() => {});
     }
     function cleanup(c, message) {
@@ -98,8 +116,8 @@
       c.pc?.close(); c.camera?.stop(); c.stream?.getTracks().forEach(t => t.stop()); c.display?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
-      panel.classList.remove('nc-call-pip', 'nc-local-screen');
-      $('callLocal').srcObject = null; $('callRemote').srcObject = null; $('callRemoteAudio').srcObject = null;
+      for (const id of ['callLocal', 'callLocalScreen', 'callRemote', 'callRemoteScreen', 'callRemoteAudio']) $(id).srcObject = null;
+      for (const id of ['callLocal', 'callLocalScreen', 'callRemote', 'callRemoteScreen']) $('callPark').appendChild($(id));
       panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -120,36 +138,49 @@
       if (current !== c) { stream.getTracks().forEach(t => t.stop()); return false; }
       c.stream = stream;
       c.camera = stream.getVideoTracks()[0] || null;
+      c.screenStream = new MediaStream();
       if (c.display) {
         const screen = c.display.getVideoTracks()[0];
         if (!screen || screen.readyState === 'ended') throw new Error('Screen sharing was cancelled.');
-        stream.addTrack(screen); screen.onended = () => stopSharing(c);
+        screen.onended = () => stopSharing(c);
+        $('callLocalScreen').srcObject = c.display;
         $('callStopSharing').hidden = false;
-        layout(c);
       }
-      $('callLocal').srcObject = stream;
-      $('callLocal').hidden = !stream.getVideoTracks().length;
+      if (c.camera) $('callLocal').srcObject = new MediaStream([c.camera]);
       $('callMute').hidden = false;
-      $('callCamera').hidden = !c.camera || !!c.display;
+      $('callCamera').hidden = !c.camera;
       $('callScreenShare').hidden = !navigator.mediaDevices.getDisplayMedia;
       const pc = c.pc = new RTCPeerConnection({ iceServers: config.iceServers });
       c.candidates = [];
-      stream.getTracks().forEach(t => {
-        const sender = pc.addTrack(t, stream); if (t.kind === 'video') c.videoSender = sender;
-      });
-      if (!c.videoSender && !c.incoming) c.videoSender = pc.addTransceiver('video', { direction:'sendrecv', streams:[stream] }).sender;
+      // Media slots, in this order on both sides: audio, camera video, screen video. The screen has
+      // its own slot so sharing never replaces the camera (both are seen, as in Teams), and both
+      // video slots exist from the start so sharing needs no renegotiation. The caller creates them
+      // all; the callee's slots come from the offer (see description()).
+      const audio = stream.getAudioTracks()[0];
+      if (audio) pc.addTrack(audio, stream);
+      if (c.camera) c.videoSender = pc.addTrack(c.camera, stream);
+      if (!c.incoming) {
+        if (!c.videoSender) c.videoSender = pc.addTransceiver('video', { direction: 'sendrecv', streams: [stream] }).sender;
+        c.screenSender = pc.addTransceiver('video', { direction: 'sendrecv', streams: [c.screenStream] }).sender;
+        if (c.display) await c.screenSender.replaceTrack(c.display.getVideoTracks()[0]);
+      }
+      arrange(c);
       pc.onicecandidate = ({ candidate }) => {
         if (candidate && current === c && c.id) request('call:signal', { id: c.id, signal: { candidate: candidate.toJSON() } }).catch(e => { if (current === c) stop(c, e.message); });
       };
-      pc.ontrack = ({ streams, track }) => {
-        const remote = streams[0] || new MediaStream([track]);
-        // Pictures go to the (muted) video element, sound to its own audio element: in audio calls
-        // the video element is hidden, and Chromium never plays a display:none video — which on
-        // macOS also left the microphone sending silence.
-        $('callRemote').srcObject = remote;
-        $('callRemoteAudio').srcObject = remote;
-        $('callRemote').play().catch(() => {});
-        $('callRemoteAudio').play().then(() => { if (current === c) $('callPlayback').hidden = true; }).catch(() => { if (current === c && $('callRemoteAudio').paused) $('callPlayback').hidden = false; });
+      pc.ontrack = ({ track, transceiver }) => {
+        // Sound plays through its own <audio> element, never through a video element: a video
+        // element that isn't shown doesn't play, which on macOS also left the microphone silent.
+        if (track.kind === 'audio') {
+          $('callRemoteAudio').srcObject = new MediaStream([track]);
+          $('callRemoteAudio').play().then(() => { if (current === c) $('callPlayback').hidden = true; }).catch(() => { if (current === c && $('callRemoteAudio').paused) $('callPlayback').hidden = false; });
+          return;
+        }
+        // The first video slot is their camera, the second their screen.
+        const videoSlots = pc.getTransceivers().filter(t => t.receiver.track.kind === 'video' && t.mid !== null).sort((a, b) => Number(a.mid) - Number(b.mid));
+        const el = videoSlots.indexOf(transceiver) === 1 ? $('callRemoteScreen') : $('callRemote');
+        el.srcObject = new MediaStream([track]);
+        el.play().catch(() => {});
       };
       pc.onconnectionstatechange = () => {
         if (current !== c) return;
@@ -175,12 +206,16 @@
     async function description(c, d) {
       await c.pc.setRemoteDescription(d);
       if (d.type === 'offer') {
-        const video = c.pc.getTransceivers().find(t => t.mid !== null && t.receiver.track.kind === 'video');
-        if (video) {
-          video.direction = 'sendrecv'; c.videoSender = video.sender;
-          video.sender.setStreams(c.stream);
-          const track = c.stream.getVideoTracks()[0];
-          if (track && video.sender.track !== track) await video.sender.replaceTrack(track);
+        // Answer every slot the caller offered: first video = camera, second = screen.
+        const [camera, screen] = c.pc.getTransceivers().filter(t => t.mid !== null && t.receiver.track.kind === 'video').sort((a, b) => Number(a.mid) - Number(b.mid));
+        if (camera) {
+          camera.direction = 'sendrecv'; c.videoSender = camera.sender;
+          camera.sender.setStreams(c.stream);
+          if (c.camera && camera.sender.track !== c.camera) await camera.sender.replaceTrack(c.camera);
+        }
+        if (screen) {
+          screen.direction = 'sendrecv'; c.screenSender = screen.sender;
+          screen.sender.setStreams(c.screenStream);
         }
       }
       for (const candidate of c.candidates.splice(0)) await c.pc.addIceCandidate(candidate);
@@ -236,16 +271,18 @@
       const c = current;
       if (!c || c.id !== data.id) return;
       c.remoteSharing = !!data.sharing;
-      // In an audio call the remote video only exists while they share.
-      if (!c.remoteSharing && c.mode !== 'video') $('callRemote').classList.add('nc-video-waiting');
-      // Sharing again at the same size fires no resize event, so reveal on the share notice too.
-      if (c.remoteSharing && $('callRemote').videoWidth > 0) $('callRemote').classList.remove('nc-video-waiting');
-      layout(c);
+      arrange(c);
+    });
+    // Their camera turned off or on (enabled=false still sends black frames, so it must be told).
+    socket.on('call:camera', data => {
+      const c = current;
+      if (!c || c.id !== data.id) return;
+      c.remoteCameraOff = !data.on;
+      arrange(c);
     });
     socket.on('disconnect', () => { if (current) cleanup(current, 'Connection lost. Call ended.'); });
-    // A remote video track can report itself live before any picture arrives (the caller's side of
-    // an audio call does), so reveal the box only once a frame has actually been decoded.
-    $('callRemote').addEventListener('resize', () => { if (current && $('callRemote').videoWidth > 0) $('callRemote').classList.remove('nc-video-waiting'); });
+    // A picture starting (or changing size) on any video can change what belongs on the stage.
+    for (const id of ['callRemote', 'callRemoteScreen', 'callLocal', 'callLocalScreen']) $(id).addEventListener('resize', () => { if (current) arrange(current); });
     $('callAccept').onclick = async () => {
       const c = current;
       if (!c || c.accepting) return;
@@ -269,25 +306,23 @@
       setCallToggle($('callMute'), !enabled, enabled ? 'Mute' : 'Unmute');
     };
     $('callCamera').onclick = () => {
-      const tracks = current?.stream?.getVideoTracks() || [];
-      if (!tracks.length) return;
-      const enabled = !tracks[0].enabled;
-      tracks.forEach(t => { t.enabled = enabled; });
-      setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
+      const c = current, cam = c?.camera;
+      if (!cam) return;
+      cam.enabled = !cam.enabled;
+      setCallToggle($('callCamera'), !cam.enabled, cam.enabled ? 'Turn camera off' : 'Turn camera on');
+      arrange(c);
+      if (c.id && c.pc?.connectionState === 'connected') request('call:camera', { id: c.id, on: cam.enabled }).catch(() => {});
     };
     $('callScreenShare').onclick = () => { if (current && (!current.incoming || current.accepted)) controller.share(current.conversationId, current.name); };
-    $('callPlayback').onclick = () => { if (!current) return; $('callRemote').play().catch(() => {}); $('callRemoteAudio').play().then(() => { $('callPlayback').hidden = true; }).catch(() => {}); };
+    $('callPlayback').onclick = () => { if (!current) return; $('callRemoteAudio').play().then(() => { $('callPlayback').hidden = true; }).catch(() => {}); };
     window.addEventListener('pagehide', () => { if (current) stop(current); });
     async function stopSharing(c) {
       const display = c.display; c.display = null;
       if (!display) return;
-      display.getTracks().forEach(t => { t.onended = null; t.stop(); c.stream?.removeTrack(t); });
+      display.getTracks().forEach(t => { t.onended = null; t.stop(); });
       if (current !== c) return;
-      try { await c.videoSender?.replaceTrack(c.camera); } catch (e) { stop(c, e.message); return; }
-      if (c.camera && !c.stream.getVideoTracks().includes(c.camera)) c.stream.addTrack(c.camera);
-      $('callLocal').srcObject = c.stream;
-      $('callLocal').hidden = !c.camera;
-      $('callCamera').hidden = !c.camera;
+      $('callLocalScreen').srcObject = null;
+      try { await c.screenSender?.replaceTrack(null); } catch (e) { stop(c, e.message); return; }
       $('callStopSharing').hidden = true;
       announceShare(c);
     }
@@ -301,15 +336,14 @@
         display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
         if (existing && current !== existing) { display.getTracks().forEach(t => t.stop()); return; }
         if (!existing) { await controller.start(conversationId, 'video', name, display); return; }
+        if (!existing.screenSender) throw new Error('The other person needs to reload NovaConnect before you can share your screen with them.');
         if (existing.display) await stopSharing(existing);
         const track = display.getVideoTracks()[0];
-        await existing.videoSender.replaceTrack(track);
+        await existing.screenSender.replaceTrack(track);
         existing.display = display;
-        existing.stream.getVideoTracks().forEach(t => existing.stream.removeTrack(t));
-        existing.stream.addTrack(track);
         track.onended = () => stopSharing(existing);
-        $('callLocal').srcObject = existing.stream; $('callLocal').hidden = false;
-        $('callCamera').hidden = true; $('callStopSharing').hidden = false;
+        $('callLocalScreen').srcObject = display;
+        $('callStopSharing').hidden = false;
         announceShare(existing);
       } catch (e) {
         display?.getTracks().forEach(t => t.stop());

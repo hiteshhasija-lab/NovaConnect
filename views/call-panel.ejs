@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/css/calls.css?v=8">
+<link rel="stylesheet" href="/css/calls.css?v=9">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
@@ -41,10 +41,18 @@
         </template>
       </div>
 
-      <!-- 1:1 call: two videos side by side -->
-      <div class="nc-call-media-1to1" id="callMedia1to1" hidden>
-        <video id="callRemote" autoplay playsinline muted aria-label="Other participant"></video>
-        <video id="callLocal" autoplay playsinline muted aria-label="Your camera preview"></video>
+      <!-- 1:1 call, laid out like Teams: one video fills the stage (the other person, or a shared
+           screen), the rest float as small tiles in the corner. calls.js arrange() moves the videos
+           between the stage, the tiles and the park (rendered but invisible, so they keep decoding). -->
+      <div class="nc-call-stage" id="callMedia1to1" hidden>
+        <div class="nc-stage-main" id="callStageMain"></div>
+        <div class="nc-stage-tiles" id="callTiles"></div>
+        <div class="nc-stage-park" id="callPark" aria-hidden="true">
+          <video id="callRemote" autoplay playsinline muted aria-label="Other participant"></video>
+          <video id="callRemoteScreen" class="nc-screen-video" autoplay playsinline muted aria-label="Shared screen"></video>
+          <video id="callLocal" class="nc-self-video" autoplay playsinline muted aria-label="Your camera"></video>
+          <video id="callLocalScreen" class="nc-screen-video" autoplay playsinline muted aria-label="Your shared screen"></video>
+        </div>
       </div>
   </div>
 
