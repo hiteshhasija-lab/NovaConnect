@@ -251,7 +251,7 @@
   flex: 1; min-height: 0; overflow: auto;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch;
 }
-.nc-call-max .nc-call-grid .nc-video-tile video, .nc-call:fullscreen .nc-call-grid .nc-video-tile video { height: 100%; aspect-ratio: auto; }
+.nc-call-max .nc-call-grid .nc-video-tile video, .nc-call:fullscreen .nc-call-grid .nc-video-tile video { height: 100%; max-height: none; aspect-ratio: auto; }
 .nc-call video { cursor: zoom-in; }
 
 /* 1:1 call stage, laid out like Teams (calls.js arrange()): the main video fills the stage, the
