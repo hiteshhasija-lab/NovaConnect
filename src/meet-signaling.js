@@ -49,7 +49,8 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       io.to(sid).emit('meet:recording-ready', { ...ready, downloadUrl: mayDownload ? downloadUrl : null });
     }
   });
-  // In-call chat so far, per room, for people who join late (kept while the room exists).
+  // Call rooms: in-call chat so far, for people who join late (kept while the room exists).
+  // Meeting rooms read theirs from meet_chat_messages instead.
   const chatHistory = new Map();
   function rememberChat(roomId, m) {
     for (const id of chatHistory.keys()) if (!getRoom(id)) chatHistory.delete(id);
@@ -57,6 +58,17 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
     list.push(m);
     if (list.length > 200) list.shift();
     chatHistory.set(roomId, list);
+  }
+
+  // A standalone meeting's chat is saved (meet_chat_messages) and shown again the next time the
+  // meeting link is used, and on the Meet page afterwards to everyone who was let in.
+  const meetCode = roomId => (roomId.startsWith('meet:') ? roomId.slice(5) : null);
+  const utcIso = s => String(s).replace(' ', 'T') + 'Z';
+  async function savedMeetingChat(code) {
+    const rows = await db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.full_name FROM meet_chat_messages c
+      LEFT JOIN users u ON u.id = c.user_id WHERE c.meet_link_code = ? ORDER BY c.id DESC LIMIT 200`).all(code);
+    return rows.reverse().map(r => ({ roomId: 'meet:' + code, peerId: null, userId: r.user_id, fullName: r.full_name || 'Former user',
+      text: r.body, at: utcIso(r.created_at), messageId: 'meet-' + r.id }));
   }
 
   async function meetingOwnerId(code) {
@@ -107,6 +119,9 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
     // Moves a lobby entry into the meeting: it starts receiving room broadcasts only now.
     function admitSocket(sid, mapping) {
       mapping.inLobby = false;
+      const code = meetCode(mapping.roomId);
+      if (code) db.prepare('INSERT INTO meet_attendees (meet_link_code, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(code, mapping.userId)
+        .catch(e => console.error('Could not record meeting attendee', e.message));
       io.in(sid).socketsJoin('sfu:' + mapping.roomId);
       io.to(sid).emit('meet:admitted', { roomId: mapping.roomId });
       io.to('sfu:' + mapping.roomId).except(sid).emit('sfu:peer-joined', {
@@ -309,25 +324,31 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       io.to(`sfu:${roomId}`).emit('sfu:reaction', { roomId, peerId: m.peerId, fullName: m.fullName, emoji });
       return {};
     });
-    // A call's chat is saved into the chat or channel the call belongs to, so it's still there
-    // afterwards (as in Teams); a standalone meeting's chat lasts as long as the meeting.
+    // A call's chat is saved into the chat or channel the call belongs to, and a standalone
+    // meeting's into meet_chat_messages, so it's still there afterwards (as in Teams).
     handle('sfu:chat', async ({ roomId, text }) => {
       const m = admitted(roomId);
       const body = String(text || '').trim().slice(0, 2000);
       if (!body) throw Error('Type a message first.');
       const msg = { roomId, peerId: m.peerId, userId: m.userId, fullName: m.fullName, text: body, at: new Date().toISOString() };
       const scope = scopeForRoom(roomId);
+      const code = meetCode(roomId);
       if (scope) {
         const saved = await postToScope(io, scope, m.userId, body, { callChat: true, room: roomId });
         msg.messageId = saved.id;
+      } else if (code) {
+        const saved = await db.prepare('INSERT INTO meet_chat_messages (meet_link_code, user_id, body) VALUES (?, ?, ?) RETURNING id, created_at').get(code, m.userId, body);
+        msg.messageId = 'meet-' + saved.id;
+        msg.at = utcIso(saved.created_at);
       }
-      rememberChat(roomId, msg);
+      if (!code) rememberChat(roomId, msg);
       io.to(`sfu:${roomId}`).emit('sfu:chat', msg);
       return {};
     });
     handle('sfu:chat-history', async ({ roomId }) => {
       admitted(roomId);
-      return { messages: chatHistory.get(roomId) || [] };
+      const code = meetCode(roomId);
+      return { messages: code ? await savedMeetingChat(code) : chatHistory.get(roomId) || [] };
     });
 
     // Stop one of your own streams (a screen share) while staying in the call.

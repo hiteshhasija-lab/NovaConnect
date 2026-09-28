@@ -5,7 +5,7 @@
 .meet-top-actions { display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:36px; }
 .meet-top-actions button { min-height:36px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:4.62px 15.4px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px; }
 .meet-top-actions .meet-create { background:var(--brand);color:white;border-color:var(--brand); }.meet-schedule i { color:#dc3bad; }.meet-join i { color:#2688df; }
-.meet-links { margin-top:22px; }.meet-empty { border:1px solid var(--border);border-radius:12px;padding:24px; }.meet-empty>span { font-size:28px; }.meet-empty p { font-weight:600;margin:10px 0 26px; }
+.meet-links,.meet-chats { margin-top:22px; }.meet-empty { border:1px solid var(--border);border-radius:12px;padding:24px; }.meet-empty>span { font-size:28px; }.meet-empty p { font-weight:600;margin:10px 0 26px; }
 .meet-learn,.meet-calendar,.meet-details { background:none;border:0;color:var(--text);padding:0;text-align:left; }.meet-learn { color:var(--brand); }
 .meet-section-title { display:flex;justify-content:space-between;gap:16px;align-items:center;margin:32px 0 20px; }
 .meet-link-row { display:flex;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--border);padding:12px 0; }.meet-link-row>div,.meet-link-row>.meet-details { flex:1; }.meet-link-row small { display:block;color:var(--text-muted);overflow-wrap:anywhere; }.meet-link-row a { text-decoration:none;white-space:nowrap; }
@@ -148,3 +148,5 @@
 .meet-device-grid label[hidden] { display: none; }
 .meet-device-grid select { padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border, #ccc); background: var(--surface, #fff); color: var(--text, #222); }
 .meet-device-note { margin: 6px 0 0; font-size: .8rem; color: var(--text-muted, #666); }
+.meet-chats { color:var(--text-muted); }.meet-chats .meet-link-row { color:inherit; }.meet-chats .meet-link-row strong { color:var(--text); }
+.meet-chat-history { max-height:min(60vh,520px);overflow-y:auto;min-width:min(480px,80vw); }.meet-chat-row { padding:8px 0;border-bottom:1px solid var(--border); }.meet-chat-row small { color:var(--text-muted);margin-left:8px; }.meet-chat-row p { margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere; }
