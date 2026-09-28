@@ -157,7 +157,8 @@ function createMainWindow() {
   // Meetings/calls need real camera+mic access — Electron blocks getUserMedia by default
   // unless the host app explicitly grants it, unlike a normal browser's per-site prompt.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    const allowed = ['media', 'notifications', 'display-capture'];
+    // 'fullscreen': the call panel's Full screen button and double-click-to-full-screen videos.
+    const allowed = ['media', 'notifications', 'display-capture', 'fullscreen'];
     callback(allowed.includes(permission));
   });
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
