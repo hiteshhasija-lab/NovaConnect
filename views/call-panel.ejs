@@ -16,6 +16,9 @@
     </div>
   </div>
 
+  <!-- The other person's sound in 1:1 calls. Kept apart from the video element, which is hidden
+       in audio calls: a hidden (display:none) video element is never played. -->
+  <audio id="callRemoteAudio" autoplay></audio>
   <div class="nc-call-media" id="callMedia">
     <!-- Group call: grid layout -->
     <div class="nc-call-grid" id="callGrid" hidden>
@@ -40,7 +43,7 @@
 
       <!-- 1:1 call: two videos side by side -->
       <div class="nc-call-media-1to1" id="callMedia1to1" hidden>
-        <video id="callRemote" autoplay playsinline aria-label="Other participant"></video>
+        <video id="callRemote" autoplay playsinline muted aria-label="Other participant"></video>
         <video id="callLocal" autoplay playsinline muted aria-label="Your camera preview"></video>
       </div>
   </div>

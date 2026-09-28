@@ -80,7 +80,7 @@
       c.pc?.close(); c.camera?.stop(); c.stream?.getTracks().forEach(t => t.stop()); c.display?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
-      $('callLocal').srcObject = null; $('callRemote').srcObject = null;
+      $('callLocal').srcObject = null; $('callRemote').srcObject = null; $('callRemoteAudio').srcObject = null;
       panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -123,9 +123,15 @@
         if (candidate && current === c && c.id) request('call:signal', { id: c.id, signal: { candidate: candidate.toJSON() } }).catch(e => { if (current === c) stop(c, e.message); });
       };
       pc.ontrack = ({ streams, track }) => {
-        $('callRemote').srcObject = streams[0] || new MediaStream([track]);
+        const remote = streams[0] || new MediaStream([track]);
+        // Pictures go to the (muted) video element, sound to its own audio element: in audio calls
+        // the video element is hidden, and Chromium never plays a display:none video — which on
+        // macOS also left the microphone sending silence.
+        $('callRemote').srcObject = remote;
+        $('callRemoteAudio').srcObject = remote;
         if (track.kind === 'video') track.onunmute = () => { if (current === c) $('callRemote').hidden = false; };
-        $('callRemote').play().then(() => { if (current === c) $('callPlayback').hidden = true; }).catch(() => { if (current === c && $('callRemote').paused) $('callPlayback').hidden = false; });
+        $('callRemote').play().catch(() => {});
+        $('callRemoteAudio').play().then(() => { if (current === c) $('callPlayback').hidden = true; }).catch(() => { if (current === c && $('callRemoteAudio').paused) $('callPlayback').hidden = false; });
       };
       pc.onconnectionstatechange = () => {
         if (current !== c) return;
@@ -238,7 +244,7 @@
       setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
     };
     $('callScreenShare').onclick = () => { if (current && (!current.incoming || current.accepted)) controller.share(current.conversationId, current.name); };
-    $('callPlayback').onclick = () => { $('callRemote').play().then(() => { $('callPlayback').hidden = true; }).catch(() => {}); };
+    $('callPlayback').onclick = () => { if (!current) return; $('callRemote').play().catch(() => {}); $('callRemoteAudio').play().then(() => { $('callPlayback').hidden = true; }).catch(() => {}); };
     window.addEventListener('pagehide', () => { if (current) stop(current); });
     async function stopSharing(c) {
       const display = c.display; c.display = null;
