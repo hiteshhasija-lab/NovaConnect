@@ -69,7 +69,7 @@
       if (!navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
       let display;
       try {
-        display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
         if (current !== c || !c.joined || !c.session || c.display) { display.getTracks().forEach(t => t.stop()); return; }
         const track = display.getVideoTracks()[0];
         c.display = display;

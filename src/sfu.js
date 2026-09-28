@@ -121,7 +121,8 @@ async function createTransport(room, peerId, direction) {
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
-    initialAvailableOutgoingBitrate: 1000000,
+    // Start viewers' bandwidth estimate high enough for a full-resolution shared screen.
+    initialAvailableOutgoingBitrate: 2000000,
   });
 
   if (!roomObj.peers.has(peerId)) {

@@ -73,10 +73,24 @@
         for (const track of stream.getTracks()) await transport.produce({ track, appData: { source: 'camera' } });
       },
       // Screen sharing: an extra stream alongside the camera, so the camera keeps going.
+      // Screens carry text, so keep full resolution and give up frame rate instead when bandwidth
+      // is short (WebRTC's default does the opposite and blurs small text).
       async shareScreen(track) {
         if (closed) return;
         const transport = await ensureSendTransport();
-        screenProducer = await transport.produce({ track, appData: { source: 'screen' } });
+        track.contentHint = 'detail';
+        screenProducer = await transport.produce({
+          track,
+          encodings: [{ maxBitrate: 2500000, maxFramerate: 30 }],
+          codecOptions: { videoGoogleStartBitrate: 1500 },
+          appData: { source: 'screen' },
+        });
+        try {
+          const sender = screenProducer.rtpSender;
+          const params = sender.getParameters();
+          params.degradationPreference = 'maintain-resolution';
+          await sender.setParameters(params);
+        } catch { /* contentHint alone already prefers resolution */ }
       },
       async stopScreen() {
         const producer = screenProducer; screenProducer = null;

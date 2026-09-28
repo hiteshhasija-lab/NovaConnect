@@ -47,7 +47,7 @@ async function startShare(){
   if(!joined||!session||display)return;
   let d;
   try{
-    d=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
+    d=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:30}},audio:false});
     if(!joined||!session||display){d.getTracks().forEach(t=>t.stop());return}
     const track=d.getVideoTracks()[0];
     display=d;track.onended=stopShare; // the browser's own "Stop sharing" bar

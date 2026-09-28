@@ -108,6 +108,19 @@
         : c.remoteSharing ? c.name + ' is sharing their screen'
         : c.mode === 'video' ? 'Video call' : 'Audio call';
     }
+    // Screens carry text: keep full resolution (dropping frame rate instead when bandwidth is short)
+    // and allow a higher bitrate than a camera needs. WebRTC's default blurs small text.
+    async function tuneScreenSender(sender, track) {
+      if (!sender || !track) return;
+      track.contentHint = 'detail';
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings?.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = 2500000;
+        params.degradationPreference = 'maintain-resolution';
+        await sender.setParameters(params);
+      } catch { /* contentHint alone already prefers resolution */ }
+    }
     function announceShare(c) {
       arrange(c);
       if (c.id && c.pc?.connectionState === 'connected') request('call:share', { id: c.id, sharing: !!c.display }).catch(() => {});
@@ -164,7 +177,7 @@
       if (!c.incoming) {
         if (!c.videoSender) c.videoSender = pc.addTransceiver('video', { direction: 'sendrecv', streams: [stream] }).sender;
         c.screenSender = pc.addTransceiver('video', { direction: 'sendrecv', streams: [c.screenStream] }).sender;
-        if (c.display) await c.screenSender.replaceTrack(c.display.getVideoTracks()[0]);
+        if (c.display) { await c.screenSender.replaceTrack(c.display.getVideoTracks()[0]); await tuneScreenSender(c.screenSender, c.display.getVideoTracks()[0]); }
       }
       arrange(c);
       pc.onicecandidate = ({ candidate }) => {
@@ -335,13 +348,14 @@
       if (!navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
       let display;
       try {
-        display = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
+        display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
         if (existing && current !== existing) { display.getTracks().forEach(t => t.stop()); return; }
         if (!existing) { await controller.start(conversationId, 'video', name, display); return; }
         if (!existing.screenSender) throw new Error('The other person needs to reload NovaConnect before you can share your screen with them.');
         if (existing.display) await stopSharing(existing);
         const track = display.getVideoTracks()[0];
         await existing.screenSender.replaceTrack(track);
+        await tuneScreenSender(existing.screenSender, track);
         existing.display = display;
         track.onended = () => stopSharing(existing);
         $('callLocalScreen').srcObject = display;
