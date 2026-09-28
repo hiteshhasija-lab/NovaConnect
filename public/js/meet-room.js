@@ -29,6 +29,7 @@ function tile(id,name,media,muted=false){
     item.append(v,av,hand,p);videos.append(item);
   }
   const v=item.querySelector('video');v.srcObject=media;
+  if(!muted)NovaDevices.applySpeaker(v);
   v.play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>v.play()});
   updateSelfView();
 }
@@ -78,6 +79,26 @@ async function stopShare(){
   setShareButton();
 }
 shareBtn.onclick=()=>display?stopShare():startShare();
+
+// Devices (devices.js): choose before joining or during the meeting. Mid-meeting, switching the
+// microphone/camera replaces the track being sent (no reconnect) and keeps muted/camera-off.
+const devicePicker=NovaDevices.bind(
+  {audioinput:document.getElementById('meetMicSelect'),videoinput:document.getElementById('meetCameraSelect'),audiooutput:document.getElementById('meetSpeakerSelect')},
+  (kind,id)=>switchDevice(kind,id).catch(e=>{status.textContent='Could not switch device: '+e.message}));
+async function switchDevice(kind,id){
+  if(kind==='audiooutput'){[...videos.children].forEach(t=>{if(t.id!=='peer-local')NovaDevices.applySpeaker(t.querySelector('video'))});return}
+  if(!joined||!stream)return; // used when you join
+  const short=kind==='audioinput'?'audio':'video';
+  const old=short==='audio'?stream.getAudioTracks()[0]:stream.getVideoTracks()[0];
+  if(!old)return;
+  const fresh=(await navigator.mediaDevices.getUserMedia({[short]:id?{deviceId:{exact:id}}:true}))[short==='audio'?'getAudioTracks':'getVideoTracks']()[0];
+  if(!joined){fresh.stop();return}
+  fresh.enabled=old.enabled;
+  await session?.replaceTrack(short,fresh);
+  stream.removeTrack(old);old.stop();stream.addTrack(fresh);
+  const mine=document.querySelector('#peer-local video');if(mine)mine.srcObject=new MediaStream(stream.getTracks());
+  status.textContent=(short==='audio'?'Microphone':'Camera')+' switched.';
+}
 
 // In-call extras (participants, raise hand, reactions, chat, active speaker): call-extras.js.
 const $=id=>document.getElementById(id);
@@ -177,7 +198,10 @@ enter.onclick=async()=>{
     // Browsers only offer camera/microphone on https (or localhost); on plain http, join to watch and listen.
     const noDevices=(mic.checked||camera.checked)&&!navigator.mediaDevices?.getUserMedia;
     if(noDevices){mic.checked=false;camera.checked=false}
-    if(mic.checked||camera.checked)stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
+    if(mic.checked||camera.checked){
+      stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked&&NovaDevices.audio(),video:camera.checked&&NovaDevices.video()});
+      devicePicker.refresh(); // device names are only readable once access is granted
+    }
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
     const r=await request('meet:join',{code});
     roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;ownPeerId=r.peerId;ownUserId=r.userId;

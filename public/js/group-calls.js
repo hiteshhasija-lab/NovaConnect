@@ -131,6 +131,7 @@
       }
       const v = t.querySelector('video');
       v.srcObject = media;
+      if (!local) NovaDevices.applySpeaker(v);
       // Autoplay with sound can be blocked until the user interacts; offer a play button then.
       v.play().catch(() => { if (current) $('callPlayback').hidden = false; });
       arrangeTiles();
@@ -171,7 +172,8 @@
       show(c, 'Requesting microphone access…');
       try {
         if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('Open NovaConnect over HTTPS to use your microphone and camera.');
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: c.mode === 'video' });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: NovaDevices.audio(), video: c.mode === 'video' ? NovaDevices.video() : false });
+        devicePicker.refresh(); // device names are only readable once access is granted
         if (current !== c) { stream.getTracks().forEach(t => t.stop()); return; }
         c.stream = stream;
         status('Connecting…');
@@ -228,7 +230,35 @@
         chatBtn: $('callChat'), chatBadge: $('callChatCount'), chatPanel: $('callChatPanel'), chatMessages: $('callChatMessages'),
         chatForm: $('callChatForm'), chatInput: $('callChatInput'), notices: $('callNotices'),
       },
+      extraPanels: [[$('callSettings'), $('callSettingsPanel')]],
     });
+
+    // Devices panel (devices.js): switching microphone/camera mid-call replaces the track being sent
+    // (same stream, no reconnect) and keeps muted/camera-off as it was; the speaker applies to
+    // everyone's sound at once.
+    const devicePicker = NovaDevices.bind(
+      { audioinput: $('callMicSelect'), videoinput: $('callCameraSelect'), audiooutput: $('callSpeakerSelect') },
+      (kind, id) => switchDevice(kind, id).catch(e => notify(e)),
+    );
+    async function switchDevice(kind, id) {
+      const c = current;
+      if (kind === 'audiooutput') {
+        allTiles().forEach(t => { if (t.dataset.peerId !== 'local') NovaDevices.applySpeaker(t.querySelector('video')); });
+        return;
+      }
+      if (!c?.joined || !c.stream) return; // used next time
+      const short = kind === 'audioinput' ? 'audio' : 'video';
+      const old = short === 'audio' ? c.stream.getAudioTracks()[0] : c.stream.getVideoTracks()[0];
+      if (!old) return; // e.g. choosing a camera during an audio call — used next time
+      const wanted = id ? { deviceId: { exact: id } } : true;
+      const fresh = (await navigator.mediaDevices.getUserMedia({ [short]: wanted }))[short === 'audio' ? 'getAudioTracks' : 'getVideoTracks']()[0];
+      if (current !== c) { fresh.stop(); return; }
+      fresh.enabled = old.enabled; // stay muted / camera-off if you were
+      await c.session?.replaceTrack(short, fresh);
+      c.stream.removeTrack(old); old.stop(); c.stream.addTrack(fresh);
+      const mine = allTiles().find(t => t.dataset.peerId === 'local')?.querySelector('video');
+      if (mine) mine.srcObject = new MediaStream(c.stream.getTracks());
+    }
 
     socket.on('gcall:incoming', data => {
       if (current || otherCallActive()) return;

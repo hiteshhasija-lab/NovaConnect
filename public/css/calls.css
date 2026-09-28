@@ -388,3 +388,9 @@
 .nc-call-notice { padding: 6px 12px; border-radius: 999px; background: rgba(8, 11, 24, .85); color: #f5f6ff; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; animation: nc-toast-in .2s ease-out; }
 @keyframes nc-toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .nc-float-reaction, .nc-video-tile.nc-hand .nc-tile-hand { animation: none; } }
+
+/* Devices panel (microphone / camera / speaker), devices.js */
+.nc-device-picker label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0; font-size: .85rem; color: #d5daee; }
+.nc-device-picker select { width: 100%; padding: 7px 8px; border-radius: 8px; border: 1px solid #535a78; background: #0c1020; color: #f5f6ff; }
+.nc-device-picker label[hidden] { display: none; }
+.nc-settings-note { margin: 4px 0 0; font-size: .75rem; color: #b7baf7; }

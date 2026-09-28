@@ -139,3 +139,12 @@
 .meet-video.nc-speaking::after { border-color: #7f85f5; }
 .meet-share-stage { overflow: hidden; }
 @media (max-width: 600px) { .meet-side-panel { top: auto; height: 60vh; right: 16px; left: 16px; width: auto; } }
+
+/* Devices (microphone / camera / speaker) on the meeting page, devices.js */
+.meet-devices { margin: 0 0 12px; }
+.meet-devices summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted, #555); }
+.meet-device-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 8px; }
+.meet-device-grid label { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
+.meet-device-grid label[hidden] { display: none; }
+.meet-device-grid select { padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border, #ccc); background: var(--surface, #fff); color: var(--text, #222); }
+.meet-device-note { margin: 6px 0 0; font-size: .8rem; color: var(--text-muted, #666); }

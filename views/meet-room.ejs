@@ -1,8 +1,8 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=8">
-<link rel="stylesheet" href="/css/calls.css?v=15">
+<link rel="stylesheet" href="/css/meet.css?v=9">
+<link rel="stylesheet" href="/css/calls.css?v=16">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
     <h1><%= link.title %></h1>
@@ -22,6 +22,15 @@
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetReactionsBtn" hidden aria-expanded="false" aria-controls="meetReactionsPanel"><i class="bi bi-emoji-smile" aria-hidden="true"></i> React</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetChatBtn" hidden aria-expanded="false" aria-controls="meetChatPanel"><i class="bi bi-chat-dots" aria-hidden="true"></i> Chat <span class="nc-badge" id="meetChatBadge" hidden>0</span></button>
     </div>
+    <details class="meet-devices">
+      <summary><i class="bi bi-gear" aria-hidden="true"></i> Devices</summary>
+      <div class="meet-device-grid">
+        <label>Microphone <select id="meetMicSelect"></select></label>
+        <label>Camera <select id="meetCameraSelect"></select></label>
+        <label>Speaker <select id="meetSpeakerSelect"></select></label>
+      </div>
+      <p class="meet-device-note">Remembered on this device. You can change these during the meeting too.</p>
+    </details>
     <div class="meet-room-controls meet-recording-controls" id="recordingControls" hidden>
       <button type="button" class="btn btn-outline-danger" id="recordBtn" title="Start recording"><i class="bi bi-record-circle"></i> Record</button>
       <button type="button" class="btn btn-danger d-none" id="stopRecordBtn" title="Stop recording"><i class="bi bi-stop-circle"></i> Stop</button>
@@ -64,9 +73,10 @@
 </aside>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
-<script src="/js/sfu-client.js?v=4"></script>
-<script src="/js/call-extras.js?v=2"></script>
-<script src="/js/meet-room.js?v=14"></script>
+<script src="/js/sfu-client.js?v=5"></script>
+<script src="/js/devices.js?v=1"></script>
+<script src="/js/call-extras.js?v=3"></script>
+<script src="/js/meet-room.js?v=15"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

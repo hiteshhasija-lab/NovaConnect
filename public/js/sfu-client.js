@@ -80,6 +80,13 @@
           if (!track.enabled) await this.setPaused(track.kind, true); // joined with it off
         }
       },
+      // Switch microphone/camera mid-call (a different device): same stream, new source.
+      async replaceTrack(kind, track) {
+        const producer = ownProducers[kind];
+        if (!producer || closed) return false;
+        await producer.replaceTrack({ track });
+        return true;
+      },
       // Camera off / microphone muted: pause our stream at the server so others are told (a
       // disabled track alone still sends black frames or silence and looks like a live camera).
       async setPaused(kind, paused) {

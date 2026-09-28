@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/css/calls.css?v=15">
+<link rel="stylesheet" href="/css/calls.css?v=16">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
@@ -99,7 +99,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="nc-badge" id="callChatCount" hidden>0</span>
         </button>
-        <button type="button" class="nc-btn-icon" id="callSettings" hidden aria-label="Settings" aria-expanded="false" aria-controls="callSettingsPanel" title="Settings">
+        <button type="button" class="nc-btn-icon" id="callSettings" hidden aria-label="Devices" aria-expanded="false" aria-controls="callSettingsPanel" title="Devices: microphone, camera, speaker">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 1 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 1 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1 1.51"/></svg>
         </button>
       </div>
@@ -140,29 +140,16 @@
       </form>
     </aside>
 
-    <aside class="nc-call-panel" id="callSettingsPanel" role="complementary" aria-label="Settings" hidden>
+    <aside class="nc-call-panel" id="callSettingsPanel" role="complementary" aria-label="Devices" hidden>
       <header>
-        <h3>Settings</h3>
-        <button type="button" class="nc-btn-close" aria-label="Close settings">×</button>
+        <h3>Devices</h3>
+        <button type="button" class="nc-btn-close" aria-label="Close devices">×</button>
       </header>
-      <div class="nc-settings-grid">
-        <section class="nc-setting">
-          <h4>Audio</h4>
-          <label><input type="checkbox" id="settingEchoCancellation" checked> Echo cancellation</label>
-          <label><input type="checkbox" id="settingNoiseSuppression" checked> Noise suppression</label>
-          <label><input type="checkbox" id="settingAutoGainControl" checked> Auto gain control</label>
-          <label>Input volume: <input type="range" id="settingInputVolume" min="0" max="100" value="80"> <span id="inputVolValue">80%</span></label>
-        </section>
-        <section class="nc-setting">
-          <h4>Video</h4>
-          <label>Resolution: <select id="settingResolution"><option value="1280x720">720p</option><option value="1920x1080">1080p</option></select></label>
-          <label>Frame rate: <select id="settingFrameRate"><option value="15">15 fps</option><option value="30" selected>30 fps</option></select></label>
-        </section>
-        <section class="nc-setting">
-          <h4>General</h4>
-          <label><input type="checkbox" id="settingMirrorVideo" checked> Mirror my video</label>
-          <label><input type="checkbox" id="settingHardwareAcceleration" checked> Hardware acceleration</label>
-        </section>
+      <div class="nc-settings-grid nc-device-picker">
+        <label>Microphone <select id="callMicSelect"></select></label>
+        <label>Camera <select id="callCameraSelect"></select></label>
+        <label>Speaker <select id="callSpeakerSelect"></select></label>
+        <p class="nc-settings-note">Remembered on this device. Changes apply straight away.</p>
       </div>
     </aside>
 </section>

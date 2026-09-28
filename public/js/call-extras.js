@@ -7,10 +7,11 @@
   //
   // Each page passes its own elements (els), how to find a participant's tile (tileFor, tiles)
   // and, optionally, where reactions should float while a screen is being presented.
-  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost }) {
+  // extraPanels: more [button, panel] pairs (e.g. device settings) that open/close with the others.
+  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [] }) {
     const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
-    const panels = [[els.participantsBtn, els.participantsPanel], [els.reactionsBtn, els.reactionsPanel], [els.chatBtn, els.chatPanel]];
-    const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn];
+    const panels = [[els.participantsBtn, els.participantsPanel], [els.reactionsBtn, els.reactionsPanel], [els.chatBtn, els.chatPanel], ...extraPanels];
+    const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn, ...extraPanels.map(([btn]) => btn)];
     let ctx = null;                // { roomId, peerId, userId, hand } while in a call
     const seen = new Set();        // chat messages already shown (history and live can overlap)
     let unreadChat = 0, refreshTimer = null;
