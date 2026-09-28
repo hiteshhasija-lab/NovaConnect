@@ -248,6 +248,8 @@
   inset: 12px; width: auto; max-height: none; display: flex; flex-direction: column;
 }
 .nc-call:fullscreen { inset: 0; border: 0; border-radius: 0; }
+/* Beats the group-call width rule above (it matches by #callGrid, so needs an id here too). */
+#callPanel.nc-call.nc-call-max, #callPanel.nc-call:fullscreen { width: auto; }
 .nc-call-max .nc-call-media, .nc-call:fullscreen .nc-call-media { flex: 1; min-height: 0; }
 .nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 { height: 100%; grid-template-columns: 3fr 1fr; align-items: start; }
 .nc-call-max .nc-call-media-1to1 video, .nc-call:fullscreen .nc-call-media-1to1 video { max-height: calc(100dvh - 190px); }
