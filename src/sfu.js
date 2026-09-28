@@ -388,9 +388,12 @@ async function recordStream(recorder, producer) {
   const sdpPath = path.join(os.tmpdir(), `${recorder.recordingId}-${index}.sdp`);
   await fsp.writeFile(sdpPath, sdp);
   const file = path.join(recorder.dir, `${index}-${consumer.kind}.mkv`);
+  // Every packet is stamped with the wall clock when it arrives, and those absolute times are kept
+  // in the file (-copyts): composing then places each file by its real times, so a stream whose
+  // first usable frame arrives late shows a short blank instead of shifting (and desyncing) the rest.
   const ffmpeg = spawn('ffmpeg', ['-y', '-loglevel', 'warning', '-protocol_whitelist', 'file,udp,rtp',
-    '-analyzeduration', '2000000', '-probesize', '2000000', '-fflags', '+genpts',
-    '-i', sdpPath, '-map', '0', '-c', 'copy', '-f', 'matroska', file], { stdio: ['ignore', 'ignore', 'pipe'] });
+    '-analyzeduration', '2000000', '-probesize', '2000000', '-use_wallclock_as_timestamps', '1',
+    '-i', sdpPath, '-map', '0', '-c', 'copy', '-copyts', '-f', 'matroska', file], { stdio: ['ignore', 'ignore', 'pipe'] });
   ffmpeg.stderr.on('data', d => logger.debug({ recordingId: recorder.recordingId, index, stderr: d.toString() }, 'ffmpeg (stream)'));
   ffmpeg.on('error', err => logger.error({ recordingId: recorder.recordingId, err }, 'ffmpeg spawn error'));
 
@@ -416,9 +419,23 @@ async function recordStream(recorder, producer) {
   await consumer.resume();
   stream.startedAt = Date.now();
   if (stream.kind === 'video') {
-    consumer.requestKeyFrame().catch(() => {});
-    setTimeout(() => { if (!stream.done) consumer.requestKeyFrame().catch(() => {}); }, 1500);
+    // A stream that was already running needs a keyframe before anything can be recorded; senders
+    // may ignore a request (rate-limited), so ask a few times in the first seconds.
+    for (const ms of [0, 500, 1200, 2500, 4000]) setTimeout(() => { if (!stream.done) consumer.requestKeyFrame().catch(() => {}); }, ms);
   }
+}
+
+// A recorded file's first packet time (ms since epoch), from the wall-clock timestamps it was
+// written with; null if unreadable.
+function fileStartMs(file) {
+  return new Promise(resolve => {
+    if (!fs.existsSync(file)) return resolve(null);
+    const p = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=start_time', '-of', 'default=nw=1:nk=1', file]);
+    let out = '';
+    p.stdout.on('data', d => { out += d; });
+    p.on('error', () => resolve(null));
+    p.on('close', () => { const sec = parseFloat(out); resolve(Number.isFinite(sec) ? Math.round(sec * 1000) : null); });
+  });
 }
 
 async function finishStream(stream) {
@@ -464,6 +481,9 @@ function recordNewProducer(roomId, producer) {
 function composeArgs(recorder, stopTime, output) {
   const total = Math.max(1, (stopTime - recorder.startTime) / 1000);
   const usable = recorder.streams.filter(s => s.startedAt && fs.existsSync(s.file) && fs.statSync(s.file).size > 0);
+  // Where each file really starts: its first packet's wall-clock time (see recordStream), else the
+  // time its stream was resumed.
+  const firstAt = s => (s.fileStartMs && s.fileStartMs > recorder.startTime - 60000 ? s.fileStartMs : s.startedAt);
   const videos = usable.filter(s => s.kind === 'video');
   const audios = usable.filter(s => s.kind === 'audio');
   const args = ['-y', '-loglevel', 'error'];
@@ -478,7 +498,7 @@ function composeArgs(recorder, stopTime, output) {
     videos.forEach((s, i) => {
       const x = (i % cols) * tileW + Math.floor((1280 - cols * tileW) / 2);
       const y = Math.floor(i / cols) * tileH + Math.floor((720 - rows * tileH) / 2);
-      parts.push(`[${inputOf(s)}:v]setpts=PTS-STARTPTS+${at(s.startedAt)}/TB,scale=${tileW}:${tileH}:force_original_aspect_ratio=decrease,pad=${tileW}:${tileH}:(ow-iw)/2:(oh-ih)/2:color=black,fps=15[v${i}]`);
+      parts.push(`[${inputOf(s)}:v]setpts=PTS-STARTPTS+${at(firstAt(s))}/TB,scale=${tileW}:${tileH}:force_original_aspect_ratio=decrease,pad=${tileW}:${tileH}:(ow-iw)/2:(oh-ih)/2:color=black,fps=15[v${i}]`);
       // Shown only while live: from its start to its end, minus any time the camera was off.
       const hidden = s.pauses.map(([a, b]) => `between(t,${at(a)},${at(b)})`);
       const enable = `between(t,${at(s.startedAt)},${at(s.endedAt || stopTime)})` + (hidden.length ? `*not(${hidden.join('+')})` : '');
@@ -489,7 +509,7 @@ function composeArgs(recorder, stopTime, output) {
   const maps = ['-map', `[${last}]`];
   if (audios.length) {
     audios.forEach((s, i) => {
-      const delay = Math.max(0, Math.round(s.startedAt - recorder.startTime));
+      const delay = Math.max(0, Math.round(firstAt(s) - recorder.startTime));
       // async: fill gaps (muted stretches) with silence so later sound stays in sync.
       parts.push(`[${inputOf(s)}:a]aresample=48000:async=1000:first_pts=0,adelay=${delay}:all=1[a${i}]`);
     });
@@ -523,6 +543,7 @@ async function finalizeRecording(recorder) {
   let result = { recordingId, duration, failed: true };
   try {
     await Promise.all(recorder.streams.map(finishStream));
+    await Promise.all(recorder.streams.map(async s => { s.fileStartMs = await fileStartMs(s.file); }));
     const output = path.join(recorder.dir, `${recordingId}.mp4`);
     const { args, streamCount } = composeArgs(recorder, recorder.stopTime, output);
     if (!streamCount) throw new Error('No stream produced any media');
