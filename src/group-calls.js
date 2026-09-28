@@ -1,6 +1,8 @@
 const { randomUUID } = require('node:crypto');
 const { createRoom, deleteRoom, closePeerTransports } = require('./sfu');
 const { postToScope, updatePost, formatDuration } = require('./callPosts');
+const { nowStr } = require('./db');
+const { logger } = require('./logger');
 
 // Calls through the SFU, in three kinds of place:
 //   - a group chat: starting one rings every member; anyone in the chat can join while it runs;
@@ -75,13 +77,17 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
 
   // What the chat/channel shows once a call is over (Teams-style): the channel's "Started a meeting"
   // post becomes "Meeting ended · 12m"; a chat gets "Call ended · 5m" or "Missed call".
-  async function postOutcome(call) {
+  // A 1:1 call that never connected says why: declined, not answered, or cancelled by the caller.
+  const UNCONNECTED = { 'Call declined': '📞 Call declined', 'No answer': '📞 Missed call' };
+  async function postOutcome(call, reason) {
     const talked = call.connectedAt ? formatDuration(Date.now() - call.connectedAt) : null;
     const since = formatDuration(Date.now() - call.startedAt);
     if (call.scope.type === 'channel') {
       if (call.postId) await updatePost(io, call.scope, call.postId, `📹 Meeting ended · ${since}`, { call: 'ended', callId: call.id });
     } else if (call.direct) {
-      await postToScope(io, call.scope, call.startedBy, talked ? `📞 Call ended · ${talked}` : '📞 Missed call', { call: talked ? 'ended' : 'missed', callId: call.id });
+      const text = talked ? `📞 Call ended · ${talked}` : (UNCONNECTED[reason] || '📞 Call cancelled');
+      const kind = talked ? 'ended' : reason === 'Call declined' ? 'declined' : reason === 'No answer' ? 'missed' : 'cancelled';
+      await postToScope(io, call.scope, call.startedBy, text, { call: kind, callId: call.id });
     } else {
       await postToScope(io, call.scope, call.startedBy, talked ? `📞 Group call ended · ${since}` : '📞 Missed group call', { call: talked ? 'ended' : 'missed', callId: call.id });
     }
@@ -89,7 +95,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
 
   function end(call, reason = null) {
     if (!calls.delete(call.id)) return;
-    postOutcome(call).catch(() => {});
+    postOutcome(call, reason).catch(() => {});
     byScope.delete(call.scope.key);
     clearTimeout(call.ringTimer);
     // Anyone still connected (the other person in a 1:1 call) is taken out of the room first.
@@ -221,7 +227,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       const call = calls.get(data.id);
       if (call) {
         // The caller giving up before anyone answered a 1:1 call cancels it for the other side.
-        if (call.direct && !call.connected && call.members.has(socket.id) && call.members.size === 1) end(call, 'Missed call');
+        if (call.direct && !call.connected && call.members.has(socket.id) && call.members.size === 1) end(call, 'Call cancelled');
         else leave(socket, call);
       }
       return {};
@@ -238,6 +244,27 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       for (const call of [...calls.values()]) leave(socket, call);
     });
   }
+
+  // Calls live only in this process's memory, so after a restart no meeting is running: any
+  // "Started a … meeting" post still saying so is stale (e.g. the server restarted mid-meeting,
+  // or the meeting predates the "Meeting ended" rewrite). Mark them ended; the length isn't known.
+  // (Delayed: this module is set up before the database has finished initialising.)
+  setTimeout(async () => {
+    try {
+      const stale = await db.prepare(`SELECT id, metadata FROM messages WHERE channel_id IS NOT NULL AND deleted = 0
+        AND body LIKE '📹 Started a % meeting in this channel.%'`).all();
+      let fixed = 0;
+      for (const row of stale) {
+        let meta = null; try { meta = row.metadata ? JSON.parse(row.metadata) : null; } catch {}
+        if (meta && meta.call && meta.call !== 'started') continue;
+        if (meta?.callId && calls.has(meta.callId)) continue; // started since this process came up
+        await db.prepare('UPDATE messages SET body = ?, metadata = ?, updated_at = ? WHERE id = ?')
+          .run('📹 Meeting ended', JSON.stringify({ call: 'ended', callId: meta?.callId || null }), nowStr(), row.id);
+        fixed++;
+      }
+      if (fixed) logger.info({ fixed }, 'Marked stale "Started a meeting" posts as ended');
+    } catch (e) { logger.warn({ err: e.message }, 'Stale meeting post sweep failed'); }
+  }, 5000).unref?.();
 
   // The chat or channel a call room belongs to (for saving its in-call chat), if any.
   function scopeForRoom(roomId) {
