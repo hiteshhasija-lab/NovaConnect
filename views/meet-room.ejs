@@ -1,8 +1,8 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=3">
-<link rel="stylesheet" href="/css/calls.css?v=9">
+<link rel="stylesheet" href="/css/meet.css?v=4">
+<link rel="stylesheet" href="/css/calls.css?v=10">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
     <h1><%= link.title %></h1>
@@ -38,7 +38,7 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
 <script src="/js/sfu-client.js?v=1"></script>
-<script src="/js/meet-room.js?v=8"></script>
+<script src="/js/meet-room.js?v=9"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

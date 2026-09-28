@@ -238,7 +238,7 @@
 .nc-call-view-btn:focus-visible { outline: 2px solid #b7baf7; outline-offset: 2px; }
 .nc-call-view-btn svg { width: 18px; height: 18px; }
 .nc-call.nc-call-max, .nc-call:fullscreen {
-  inset: 12px; width: auto; max-height: none; display: flex; flex-direction: column;
+  inset: 0; width: auto; max-height: none; display: flex; flex-direction: column; border-radius: 0; border: 0;
 }
 .nc-call:fullscreen { inset: 0; border: 0; border-radius: 0; }
 /* The id beats the group-call width rule above (it matches by #callGrid).
@@ -247,8 +247,11 @@
    element scales down, leaving the video short of the window). */
 #callPanel.nc-call.nc-call-max, #callPanel.nc-call:fullscreen { width: auto; zoom: 1; }
 .nc-call-max .nc-call-media, .nc-call:fullscreen .nc-call-media { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { flex: 1; min-height: 0; overflow: auto; }
-.nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-content: start; }
+.nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid {
+  flex: 1; min-height: 0; overflow: auto;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch;
+}
+.nc-call-max .nc-call-grid .nc-video-tile video, .nc-call:fullscreen .nc-call-grid .nc-video-tile video { height: 100%; aspect-ratio: auto; }
 .nc-call video { cursor: zoom-in; }
 
 /* 1:1 call stage, laid out like Teams (calls.js arrange()): the main video fills the stage, the
@@ -281,3 +284,42 @@
 .nc-call-max .nc-stage-main video, .nc-call:fullscreen .nc-stage-main video { height: 100%; max-height: none; aspect-ratio: auto; }
 .nc-call-max .nc-stage-tiles video, .nc-call:fullscreen .nc-stage-tiles video { width: clamp(160px, 18vw, 280px); }
 @media (max-width: 600px) { .nc-stage-tiles video { width: 96px; } }
+
+/* Video layout, Teams-style (panel class nc-call-video, set by calls.js / group-calls.js while
+   there is video to show): the video runs edge to edge and the header and controls float over it. */
+.nc-call.nc-call-video { padding: 0; overflow: hidden; }
+.nc-call-video .nc-call-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3; margin: 0; padding: 14px 18px 30px;
+  background: linear-gradient(rgba(8, 11, 24, .85), transparent); pointer-events: none;
+}
+.nc-call-video .nc-call-header button { pointer-events: auto; }
+.nc-call-video .nc-call-footer {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; margin: 0; padding: 30px 14px 14px;
+  background: linear-gradient(transparent, rgba(8, 11, 24, .85)); pointer-events: none;
+}
+.nc-call-video .nc-call-toolbar {
+  pointer-events: auto; width: fit-content; max-width: 100%; margin: 0 auto;
+  background: rgba(23, 29, 50, .9); border-color: rgba(137, 144, 184, .5);
+}
+.nc-call-video .nc-toolbar-group.nc-toolbar-participants { margin-left: 0; }
+.nc-call-video .nc-stage-main video { border-radius: 0; max-height: none; min-height: 240px; }
+.nc-call-video .nc-stage-tiles { right: 14px; bottom: 86px; }
+.nc-call-video .nc-stage-main:empty + .nc-stage-tiles { padding: 76px 14px 86px; }
+.nc-call-video .nc-call-grid { gap: 3px; min-height: 240px; }
+.nc-call-video .nc-call-grid .nc-video-tile { border-radius: 0; border: 0; }
+/* Maximized / full screen: the video covers the whole window, chrome floats over it. */
+.nc-call-max.nc-call-video .nc-call-media, .nc-call-video:fullscreen .nc-call-media { position: absolute; inset: 0; }
+
+/* Group calls: your own camera floats small in the corner while others are in the call. */
+.nc-call-self { position: absolute; right: 14px; bottom: 86px; z-index: 2; width: 150px; }
+.nc-call-self:empty { display: none; }
+.nc-call-self .nc-video-tile { border: 1px solid #8990b8; border-radius: 8px; box-shadow: 0 4px 16px #0008; }
+.nc-call-max .nc-call-self, .nc-call:fullscreen .nc-call-self { width: clamp(160px, 16vw, 260px); }
+/* Someone without a picture (audio-only, or video not arrived yet): initials instead of black. */
+.nc-video-tile .nc-avatar { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.nc-video-tile .nc-avatar span {
+  display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
+  background: #5b5fc7; color: #fff; font-size: 1.4rem; font-weight: 600;
+}
+.nc-call-self .nc-avatar span { width: 40px; height: 40px; font-size: 1rem; }
+.nc-video-tile.nc-has-video .nc-avatar { display: none; }

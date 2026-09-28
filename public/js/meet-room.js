@@ -15,11 +15,15 @@ function tile(id,name,media,muted=false){
   if(!item){item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;item.append(v);const p=document.createElement('p');p.textContent=name;item.append(p);videos.append(item)}
   const v=item.querySelector('video');v.srcObject=media;
   v.play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>v.play()});
+  updateSelfView();
 }
+// Teams-style: once anyone else is here, your own tile floats small in the corner (meet.css).
+function updateSelfView(){videos.classList.toggle('has-remote',[...videos.children].some(el=>el.id!=='peer-local'))}
 
 function removePeer(peerId){
   session?.removePeer(peerId);
   document.getElementById('peer-'+peerId)?.remove();
+  updateSelfView();
 }
 
 function cleanup(){
@@ -27,7 +31,7 @@ function cleanup(){
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
-  videos.replaceChildren();lobby.hidden=true;
+  videos.replaceChildren();updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
   enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;
 }

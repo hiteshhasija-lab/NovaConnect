@@ -28,6 +28,7 @@
       panel.hidden = false;
       $('callMedia1to1').hidden = true;
       grid.hidden = !c.joined;
+      panel.classList.toggle('nc-call-video', !!c.joined);
       $('callName').textContent = c.title;
       $('callKind').textContent = c.mode === 'video' ? 'Group video call' : 'Group audio call';
       status(text);
@@ -42,22 +43,38 @@
       (ringing ? $('callAccept') : $('callHangup')).focus();
     }
 
+    const allTiles = () => [...grid.querySelectorAll('.nc-video-tile'), ...$('callSelfTile').querySelectorAll('.nc-video-tile')];
+    const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+    // Teams-style gallery: everyone else shares the stage; your own tile floats small in the corner
+    // (and fills the stage while you're alone).
+    function arrangeTiles() {
+      const mine = allTiles().find(t => t.dataset.peerId === 'local');
+      if (!mine) return;
+      const others = [...grid.querySelectorAll('.nc-video-tile')].some(t => t.dataset.peerId !== 'local');
+      const box = others ? $('callSelfTile') : grid;
+      if (mine.parentNode !== box) { box.appendChild(mine); const v = mine.querySelector('video'); if (v.paused) v.play().catch(() => {}); }
+    }
     function tile(id, name, media, local = false) {
-      let t = [...grid.querySelectorAll('.nc-video-tile')].find(el => el.dataset.peerId === id);
+      let t = allTiles().find(el => el.dataset.peerId === id);
       if (!t) {
         t = document.createElement('section'); t.className = 'nc-video-tile'; t.dataset.peerId = id;
         const v = document.createElement('video'); v.autoplay = true; v.playsInline = true; v.muted = local;
         if (local) v.className = 'nc-video-local';
+        // Initials until a picture arrives (audio-only participants never have one).
+        const avatar = document.createElement('div'); avatar.className = 'nc-avatar';
+        const letters = document.createElement('span'); letters.textContent = initials(name); avatar.append(letters);
+        v.addEventListener('resize', () => t.classList.toggle('nc-has-video', v.videoWidth > 0));
         const overlay = document.createElement('div'); overlay.className = 'nc-video-overlay';
         const label = document.createElement('p'); label.className = 'nc-video-name'; label.textContent = name;
-        overlay.append(label); t.append(v, overlay); grid.append(t);
+        overlay.append(label); t.append(v, avatar, overlay); grid.append(t);
       }
       const v = t.querySelector('video');
       v.srcObject = media;
       // Autoplay with sound can be blocked until the user interacts; offer a play button then.
       v.play().catch(() => { if (current) $('callPlayback').hidden = false; });
+      arrangeTiles();
     }
-    function removeTile(id) { [...grid.querySelectorAll('.nc-video-tile')].find(el => el.dataset.peerId === id)?.remove(); }
+    function removeTile(id) { allTiles().find(el => el.dataset.peerId === id)?.remove(); arrangeTiles(); }
 
     function cleanup(c, message) {
       clearInterval(c.clock);
@@ -66,7 +83,8 @@
       if (current !== c) return;
       current = null;
       changed(c.conversationId);
-      grid.querySelectorAll('.nc-video-tile').forEach(t => t.remove());
+      allTiles().forEach(t => t.remove());
+      panel.classList.remove('nc-call-video');
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -159,7 +177,7 @@
     });
     $('callPlayback').addEventListener('click', () => {
       if (!current) return;
-      grid.querySelectorAll('video').forEach(v => v.play().catch(() => {}));
+      allTiles().forEach(t => t.querySelector('video').play().catch(() => {}));
       $('callPlayback').hidden = true;
     });
     window.addEventListener('pagehide', () => { if (current) stop(current); });

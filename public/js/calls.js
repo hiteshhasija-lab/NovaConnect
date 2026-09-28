@@ -103,6 +103,7 @@
         else place(v, $('callPark'));
       }
       tiles.forEach(v => $('callTiles').appendChild(v)); // keep tile order
+      panel.classList.toggle('nc-call-video', !!(main || tiles.length));
       $('callKind').textContent = c.display ? 'You are sharing your screen'
         : c.remoteSharing ? c.name + ' is sharing their screen'
         : c.mode === 'video' ? 'Video call' : 'Audio call';
@@ -116,6 +117,7 @@
       c.pc?.close(); c.camera?.stop(); c.stream?.getTracks().forEach(t => t.stop()); c.display?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
+      panel.classList.remove('nc-call-video');
       for (const id of ['callLocal', 'callLocalScreen', 'callRemote', 'callRemoteScreen', 'callRemoteAudio']) $(id).srcObject = null;
       for (const id of ['callLocal', 'callLocalScreen', 'callRemote', 'callRemoteScreen']) $('callPark').appendChild($(id));
       panel.hidden = true;

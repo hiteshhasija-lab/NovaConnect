@@ -94,3 +94,12 @@
 }
 
 (End of file - total 21 lines)
+/* Teams-style self-view: while others are in the meeting, your own tile floats small in the corner
+   and everyone else shares the gallery (meet-room.js toggles has-remote). */
+.meet-videos.has-remote #peer-local {
+  position: fixed; right: 24px; bottom: 24px; z-index: 5; width: 220px; padding: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45);
+}
+.meet-videos.has-remote #peer-local video { max-height: none; }
+.meet-videos.has-remote #peer-local p { font-size: .8rem; margin: 2px 0 0; }
+@media (max-width: 600px) { .meet-videos.has-remote #peer-local { width: 130px; right: 12px; bottom: 12px; } }
