@@ -72,11 +72,11 @@
       $('callKind').textContent = kindLabel(c);
       arrangeTiles();
     }
-    async function shareScreen(c) {
-      if (!navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
+    async function shareScreen(c, chosen = null) {
+      if (!chosen && !navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
       let display;
       try {
-        display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
+        display = chosen || await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
         if (current !== c || !c.joined || !c.session || c.display) { display.getTracks().forEach(t => t.stop()); return; }
         const track = display.getVideoTracks()[0];
         c.display = display;
@@ -146,6 +146,7 @@
     function cleanup(c, message) {
       clearInterval(c.clock);
       c.display?.getTracks().forEach(t => { t.onended = null; t.stop(); }); c.display = null;
+      c.pendingDisplay?.getTracks().forEach(t => t.stop()); c.pendingDisplay = null;
       c.session?.close();
       c.stream?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
@@ -203,11 +204,14 @@
         await c.session.publish(stream);
         if (current !== c) return;
         refreshParticipants(c);
-        const started = Date.now();
+        if (c.pendingDisplay) { const d = c.pendingDisplay; c.pendingDisplay = null; shareScreen(c, d); }
+        let started = Date.now();
         const tick = () => {
-          const secs = Math.floor((Date.now() - started) / 1000);
           const count = running.get(c.key)?.count || 1;
-          status((count > 1 ? count + ' in call' : 'Waiting for others to join') + ' · ' + Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
+          // A 1:1 call counts from when the other person picks up, like a phone call.
+          if (c.direct && count < 2) { started = Date.now(); return status(c.incoming ? 'Connecting…' : 'Calling…'); }
+          const secs = Math.floor((Date.now() - started) / 1000), clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+          status(c.direct ? 'Connected · ' + clock : (count > 1 ? count + ' in call' : 'Waiting for others to join') + ' · ' + clock);
         };
         tick(); c.clock = setInterval(tick, 1000);
       } catch (e) { if (current === c) stop(c, e.message); }
@@ -340,7 +344,8 @@
       if (current?.id === id && socketId !== socket.id && !current.joined && !current.joining) cleanup(current);
     });
     // The call ended for everyone (last person left; a 1:1 call was declined, unanswered or hung up).
-    socket.on('gcall:ended', ({ id, reason }) => { if (current?.id === id) cleanup(current, current.joined || !current.incoming ? reason : null); });
+    const SAY_WHY = new Set(['Call declined', 'No answer']);
+    socket.on('gcall:ended', ({ id, reason }) => { if (current?.id === id) cleanup(current, !current.incoming && SAY_WHY.has(reason) ? reason : null); });
     socket.on('gcall:state', ({ conversationId, channelId, call }) => {
       const key = channelId ? 'ch:' + Number(channelId) : 'dm:' + Number(conversationId);
       if (call) running.set(key, call); else running.delete(key);
@@ -399,12 +404,27 @@
         } catch { /* the header just won't show a Join button */ }
       },
       // Starts a call there, or joins the one already running there.
-      start(target, mode, title) {
+      start(target, mode, title, { display = null } = {}) {
         const key = keyOf(target);
-        if (current || otherCallActive()) return notify(new Error(current?.key === key && current.joined ? 'You are already in this call.' : 'Finish your current call first.'));
+        if (current || otherCallActive()) {
+          display?.getTracks().forEach(t => t.stop());
+          return notify(new Error(current?.key === key && current.joined ? 'You are already in this call.' : 'Finish your current call first.'));
+        }
         const existing = running.get(key);
-        const c = current = { id: existing?.id || null, key, mode: existing?.mode || mode, title, incoming: false };
+        const c = current = { id: existing?.id || null, key, mode: existing?.mode || mode, title, incoming: false, pendingDisplay: display };
         join(c);
+      },
+      // Share your screen: in the call you're in there, or start a video call by sharing. The screen
+      // is chosen first, because browsers only open the picker straight after a click.
+      async share(target, title) {
+        const key = keyOf(target);
+        if (current?.joined && current.key === key) return shareScreen(current);
+        if (current || otherCallActive()) return notify(new Error('Finish your current call first.'));
+        if (!navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
+        let display;
+        try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false }); }
+        catch (e) { if (e.name !== 'NotAllowedError') notify(e); return; }
+        this.start(key, 'video', title, { display });
       },
     };
   };

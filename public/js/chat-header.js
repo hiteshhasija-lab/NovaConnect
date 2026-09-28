@@ -159,10 +159,7 @@
       add('box-arrow-up-right', 'Open in new window', () => window.open('/app/dm/' + c.id, '_blank', 'noopener,noreferrer,width=1150,height=850'), '⌘ O');
       line();
       add('calendar-plus', 'Schedule meeting', () => meetings.open(active));
-      add('arrow-up-square', 'Screen sharing', () => {
-        if (c.is_group || active.participants.length !== 2) return notify(new Error('Screen sharing is available in one-to-one chats.'));
-        return calls.share(c.id, active.participants.find(u => u.id !== currentUser.id).full_name);
-      }, '⇧ ⌘ E');
+      add('arrow-up-square', 'Screen sharing', () => groupCalls.share(c.id, callTitle(active)), '⇧ ⌘ E');
       line();
       add('pin-angle', 'Pinned messages', () => pinnedMessages(active));
       add('envelope', 'Mark as unread', () => preferences(c.id, { is_unread: true }));
@@ -220,6 +217,11 @@
       };
       document.body.appendChild(d);d.showModal();
     }
+    // The name a call shows: the other person in a 1:1 chat, the chat's name (or members) otherwise.
+    function callTitle(active) {
+      const others = active.participants.filter(u => u.id !== currentUser.id);
+      return (active.conversation.is_group && active.conversation.name) || others.map(u => u.full_name).join(', ');
+    }
     // Channel header: "Meet" starts a meeting in the channel (Teams' Meet now) — no ringing; it's
     // posted in the channel — and "Join call · N" shows while one is running there.
     function channelMeet(container, channel) {
@@ -237,18 +239,17 @@
     return { menu, close, channelMeet, render(header, active) {
       const tools = document.createElement('div'); tools.className = 'chat-tools'; tools.setAttribute('aria-label', 'Chat actions');
       const others = active.participants.filter(u => u.id !== currentUser.id);
-      if (!active.conversation.is_group && others.length === 1) {
-        for (const mode of ['video', 'audio']) {
-          const b = button(mode, mode === 'video' ? 'Video call' : 'Audio call');
-          b.onclick = () => { close(); calls.start(active.conversation.id, mode, others[0].full_name); }; tools.appendChild(b);
-        }
-      } else if (active.conversation.is_group && groupCalls) {
-        const id = active.conversation.id, title = active.conversation.name || others.map(u => u.full_name).join(', ');
+      // Calls in 1:1 and group chats both go through the server (group-calls.js). "Join call"
+      // shows while one is running there (e.g. rejoining from another device).
+      const direct = !active.conversation.is_group && others.length === 1;
+      if ((direct || active.conversation.is_group) && groupCalls) {
+        const id = active.conversation.id, title = callTitle(active);
         const join = document.createElement('button'); join.type = 'button'; join.className = 'chat-call-join'; join.dataset.callKey = 'dm:' + id; join.hidden = true;
         join.onclick = () => { close(); groupCalls.start(id, groupCalls.running(id)?.mode || 'video', title); };
         tools.appendChild(join);
         for (const mode of ['video', 'audio']) {
-          const b = button(mode, mode === 'video' ? 'Group video call' : 'Group audio call');
+          const label = (direct ? '' : 'Group ') + (mode === 'video' ? 'video call' : 'audio call');
+          const b = button(mode, label.charAt(0).toUpperCase() + label.slice(1));
           b.onclick = () => { close(); groupCalls.start(id, mode, title); }; tools.appendChild(b);
         }
         paintJoin(join); groupCalls.refresh(id);

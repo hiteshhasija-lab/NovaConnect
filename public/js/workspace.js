@@ -264,7 +264,11 @@
   document.addEventListener('keydown', e => {
     if (state.active.type !== 'dm' || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); window.open('/app/dm/' + state.active.conversation.id, '_blank', 'noopener,noreferrer,width=1150,height=850'); }
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'e' && !state.active.conversation.is_group) { e.preventDefault(); calls.share(state.active.conversation.id, state.active.participants.find(p => p.id !== NC.currentUser.id).full_name); }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'e') {
+      e.preventDefault();
+      const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
+      groupCalls.share(state.active.conversation.id, (state.active.conversation.is_group && state.active.conversation.name) || others.map(p => p.full_name).join(', '));
+    }
   });
   socket.on('message:new', (msg) => {
     const isActiveChat = (state.active.type === 'channel' && msg.channel_id === state.active.channel.id)
