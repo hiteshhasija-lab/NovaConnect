@@ -246,7 +246,8 @@ function createMeetSignaling(io, db, sfuInstance) {
       for (const m of sfuInstance.roomUserMap.values()) {
         if (m.roomId === roomId && !m.inLobby) participants.push({ peerId: m.peerId, userId: m.userId, fullName: m.fullName, hand: !!m.hand, micOff: !!m.micOff, camOff: !!m.camOff });
       }
-      return { participants };
+      // Who is talking right now: speaker changes are only announced as they happen.
+      return { participants, speaker: getRoom(roomId)?.speaker || null };
     });
     handle('sfu:hand', async ({ roomId, raised }) => {
       const m = admitted(roomId);

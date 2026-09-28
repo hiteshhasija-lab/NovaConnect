@@ -235,9 +235,10 @@
       clearTimeout(participantsTimer);
       participantsTimer = setTimeout(async () => {
         if (current !== c || !c.roomId) return;
-        let list;
-        try { ({ participants: list } = await request('sfu:participants', { roomId: c.roomId })); } catch { return; }
+        let list, speaker;
+        try { ({ participants: list, speaker } = await request('sfu:participants', { roomId: c.roomId })); } catch { return; }
         if (current !== c) return;
+        if (speaker && !allTiles().some(t => t.classList.contains('nc-speaking'))) tileFor(speaker)?.classList.add('nc-speaking');
         badge('callParticipantCount', list.length);
         $('participantCount').textContent = String(list.length);
         $('participantList').replaceChildren(...list.sort((a, b) => (b.hand - a.hand) || a.fullName.localeCompare(b.fullName)).map(p => {
