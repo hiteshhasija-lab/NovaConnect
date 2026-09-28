@@ -3,8 +3,12 @@
 A native SwiftUI shell around the NovaConnect web app (WKWebView) — the iOS counterpart of
 `electron-app/`. It doesn't bundle the server; it points at your NovaConnect deployment.
 
-- Default server `http://10.0.0.102`, set in `project.yml` (`NOVACONNECT_DEFAULT_SERVER_URL`).
+- Default server `https://10.0.0.102`, set in `project.yml` (`NOVACONNECT_DEFAULT_SERVER_URL`).
   Users can change it from the "Can't reach NovaConnect" screen; a changed address is saved.
+  A saved `http://` address for the same host as an `https://` default is moved to https on
+  launch (like the desktop app), since calls need https.
+- Colours follow the web app's blue/cyan theme: `AccentColor` (#0755D9, #2F7BF5 in dark mode)
+  and `LaunchBackground` (#0755D9) for the launch screen.
 - "Can't reach NovaConnect" screen with Try again / Change server, including a 15 s timeout
   for addresses with nothing behind them (those connections hang rather than fail).
 - Camera/mic granted to the configured server's pages only; links that open a new window go
@@ -27,7 +31,7 @@ open NovaConnect.xcodeproj
   network?" the first time it connects to a LAN address like `10.0.0.102`; it must be allowed.
 - **Simulator:** iOS Simulator apps run on the Mac and are subject to the Mac's Local Network
   rules, which can refuse them LAN access with no way to allow it ("No route to host"). To test
-  in the Simulator, relay through loopback, e.g. forward `localhost:8102` → `10.0.0.102:80`, and
-  set the app's server to `http://localhost:8102`.
+  in the Simulator, relay through loopback, e.g. forward `localhost:8102` → `10.0.0.102:443`, and
+  set the app's server to `https://localhost:8102`.
 - **Meetings:** iOS only allows camera/microphone on secure (https) pages, so calls need the
   server's `https://` address.

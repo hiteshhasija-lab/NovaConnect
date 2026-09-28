@@ -7,30 +7,30 @@
   :root { color-scheme: light; }
   body {
     margin: 0; padding: 22px 24px; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    background: #f5f5f5; color: #242424;
+    background: #f3f7fc; color: #182c48;
   }
-  h1 { font-size: 16px; margin: 0 0 4px; color: #464775; }
-  p { font-size: 13px; color: #616161; margin: 0 0 14px; }
-  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #616161; margin: 16px 0 8px; }
+  h1 { font-size: 16px; margin: 0 0 4px; color: #073b94; }
+  p { font-size: 13px; color: #5f718b; margin: 0 0 14px; }
+  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #5f718b; margin: 16px 0 8px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
   .source {
     display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 2px solid transparent;
     border-radius: 8px; background: #fff; cursor: pointer; text-align: left; font: inherit; color: inherit;
   }
-  .source:hover { border-color: #c5c7ef; }
-  .source[aria-pressed="true"] { border-color: #5b5fc7; box-shadow: 0 0 0 3px rgba(91,95,199,.18); }
-  .source:focus-visible { outline: 2px solid #5b5fc7; outline-offset: 2px; }
-  .source img { width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #e9e9ee; border-radius: 4px; }
+  .source:hover { border-color: #a9c8f2; }
+  .source[aria-pressed="true"] { border-color: #0755d9; box-shadow: 0 0 0 3px rgba(7,85,217,.18); }
+  .source:focus-visible { outline: 2px solid #0755d9; outline-offset: 2px; }
+  .source img { width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #e6edf5; border-radius: 4px; }
   .source span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .notice { background: #fff4ce; border: 1px solid #f2d677; border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
   .notice button { margin-top: 8px; }
-  .row { display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; padding-top: 16px; background: #f5f5f5; }
+  .row { display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; padding-top: 16px; background: #f3f7fc; }
   button.action { font-size: 13px; padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; }
-  .primary { background: #5b5fc7; color: #fff; }
-  .primary:hover { background: #464775; }
-  .primary:disabled { background: #b3b5e3; cursor: default; }
-  .secondary { background: transparent; color: #616161; }
-  .empty { font-size: 13px; color: #616161; }
+  .primary { background: #0755d9; color: #fff; }
+  .primary:hover { background: #0644b0; }
+  .primary:disabled { background: #9bbcef; cursor: default; }
+  .secondary { background: transparent; color: #5f718b; }
+  .empty { font-size: 13px; color: #5f718b; }
 </style>
 </head>
 <body>

@@ -6,10 +6,10 @@ options:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.0.1"
+    CURRENT_PROJECT_VERSION: "2"
     # Baked into Info.plist so the app goes straight to your server on first launch.
-    NOVACONNECT_DEFAULT_SERVER_URL: "http://10.0.0.102"
+    NOVACONNECT_DEFAULT_SERVER_URL: "https://10.0.0.102"
 targets:
   NovaConnect:
     type: application

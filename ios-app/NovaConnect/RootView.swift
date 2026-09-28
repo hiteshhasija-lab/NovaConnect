@@ -89,7 +89,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("http://novaconnect.example.com", text: $address)
+                    TextField("https://novaconnect.example.com", text: $address)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -98,7 +98,7 @@ struct SettingsView: View {
                     Text("Server address")
                 } footer: {
                     if let error { Text(error).foregroundStyle(.red) }
-                    else { Text("The address of your organization's NovaConnect server.") }
+                    else { Text("The address of your organization's NovaConnect server. Use https:// — calls and meetings need it.") }
                 }
             }
             .navigationTitle("Server")
@@ -115,7 +115,7 @@ struct SettingsView: View {
 
     private func save() {
         guard let url = ServerSettings.parse(address) else {
-            error = "Enter a full address starting with http:// or https://"
+            error = "Enter a full address starting with https:// (or http://)"
             return
         }
         settings.serverURL = url

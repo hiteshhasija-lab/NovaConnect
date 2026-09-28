@@ -122,7 +122,7 @@ function createMainWindow() {
     minHeight: 560,
     title: 'NovaConnect',
     icon: path.join(__dirname, 'build', 'icon.png'),
-    backgroundColor: '#464775',
+    backgroundColor: '#0755d9',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

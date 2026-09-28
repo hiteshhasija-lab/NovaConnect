@@ -11,16 +11,31 @@ final class ServerSettings: ObservableObject {
     }
 
     init() {
+        let bundled = (Bundle.main.object(forInfoDictionaryKey: "NovaConnectDefaultServerURL") as? String).flatMap(Self.parse)
         if let saved = UserDefaults.standard.string(forKey: Self.storageKey), let url = Self.parse(saved) {
-            serverURL = url
-        } else if let bundled = Bundle.main.object(forInfoDictionaryKey: "NovaConnectDefaultServerURL") as? String {
-            serverURL = Self.parse(bundled)
+            let upgraded = Self.upgradedToHttps(url, bundled: bundled)
+            serverURL = upgraded
+            // didSet doesn't run during init, so save the upgrade here.
+            if upgraded != url { UserDefaults.standard.set(upgraded.absoluteString, forKey: Self.storageKey) }
         } else {
-            serverURL = nil
+            serverURL = bundled
         }
     }
 
-    /// Accepts only full http(s) addresses with a host, e.g. "http://10.0.0.102".
+    /// A saved http:// address for the same server as an https:// built-in default is moved to
+    /// https: iOS only allows the camera and microphone on secure pages, so calls need it.
+    /// (Same rule as the desktop app's upgradeSavedServerToHttps.)
+    private static func upgradedToHttps(_ url: URL, bundled: URL?) -> URL {
+        guard let bundled, bundled.scheme?.lowercased() == "https", url.scheme?.lowercased() == "http",
+              url.host?.lowercased() == bundled.host?.lowercased(),
+              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else { return url }
+        parts.scheme = "https"
+        parts.port = bundled.port
+        return parts.url ?? url
+    }
+
+    /// Accepts only full http(s) addresses with a host, e.g. "https://10.0.0.102".
     static func parse(_ raw: String) -> URL? {
         guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
