@@ -1,7 +1,7 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=6">
+<link rel="stylesheet" href="/css/meet.css?v=7">
 <link rel="stylesheet" href="/css/calls.css?v=15">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
@@ -16,6 +16,11 @@
       <button class="btn btn-primary" id="meetEnter">Join meeting</button>
       <button class="btn btn-danger" id="meetLeave" hidden>Leave meeting</button>
       <button type="button" class="btn btn-outline-secondary" id="meetShare" hidden><i class="bi bi-display" aria-hidden="true"></i> <span>Share screen</span></button>
+      <!-- In-call extras (call-extras.js): shown once you're in the meeting. -->
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetParticipantsBtn" hidden aria-expanded="false" aria-controls="meetParticipantsPanel"><i class="bi bi-people" aria-hidden="true"></i> People <span class="nc-badge" id="meetParticipantsBadge" hidden>0</span></button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetHandBtn" hidden aria-pressed="false" aria-label="Raise hand" title="Raise hand"><span aria-hidden="true">✋</span> Raise hand</button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetReactionsBtn" hidden aria-expanded="false" aria-controls="meetReactionsPanel"><i class="bi bi-emoji-smile" aria-hidden="true"></i> React</button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetChatBtn" hidden aria-expanded="false" aria-controls="meetChatPanel"><i class="bi bi-chat-dots" aria-hidden="true"></i> Chat <span class="nc-badge" id="meetChatBadge" hidden>0</span></button>
     </div>
     <div class="meet-room-controls meet-recording-controls" id="recordingControls" hidden>
       <button type="button" class="btn btn-outline-danger" id="recordBtn" title="Start recording"><i class="bi bi-record-circle"></i> Record</button>
@@ -40,11 +45,28 @@
   </section>
   <div class="meet-videos" id="meetVideos"></div>
 </main>
-<%- include('call-panel') %>
+<div class="meet-notices" id="meetNotices" aria-live="polite"></div>
+<aside class="nc-call-panel meet-side-panel" id="meetParticipantsPanel" role="complementary" aria-label="People in the meeting" hidden>
+  <header><h3>People <span class="nc-badge" id="meetParticipantCount">0</span></h3><button type="button" class="nc-btn-close" aria-label="Close people">×</button></header>
+  <div class="nc-participant-list" id="meetParticipantList"></div>
+</aside>
+<aside class="nc-call-panel meet-side-panel" id="meetReactionsPanel" role="complementary" aria-label="Reactions" hidden>
+  <header><h3>Reactions</h3><button type="button" class="nc-btn-close" aria-label="Close reactions">×</button></header>
+  <div class="nc-reaction-grid" id="meetReactionGrid"></div>
+</aside>
+<aside class="nc-call-panel meet-side-panel" id="meetChatPanel" role="complementary" aria-label="Meeting chat" hidden>
+  <header><h3>Meeting chat</h3><button type="button" class="nc-btn-close" aria-label="Close chat">×</button></header>
+  <div class="nc-chat-messages" id="meetChatMessages"></div>
+  <form class="nc-chat-input" id="meetChatForm">
+    <input type="text" id="meetChatInput" placeholder="Type a message…" autocomplete="off" aria-label="Chat message" maxlength="2000">
+    <button type="submit" class="nc-btn-icon" aria-label="Send"><i class="bi bi-send" aria-hidden="true"></i></button>
+  </form>
+</aside>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
 <script src="/js/sfu-client.js?v=4"></script>
-<script src="/js/meet-room.js?v=12"></script>
+<script src="/js/call-extras.js?v=1"></script>
+<script src="/js/meet-room.js?v=13"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

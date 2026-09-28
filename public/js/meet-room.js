@@ -8,6 +8,7 @@ const recordingControls=document.getElementById('recordingControls'),recordBtn=d
 let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,routerRtpCapabilities=null,session=null,currentRecordingId=null;
 const shareBtn=document.getElementById('meetShare'),shareStage=document.getElementById('meetShareStage'),shareVideo=document.getElementById('meetShareVideo'),shareLabel=document.getElementById('meetShareLabel');
 let display=null;              // our own screen while we share
+let ownPeerId=null;            // our id in the meeting room (to tell our own tile / messages apart)
 const screens=new Map();       // peerId -> { name, stream } for screens others share
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
@@ -24,7 +25,8 @@ function tile(id,name,media,muted=false){
     v.addEventListener('resize',()=>item.classList.toggle('has-video',v.videoWidth>0));
     const p=document.createElement('p');const micIcon=document.createElement('i');micIcon.className='bi bi-mic-mute-fill meet-tile-mic';micIcon.setAttribute('role','img');micIcon.setAttribute('aria-label','Muted');
     p.append(micIcon,document.createTextNode(name));
-    item.append(v,av,p);videos.append(item);
+    const hand=document.createElement('span');hand.className='nc-tile-hand';hand.setAttribute('role','img');hand.setAttribute('aria-label','Hand raised');hand.textContent='✋';
+    item.append(v,av,hand,p);videos.append(item);
   }
   const v=item.querySelector('video');v.srcObject=media;
   v.play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>v.play()});
@@ -77,10 +79,27 @@ async function stopShare(){
 }
 shareBtn.onclick=()=>display?stopShare():startShare();
 
+// In-call extras (participants, raise hand, reactions, chat, active speaker): call-extras.js.
+const $=id=>document.getElementById(id);
+const extras=createCallExtras({
+  socket,request,notify:e=>{status.textContent=e.message},
+  tiles:()=>[...videos.children],
+  tileFor:peerId=>document.getElementById('peer-'+(peerId===ownPeerId?'local':peerId)),
+  reactionHost:()=>shareStage.hidden?null:shareStage,
+  fallbackHost:videos,
+  els:{
+    participantsBtn:$('meetParticipantsBtn'),participantsBadge:$('meetParticipantsBadge'),participantsPanel:$('meetParticipantsPanel'),
+    participantCount:$('meetParticipantCount'),participantList:$('meetParticipantList'),handBtn:$('meetHandBtn'),
+    reactionsBtn:$('meetReactionsBtn'),reactionsPanel:$('meetReactionsPanel'),reactionGrid:$('meetReactionGrid'),
+    chatBtn:$('meetChatBtn'),chatBadge:$('meetChatBadge'),chatPanel:$('meetChatPanel'),chatMessages:$('meetChatMessages'),
+    chatForm:$('meetChatForm'),chatInput:$('meetChatInput'),notices:$('meetNotices'),
+  },
+});
+
 function cleanup(){
   joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
   display?.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null;
-  screens.clear();renderShare();
+  screens.clear();renderShare();extras.stop();ownPeerId=null;
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
@@ -114,6 +133,7 @@ async function enterMeeting(){
     if(!existing&&!session.peerCount)status.textContent='You are the first participant. Share the meeting link to invite others.';
     try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
     setShareButton();
+    extras.start({roomId,peerId:ownPeerId});
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
 
@@ -160,7 +180,7 @@ enter.onclick=async()=>{
     if(mic.checked||camera.checked)stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
     const r=await request('meet:join',{code});
-    roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;
+    roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;ownPeerId=r.peerId;
     const a=await request('meet:request-join',{roomId});
     if(a.admitted){await enterMeeting();if(noDevices&&joined)status.textContent='Joined without camera and microphone: your browser only allows them on a secure (https) connection.';return}
     joining=false;waiting=true;

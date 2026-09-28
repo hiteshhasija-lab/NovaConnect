@@ -123,3 +123,20 @@
 .meet-tile-mic { display: none; margin-right: 4px; color: #ff8a8e; }
 .meet-video.mic-off .meet-tile-mic { display: inline; }
 .meet-videos.has-remote #peer-local .meet-avatar span { width: 36px; height: 36px; font-size: .9rem; }
+
+/* In-call extras on the meeting page (call-extras.js; panels and chat reuse calls.css styles). */
+.meet-extra-btn { display: inline-flex; align-items: center; gap: 6px; }
+.meet-extra-btn .nc-badge { margin-left: 2px; }
+.meet-extra-btn.nc-active { background: #f5a623; border-color: #f5a623; color: #171d32; }
+.meet-side-panel { position: fixed; top: 80px; right: 24px; bottom: 24px; z-index: 1085; width: min(340px, calc(100vw - 32px)); max-height: none; display: flex; flex-direction: column; }
+.meet-side-panel[hidden] { display: none; }
+.meet-side-panel .nc-participant-list, .meet-side-panel .nc-chat-messages { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+.meet-notices { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1090; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.meet-video { overflow: hidden; }
+.meet-video .nc-tile-hand { display: none; position: absolute; top: 14px; left: 14px; z-index: 2; font-size: 1.3rem; filter: drop-shadow(0 1px 2px #000a); }
+.meet-video.nc-hand .nc-tile-hand { display: block; }
+.meet-video.nc-hand { outline: 3px solid #f5a623; outline-offset: -3px; }
+.meet-video::after { content: ''; position: absolute; inset: 0; border: 3px solid transparent; border-radius: inherit; pointer-events: none; transition: border-color .2s; }
+.meet-video.nc-speaking::after { border-color: #7f85f5; }
+.meet-share-stage { overflow: hidden; }
+@media (max-width: 600px) { .meet-side-panel { top: auto; height: 60vh; right: 16px; left: 16px; width: auto; } }
