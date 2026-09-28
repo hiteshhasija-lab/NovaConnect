@@ -6,10 +6,14 @@
 function createMeetSignaling(io, db, sfuInstance) {
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
-    produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, closePeerTransports,
+    produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, setActiveSpeakerHandler, closePeerTransports,
     startRecording, stopRecording, getRecordingStatus,
   } = require('./sfu');
   const { nowStr } = require('./db');
+
+  // The loudest microphone in a call room (sfu.js), so everyone can highlight that tile.
+  setActiveSpeakerHandler((roomId, peerId) => io.to('sfu:' + roomId).emit('sfu:active-speaker', { roomId, peerId }));
+  const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
 
   async function meetingOwnerId(code) {
     const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(code);
@@ -233,6 +237,38 @@ function createMeetSignaling(io, db, sfuInstance) {
       if (kind === 'audio') mapping.micOff = paused === true; else mapping.camOff = paused === true;
       socket.to(`sfu:${roomId}`).emit('sfu:producer-paused', { producerId, peerId: mapping.peerId, kind, paused: paused === true });
       return { success: true };
+    });
+
+    // In-call extras (any call room): participant list, raise hand, reactions, in-call chat.
+    handle('sfu:participants', async ({ roomId }) => {
+      admitted(roomId);
+      const participants = [];
+      for (const m of sfuInstance.roomUserMap.values()) {
+        if (m.roomId === roomId && !m.inLobby) participants.push({ peerId: m.peerId, userId: m.userId, fullName: m.fullName, hand: !!m.hand, micOff: !!m.micOff, camOff: !!m.camOff });
+      }
+      return { participants };
+    });
+    handle('sfu:hand', async ({ roomId, raised }) => {
+      const m = admitted(roomId);
+      m.hand = raised === true;
+      io.to(`sfu:${roomId}`).emit('sfu:hand', { roomId, peerId: m.peerId, fullName: m.fullName, raised: m.hand });
+      return {};
+    });
+    let lastReaction = 0;
+    handle('sfu:reaction', async ({ roomId, emoji }) => {
+      const m = admitted(roomId);
+      if (!REACTIONS.includes(emoji)) throw Error('Unknown reaction.');
+      if (Date.now() - lastReaction < 400) return {}; // a burst of clicks sends one
+      lastReaction = Date.now();
+      io.to(`sfu:${roomId}`).emit('sfu:reaction', { roomId, peerId: m.peerId, fullName: m.fullName, emoji });
+      return {};
+    });
+    handle('sfu:chat', async ({ roomId, text }) => {
+      const m = admitted(roomId);
+      const body = String(text || '').trim().slice(0, 2000);
+      if (!body) throw Error('Type a message first.');
+      io.to(`sfu:${roomId}`).emit('sfu:chat', { roomId, peerId: m.peerId, fullName: m.fullName, text: body, at: new Date().toISOString() });
+      return {};
     });
 
     // Stop one of your own streams (a screen share) while staying in the call.

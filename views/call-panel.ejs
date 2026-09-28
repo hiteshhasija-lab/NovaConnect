@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/css/calls.css?v=13">
+<link rel="stylesheet" href="/css/calls.css?v=14">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
@@ -22,6 +22,8 @@
   <div class="nc-call-media" id="callMedia">
     <!-- Group calls: your own tile floats here while others are in the call (group-calls.js). -->
     <div class="nc-call-self" id="callSelfTile"></div>
+    <!-- Short in-call notices: "Name raised their hand", chat previews while the chat is closed. -->
+    <div class="nc-call-notices" id="callNotices" aria-live="polite"></div>
     <!-- Group calls: a screen someone shares fills this stage; the gallery becomes a side strip. -->
     <div class="nc-share-stage" id="callShareStage" hidden>
       <video id="callShareVideo" autoplay playsinline muted aria-label="Shared screen"></video>
@@ -89,6 +91,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span class="nc-badge" id="callParticipantCount" hidden>0</span>
         </button>
+        <button type="button" class="nc-btn-icon nc-hand-btn" id="callHand" hidden aria-pressed="false" aria-label="Raise hand" title="Raise hand"><span aria-hidden="true">✋</span></button>
         <button type="button" class="nc-btn-icon" id="callReactions" hidden aria-label="Reactions" aria-expanded="false" aria-controls="callReactionsPanel" title="Reactions (R)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.22 12.89A5 5 0 0 0 12 5a5 5 0 0 0-8.22 6.22"/><path d="M22 12h-5"/><circle cx="8" cy="12" r="2"/><path d="M19.5 17.5a3.5 3.5 0 0 1-5 0"/></svg>
         </button>
@@ -113,9 +116,7 @@
         <button type="button" class="nc-btn-close" aria-label="Close participants">×</button>
       </header>
       <div class="nc-participant-list" id="participantList"></div>
-      <div class="nc-panel-footer">
-        <button type="button" class="nc-btn-primary" id="inviteParticipants">Invite</button>
-      </div>
+
     </aside>
 
     <aside class="nc-call-panel" id="callReactionsPanel" role="complementary" aria-label="Reactions" hidden>

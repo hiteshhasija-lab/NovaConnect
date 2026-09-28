@@ -79,16 +79,36 @@ async function getRouter() {
   return router;
 }
 
+// Active speaker: each room's loudest microphone, reported (on change only) to the handler that
+// meet-signaling.js registers, which tells the room so the speaker's tile can be highlighted.
+let activeSpeakerHandler = null;
+function setActiveSpeakerHandler(fn) { activeSpeakerHandler = fn; }
+function announceSpeaker(room, peerId) {
+  if (room.speaker === peerId || !rooms.has(room.id)) return;
+  room.speaker = peerId;
+  activeSpeakerHandler?.(room.id, peerId);
+}
+
 async function createRoom(roomId) {
   if (rooms.has(roomId)) return rooms.get(roomId);
 
   const r = await getRouter();
+  if (rooms.has(roomId)) return rooms.get(roomId);
   const room = {
     id: roomId,
     router: r,
     peers: new Map(), // peerId -> { transports, producers, consumers, rtpCapabilities }
+    audioObserver: null,
+    speaker: null,
   };
   rooms.set(roomId, room);
+  try {
+    room.audioObserver = await r.createAudioLevelObserver({ maxEntries: 1, threshold: -70, interval: 800 });
+    room.audioObserver.on('volumes', (volumes) => announceSpeaker(room, volumes[0]?.producer.appData.sourcePeerId || null));
+    room.audioObserver.on('silence', () => announceSpeaker(room, null));
+  } catch (e) {
+    logger.warn({ roomId, err: e.message }, 'Active-speaker detection unavailable');
+  }
   logger.info({ roomId }, 'SFU room created');
   return room;
 }
@@ -107,6 +127,7 @@ function deleteRoom(roomId) {
       transport.close();
     }
   }
+  room.audioObserver?.close();
   rooms.delete(roomId);
   logger.info({ roomId }, 'SFU room deleted');
   return true;
@@ -190,6 +211,7 @@ async function produce(room, peerId, transportId, kind, rtpParameters, appData =
   });
 
   peer.producers.set(producer.id, producer);
+  if (kind === 'audio' && appData.source !== 'screen') roomObj.audioObserver?.addProducer({ producerId: producer.id }).catch(() => {});
 
   logger.info({ room, peerId, producerId: producer.id, kind }, 'Producer created');
   return producer.id;
@@ -543,6 +565,7 @@ module.exports = {
   listProducers,
   closeProducer,
   setProducerPaused,
+  setActiveSpeakerHandler,
   closePeerTransports,
   rooms,
 };

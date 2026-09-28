@@ -350,3 +350,41 @@
 .nc-video-tile.nc-camera-off video { opacity: 0; }
 .nc-tile-mic { display: none; margin-right: 4px; color: #ff8a8e; }
 .nc-video-tile.nc-mic-off .nc-tile-mic { display: inline; }
+
+/* ---- In-call extras (group-calls.js) ---- */
+/* Side panels (participants, reactions, chat) dock inside the call on the right, over the video. */
+.nc-call .nc-call-panel {
+  position: absolute; top: 58px; right: 10px; bottom: 86px; left: auto; z-index: 4;
+  width: min(300px, calc(100% - 20px)); max-height: none; overflow: hidden;
+  display: flex; flex-direction: column; background: rgba(23, 29, 50, .97);
+}
+.nc-call .nc-call-panel[hidden] { display: none; }
+.nc-call:not(.nc-call-video) .nc-call-panel { top: 12px; bottom: 12px; }
+.nc-call .nc-participant-list, .nc-call .nc-chat-messages { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+.nc-participant-item { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 8px; }
+.nc-participant-avatar {
+  display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%;
+  background: #5b5fc7; color: #fff; font-size: .8rem; font-weight: 600;
+}
+.nc-participant-status .bi-mic-mute-fill, .nc-participant-status .bi-camera-video-off-fill { color: #ff8a8e; }
+.nc-reaction-btn { font-size: 1.6rem; padding: 6px; border: 0; border-radius: 10px; background: rgba(255,255,255,.06); cursor: pointer; }
+.nc-hand-btn span { font-size: 1.1rem; line-height: 1; }
+.nc-btn-icon.nc-active { background: #f5a623; border-color: #f5a623; }
+/* Raised hand on a tile. */
+.nc-tile-hand { display: none; position: absolute; top: 8px; left: 8px; z-index: 2; font-size: 1.3rem; filter: drop-shadow(0 1px 2px #000a); }
+.nc-video-tile.nc-hand .nc-tile-hand { display: block; animation: bounce 1s 3; }
+.nc-video-tile.nc-hand { outline: 3px solid #f5a623; outline-offset: -3px; }
+/* Active speaker: a ring around whoever is talking. */
+.nc-video-tile::after { content: ''; position: absolute; inset: 0; border: 3px solid transparent; border-radius: inherit; pointer-events: none; z-index: 2; transition: border-color .2s; }
+.nc-video-tile.nc-speaking::after { border-color: #7f85f5; }
+/* Reactions float up from the sender's tile (or the shared screen). */
+.nc-float-reaction {
+  position: absolute; bottom: 12%; z-index: 5; font-size: 2.2rem; pointer-events: none;
+  animation: nc-float-up 2.6s ease-out forwards;
+}
+@keyframes nc-float-up { 0% { transform: translateY(0) scale(.6); opacity: 0; } 15% { opacity: 1; transform: translateY(-10px) scale(1.1); } 100% { transform: translateY(-160px) scale(1); opacity: 0; } }
+/* Short notices over the call. */
+.nc-call-notices { position: absolute; top: 62px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; width: max-content; max-width: 90%; }
+.nc-call-notice { padding: 6px 12px; border-radius: 999px; background: rgba(8, 11, 24, .85); color: #f5f6ff; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; animation: nc-toast-in .2s ease-out; }
+@keyframes nc-toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .nc-float-reaction, .nc-video-tile.nc-hand .nc-tile-hand { animation: none; } }

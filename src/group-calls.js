@@ -27,8 +27,9 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     return members;
   }
 
-  function inGroupCall(userId) {
+  function inGroupCall(userId, exceptCallId = null) {
     for (const call of calls.values()) {
+      if (call.id === exceptCallId) continue;
       for (const m of call.members.values()) if (m.userId === userId) return true;
     }
     return false;
@@ -113,7 +114,8 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       if (!call) throw new Error('This call has ended.');
       await groupMembers(call.conversationId, user.id);
       if (call.members.has(socket.id)) throw new Error('You are already in this call.');
-      if (inDirectCall(user.id) || inGroupCall(user.id)) throw new Error('Finish your current call first.');
+      // Joining the same call from a second device or tab is fine (as in Teams); another call isn't.
+      if (inDirectCall(user.id) || inGroupCall(user.id, call.id)) throw new Error('Finish your current call first.');
       if (sfuInstance.roomUserMap.has(socket.id)) throw new Error('Leave your meeting first.');
 
       const room = await createRoom(call.roomId);
