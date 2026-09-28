@@ -9,13 +9,14 @@
   };
   window.createChatHeader = function ({ api, currentUser, calls, groupCalls, navigate, preferences, removed, meetings, notify }) {
     let open = null;
-    // "Join" appears in a group chat's header while a call is running there and you are not in it.
+    // "Join" appears in a chat's or channel's header while a call is running there and you are not
+    // in it. The button's data-call-key is 'dm:<id>' or 'ch:<id>' (group-calls.js keys).
     function paintJoin(el) {
-      const call = groupCalls.running(el.dataset.conversationId);
-      el.hidden = !call || groupCalls.inCall(el.dataset.conversationId);
+      const call = groupCalls.running(el.dataset.callKey);
+      el.hidden = !call || groupCalls.inCall(el.dataset.callKey);
       if (call) el.textContent = 'Join call · ' + call.count;
     }
-    groupCalls?.onChange(id => document.querySelectorAll('.chat-call-join').forEach(el => { if (Number(el.dataset.conversationId) === id) paintJoin(el); }));
+    groupCalls?.onChange(key => document.querySelectorAll('.chat-call-join').forEach(el => { if (el.dataset.callKey === key) paintJoin(el); }));
     function close(restore = true) {
       if (!open) return;
       const old = open; open = null;
@@ -219,7 +220,21 @@
       };
       document.body.appendChild(d);d.showModal();
     }
-    return { menu, close, render(header, active) {
+    // Channel header: "Meet" starts a meeting in the channel (Teams' Meet now) — no ringing; it's
+    // posted in the channel — and "Join call · N" shows while one is running there.
+    function channelMeet(container, channel) {
+      const actions = container.querySelector('.channel-header-actions');
+      if (!groupCalls || !actions) return;
+      const key = 'ch:' + channel.id, title = '#' + channel.name;
+      const join = document.createElement('button'); join.type = 'button'; join.className = 'chat-call-join'; join.dataset.callKey = key; join.hidden = true;
+      join.onclick = () => groupCalls.start(key, groupCalls.running(key)?.mode || 'video', title);
+      const meet = document.createElement('button'); meet.type = 'button'; meet.className = 'channel-meet'; meet.title = 'Meet now: start a meeting in this channel';
+      meet.innerHTML = '<i class="bi bi-camera-video" aria-hidden="true"></i> Meet';
+      meet.onclick = () => groupCalls.start(key, 'video', title);
+      actions.prepend(join, meet);
+      paintJoin(join); groupCalls.refresh(key);
+    }
+    return { menu, close, channelMeet, render(header, active) {
       const tools = document.createElement('div'); tools.className = 'chat-tools'; tools.setAttribute('aria-label', 'Chat actions');
       const others = active.participants.filter(u => u.id !== currentUser.id);
       if (!active.conversation.is_group && others.length === 1) {
@@ -229,7 +244,7 @@
         }
       } else if (active.conversation.is_group && groupCalls) {
         const id = active.conversation.id, title = active.conversation.name || others.map(u => u.full_name).join(', ');
-        const join = document.createElement('button'); join.type = 'button'; join.className = 'chat-call-join'; join.dataset.conversationId = id; join.hidden = true;
+        const join = document.createElement('button'); join.type = 'button'; join.className = 'chat-call-join'; join.dataset.callKey = 'dm:' + id; join.hidden = true;
         join.onclick = () => { close(); groupCalls.start(id, groupCalls.running(id)?.mode || 'video', title); };
         tools.appendChild(join);
         for (const mode of ['video', 'audio']) {

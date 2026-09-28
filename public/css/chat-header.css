@@ -52,3 +52,8 @@
 .chat-call-join { align-self:center; border:0; border-radius:6px; padding:6px 12px; margin-right:4px; background:#237b4b; color:#fff; font-weight:600; white-space:nowrap; cursor:pointer; }
 .chat-call-join:hover { background:#1c6a40; }
 .chat-call-join:focus-visible { outline:2px solid var(--brand,#0755d9); outline-offset:2px; }
+
+/* Channel header "Meet" (Meet now), styled like the neighbouring channel actions but accented. */
+.channel-meet { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--brand, #5b5fc7); color: var(--brand, #5b5fc7); background: transparent; border-radius: 6px; padding: 5px 12px; font-weight: 600; cursor: pointer; }
+.channel-meet:hover { background: var(--brand, #5b5fc7); color: #fff; }
+.channel-meet:focus-visible { outline: 2px solid var(--brand, #5b5fc7); outline-offset: 2px; }

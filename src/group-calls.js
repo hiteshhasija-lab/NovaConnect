@@ -1,13 +1,20 @@
 const { randomUUID } = require('node:crypto');
 const { createRoom, deleteRoom, closePeerTransports } = require('./sfu');
+const { hydrateOne } = require('./messageUtils');
+const { nowStr } = require('./db');
 
-// Calls in group chats. Starting one rings every member; anyone in the chat can join while it
-// runs, and it ends when the last person leaves. Media goes through the mediasoup SFU: this
-// module only manages who is in which call. The transport/produce/consume events themselves are
-// served by meet-signaling.js, which accepts any socket whose roomUserMap entry names that room.
+// Calls through the SFU, in three kinds of place:
+//   - a group chat: starting one rings every member; anyone in the chat can join while it runs;
+//   - a 1:1 chat: rings the other person; ends if they decline or don't answer, and ends when
+//     either person hangs up (like a phone call);
+//   - a channel ("Meet now"): rings nobody; it's announced in the channel (a post, and a Join
+//     button in the channel header) and anyone who can see the channel can join.
+// A call ends when the last person leaves. Media goes through the mediasoup SFU; this module only
+// manages who is in which call. The transport/produce/consume events themselves (and the in-call
+// extras) are served by meet-signaling.js, for any socket whose roomUserMap entry names the room.
 function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = () => false } = {}) {
-  const calls = new Map();          // callId -> call
-  const byConversation = new Map(); // conversationId -> callId
+  const calls = new Map();   // callId -> call
+  const byScope = new Map(); // 'dm:<conversationId>' | 'ch:<channelId>' -> callId
   const emitUser = (id, event, payload) => io.to(`user:${id}`).emit(event, payload);
 
   async function activeUser(socket) {
@@ -19,12 +26,29 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     return user;
   }
 
-  async function groupMembers(conversationId, userId) {
-    const members = await db.prepare(`SELECT u.id, u.full_name FROM dm_participants dp
-      JOIN users u ON u.id = dp.user_id JOIN dm_conversations dc ON dc.id = dp.conversation_id
-      WHERE dc.id = ? AND dc.is_group = 1 AND u.active = 1`).all(conversationId);
-    if (!members.some(m => m.id === userId)) throw new Error('Calls are available to members of this group chat.');
-    return members;
+  // Where a call lives, validated against the database, and whether this user may be in it.
+  function parseScope(data) {
+    const conversationId = Number(data.conversationId), channelId = Number(data.channelId);
+    if (Number.isSafeInteger(channelId) && channelId > 0) return { type: 'channel', id: channelId, key: 'ch:' + channelId };
+    if (Number.isSafeInteger(conversationId) && conversationId > 0) return { type: 'dm', id: conversationId, key: 'dm:' + conversationId };
+    throw new Error('Invalid call request.');
+  }
+  async function access(scope, userId) {
+    if (scope.type === 'channel') {
+      const ch = await db.prepare('SELECT id, name, team_id, is_private FROM channels WHERE id = ?').get(scope.id);
+      if (!ch) throw new Error('Channel not found.');
+      const inTeam = await db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(ch.team_id, userId);
+      const inChannel = !ch.is_private || await db.prepare('SELECT 1 FROM channel_members WHERE channel_id = ? AND user_id = ?').get(ch.id, userId);
+      if (!inTeam || !inChannel) throw new Error('Meetings are available to members of this channel.');
+      return { title: '#' + ch.name, members: null, direct: false };
+    }
+    const convo = await db.prepare('SELECT id, name, is_group FROM dm_conversations WHERE id = ?').get(scope.id);
+    const members = convo ? await db.prepare(`SELECT u.id, u.full_name FROM dm_participants dp
+      JOIN users u ON u.id = dp.user_id WHERE dp.conversation_id = ? AND u.active = 1`).all(scope.id) : [];
+    if (!members.some(m => m.id === userId)) throw new Error('Calls are available to members of this chat.');
+    const direct = !convo.is_group;
+    if (direct && members.length !== 2) throw new Error('Calls require a chat with two active members.');
+    return { title: convo.name || null, members, direct };
   }
 
   function inGroupCall(userId, exceptCallId = null) {
@@ -34,22 +58,35 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     }
     return false;
   }
+  const distinctUsers = call => new Set([...call.members.values()].map(m => m.userId)).size;
 
   function summary(call) {
-    return { id: call.id, conversationId: call.conversationId, mode: call.mode, count: call.members.size };
+    return { id: call.id, conversationId: call.scope.type === 'dm' ? call.scope.id : undefined, channelId: call.scope.type === 'channel' ? call.scope.id : undefined, mode: call.mode, count: distinctUsers(call), direct: call.direct };
   }
-
-  // Lets every member's chat header show whether a call is running and how many are in it.
+  // Tell everyone who can see the chat/channel: send an event to its members, or its channel room.
+  function tellScope(call, event, payload) {
+    if (call.scope.type === 'channel') io.to(`channel:${call.scope.id}`).emit(event, payload);
+    else for (const id of call.userIds) emitUser(id, event, payload);
+  }
+  // Lets headers show whether a call is running there and how many are in it.
   function broadcastState(call, active = true) {
-    for (const id of call.userIds) emitUser(id, 'gcall:state', { conversationId: call.conversationId, call: active ? summary(call) : null });
+    const where = call.scope.type === 'channel' ? { channelId: call.scope.id } : { conversationId: call.scope.id };
+    tellScope(call, 'gcall:state', { ...where, call: active ? summary(call) : null });
   }
 
-  function end(call) {
+  function end(call, reason = null) {
     if (!calls.delete(call.id)) return;
-    byConversation.delete(call.conversationId);
+    byScope.delete(call.scope.key);
     clearTimeout(call.ringTimer);
+    // Anyone still connected (the other person in a 1:1 call) is taken out of the room first.
+    for (const [sid, m] of call.members) {
+      if (sfuInstance.roomUserMap.get(sid)?.roomId === call.roomId) sfuInstance.roomUserMap.delete(sid);
+      io.in(sid).socketsLeave('sfu:' + call.roomId);
+      closePeerTransports(call.roomId, m.peerId);
+    }
+    call.members.clear();
     deleteRoom(call.roomId);
-    for (const id of call.userIds) emitUser(id, 'gcall:ended', { id: call.id });
+    tellScope(call, 'gcall:ended', { id: call.id, reason });
     broadcastState(call, false);
   }
 
@@ -61,7 +98,9 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     closePeerTransports(call.roomId, m.peerId);
     socket.leave('sfu:' + call.roomId);
     io.to('sfu:' + call.roomId).emit('sfu:peer-left', { peerId: m.peerId, userId: m.userId, fullName: m.fullName });
+    // A 1:1 call ends when either person hangs up, once both had been in it.
     if (call.members.size === 0) end(call);
+    else if (call.direct && call.connected && distinctUsers(call) < 2) end(call, 'Call ended');
     else broadcastState(call);
   }
 
@@ -76,43 +115,62 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       } catch (err) { ack({ ok: false, error: err.message }); }
     });
 
-    // Starts a call in a group chat, or returns the one already running there.
+    // Starts a call in a chat or channel, or returns the one already running there.
     handle('gcall:start', async (data, user) => {
-      const conversationId = Number(data.conversationId);
-      if (!Number.isSafeInteger(conversationId) || conversationId < 1 || !['audio', 'video'].includes(data.mode)) throw new Error('Invalid call request.');
-      const members = await groupMembers(conversationId, user.id);
-      const running = calls.get(byConversation.get(conversationId));
-      if (running) return { id: running.id, mode: running.mode };
+      if (!['audio', 'video'].includes(data.mode)) throw new Error('Invalid call request.');
+      const scope = parseScope(data);
+      const place = await access(scope, user.id);
+      const running = calls.get(byScope.get(scope.key));
+      if (running) return { id: running.id, mode: running.mode, title: running.title };
       if (inDirectCall(user.id) || inGroupCall(user.id)) throw new Error('Finish your current call first.');
 
+      const others = (place.members || []).filter(m => m.id !== user.id);
+      if (place.direct) {
+        const other = others[0];
+        if (!(await io.in(`user:${other.id}`).fetchSockets()).length) throw new Error(other.full_name + ' is offline.');
+        if (inDirectCall(other.id) || inGroupCall(other.id)) throw new Error(other.full_name + ' is in another call.');
+      }
       const call = {
-        id: randomUUID(), conversationId, mode: data.mode, startedBy: user.id,
-        userIds: members.map(m => m.id), members: new Map(), ringTimer: null,
+        id: randomUUID(), scope, mode: data.mode, startedBy: user.id, direct: place.direct, connected: false,
+        userIds: (place.members || []).map(m => m.id), members: new Map(), ringTimer: null,
       };
       call.roomId = 'gcall:' + call.id;
+      // For a 1:1 call each side sees the other's name; group chats show the chat's name.
+      call.title = place.title || others.map(m => m.full_name).join(', ');
       calls.set(call.id, call);
-      byConversation.set(conversationId, call.id);
+      byScope.set(scope.key, call.id);
 
-      const convo = await db.prepare('SELECT name FROM dm_conversations WHERE id = ?').get(conversationId);
-      const title = convo?.name || members.filter(m => m.id !== user.id).map(m => m.full_name).join(', ');
-      for (const m of members) {
-        if (m.id !== user.id) emitUser(m.id, 'gcall:incoming', { id: call.id, conversationId, mode: call.mode, title, caller: { id: user.id, name: user.full_name } });
+      if (scope.type === 'dm') {
+        for (const m of others) {
+          emitUser(m.id, 'gcall:incoming', {
+            id: call.id, conversationId: scope.id, mode: call.mode, direct: call.direct,
+            title: call.direct ? user.full_name : call.title, caller: { id: user.id, name: user.full_name },
+          });
+        }
+      } else {
+        // Meet now: post in the channel so people who aren't looking at it right now find out.
+        try {
+          const row = await db.prepare(`INSERT INTO messages (channel_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING *`)
+            .get(scope.id, user.id, `📹 Started a ${call.mode === 'video' ? 'video' : 'audio'} meeting in this channel. Use **Join** at the top of the channel to join.`, nowStr(), nowStr());
+          io.to(`channel:${scope.id}`).emit('message:new', await hydrateOne(row, null));
+        } catch { /* the header Join button still announces it */ }
       }
-      // Stop ringing after a while; the call stays joinable from the chat. If the caller never
-      // actually joined (e.g. they denied microphone access), drop the empty call.
+      // Stop ringing after a while. A 1:1 call nobody answered ends ("No answer"); a group or
+      // channel call stays joinable, unless the caller never actually joined.
       call.ringTimer = setTimeout(() => {
-        for (const id of call.userIds) emitUser(id, 'gcall:ring-stop', { id: call.id });
+        if (scope.type === 'dm') tellScope(call, 'gcall:ring-stop', { id: call.id });
         if (call.members.size === 0) end(call);
+        else if (call.direct && !call.connected) end(call, 'No answer');
       }, ringMs);
       call.ringTimer.unref?.();
       broadcastState(call);
-      return { id: call.id, mode: call.mode, title };
+      return { id: call.id, mode: call.mode, title: call.title };
     });
 
     handle('gcall:join', async (data, user) => {
       const call = calls.get(data.id);
       if (!call) throw new Error('This call has ended.');
-      await groupMembers(call.conversationId, user.id);
+      await access(call.scope, user.id);
       if (call.members.has(socket.id)) throw new Error('You are already in this call.');
       // Joining the same call from a second device or tab is fine (as in Teams); another call isn't.
       if (inDirectCall(user.id) || inGroupCall(user.id, call.id)) throw new Error('Finish your current call first.');
@@ -123,31 +181,39 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       const peerId = `${user.id}-${socket.id}`;
       const member = { userId: user.id, peerId, fullName: user.full_name };
       call.members.set(socket.id, member);
+      if (call.direct && distinctUsers(call) >= 2) { call.connected = true; clearTimeout(call.ringTimer); }
       sfuInstance.roomUserMap.set(socket.id, { roomId: call.roomId, peerId, userId: user.id, fullName: user.full_name, inLobby: false });
       socket.join('sfu:' + call.roomId);
       socket.to('sfu:' + call.roomId).emit('sfu:peer-joined', { peerId, userId: user.id, fullName: user.full_name });
       emitUser(user.id, 'gcall:answered', { id: call.id, socketId: socket.id });
       broadcastState(call);
-      return { roomId: call.roomId, peerId, mode: call.mode, routerRtpCapabilities: room.router.rtpCapabilities };
+      return { roomId: call.roomId, peerId, mode: call.mode, direct: call.direct, routerRtpCapabilities: room.router.rtpCapabilities };
     });
 
-    // Stops the ringing in this person's other tabs; the call itself carries on.
+    // Group chat: stops the ringing in this person's other tabs; the call carries on.
+    // 1:1 chat: the other person said no, so the call ends for the caller too.
     handle('gcall:decline', (data, user) => {
-      if (calls.has(data.id)) emitUser(user.id, 'gcall:ring-stop', { id: data.id });
+      const call = calls.get(data.id);
+      if (!call) return {};
+      if (call.direct && !call.connected && call.startedBy !== user.id) end(call, 'Call declined');
+      else emitUser(user.id, 'gcall:ring-stop', { id: data.id });
       return {};
     });
 
     handle('gcall:leave', data => {
       const call = calls.get(data.id);
-      if (call) leave(socket, call);
+      if (call) {
+        // The caller giving up before anyone answered a 1:1 call cancels it for the other side.
+        if (call.direct && !call.connected && call.members.has(socket.id) && call.members.size === 1) end(call, 'Missed call');
+        else leave(socket, call);
+      }
       return {};
     });
 
     handle('gcall:status', async (data, user) => {
-      const conversationId = Number(data.conversationId);
-      if (!Number.isSafeInteger(conversationId) || conversationId < 1) throw new Error('Invalid call request.');
-      await groupMembers(conversationId, user.id);
-      const call = calls.get(byConversation.get(conversationId));
+      const scope = parseScope(data);
+      await access(scope, user.id);
+      const call = calls.get(byScope.get(scope.key));
       return { call: call ? summary(call) : null };
     });
 

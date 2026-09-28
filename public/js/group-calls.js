@@ -7,7 +7,11 @@
     const panel = document.getElementById('callPanel');
     const $ = id => document.getElementById(id);
     const grid = $('callGrid');
-    const running = new Map();   // conversationId -> { id, mode, count } for calls in progress
+    // Calls are keyed by where they live: 'dm:<conversationId>' (group or 1:1 chat) or 'ch:<channelId>'.
+    // The public API also accepts a bare conversation id.
+    const keyOf = target => typeof target === 'string' ? target : 'dm:' + Number(target);
+    const scopeOf = key => key.startsWith('ch:') ? { channelId: Number(key.slice(3)) } : { conversationId: Number(key.slice(3)) };
+    const running = new Map();   // key -> { id, mode, count } for calls in progress
     const listeners = new Set();
     let current = null, lastFocus = null;
 
@@ -21,7 +25,7 @@
       });
     }
     function status(text) { $('callStatus').textContent = text; }
-    function changed(conversationId) { listeners.forEach(fn => fn(conversationId)); }
+    function changed(key) { listeners.forEach(fn => fn(key)); }
 
     function show(c, text) {
       if (panel.hidden) lastFocus = document.activeElement;
@@ -48,6 +52,8 @@
       const presenter = c.screens && [...c.screens.values()].pop();
       return c.display ? 'You are sharing your screen'
         : presenter ? presenter.name + ' is sharing their screen'
+        : c.key?.startsWith('ch:') ? 'Meeting in channel'
+        : c.direct ? (c.mode === 'video' ? 'Video call' : 'Audio call')
         : c.mode === 'video' ? 'Group video call' : 'Group audio call';
     }
 
@@ -144,7 +150,7 @@
       c.stream?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
-      changed(c.conversationId);
+      changed(c.key);
       allTiles().forEach(t => t.remove());
       panel.classList.remove('nc-call-video', 'nc-call-presenting');
       resetExtras();
@@ -170,14 +176,14 @@
         c.stream = stream;
         status('Connecting…');
         if (!c.id) {
-          const started = await request('gcall:start', { conversationId: c.conversationId, mode: c.mode });
+          const started = await request('gcall:start', { ...scopeOf(c.key), mode: c.mode });
           c.id = started.id; c.mode = started.mode;
           if (current !== c) { stream.getTracks().forEach(t => t.stop()); return; }
         }
         const r = await request('gcall:join', { id: c.id });
         if (current !== c) { request('gcall:leave', { id: c.id }).catch(() => {}); return; }
-        c.joined = true; c.joining = false; c.roomId = r.roomId; c.peerId = r.peerId;
-        changed(c.conversationId); // the header's Join button hides once we are in
+        c.joined = true; c.joining = false; c.roomId = r.roomId; c.peerId = r.peerId; c.direct = !!r.direct;
+        changed(c.key); // the header's Join button hides once we are in
         show(c, 'Connecting…');
         tile('local', 'You', stream, true);
         c.screens = new Map(); // peerId -> { name, stream } for screens being shared
@@ -200,7 +206,7 @@
         const started = Date.now();
         const tick = () => {
           const secs = Math.floor((Date.now() - started) / 1000);
-          const count = running.get(c.conversationId)?.count || 1;
+          const count = running.get(c.key)?.count || 1;
           status((count > 1 ? count + ' in call' : 'Waiting for others to join') + ' · ' + Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
         };
         tick(); c.clock = setInterval(tick, 1000);
@@ -325,19 +331,20 @@
 
     socket.on('gcall:incoming', data => {
       if (current || otherCallActive()) return;
-      const c = current = { id: data.id, conversationId: Number(data.conversationId), mode: data.mode, title: data.title || 'Group call', incoming: true };
-      show(c, data.caller.name + ' is calling the group');
+      const c = current = { id: data.id, key: 'dm:' + Number(data.conversationId), mode: data.mode, title: data.title || 'Group call', direct: !!data.direct, incoming: true };
+      show(c, data.direct ? 'Incoming ' + (data.mode === 'video' ? 'video' : 'audio') + ' call' : data.caller.name + ' is calling the group');
     });
     // Nobody picked up in time on this tab, or this person answered in another tab.
     socket.on('gcall:ring-stop', ({ id }) => { if (current?.id === id && !current.joined && !current.joining) cleanup(current); });
     socket.on('gcall:answered', ({ id, socketId }) => {
       if (current?.id === id && socketId !== socket.id && !current.joined && !current.joining) cleanup(current);
     });
-    socket.on('gcall:ended', ({ id }) => { if (current?.id === id) cleanup(current); });
-    socket.on('gcall:state', ({ conversationId, call }) => {
-      conversationId = Number(conversationId);
-      if (call) running.set(conversationId, call); else running.delete(conversationId);
-      changed(conversationId);
+    // The call ended for everyone (last person left; a 1:1 call was declined, unanswered or hung up).
+    socket.on('gcall:ended', ({ id, reason }) => { if (current?.id === id) cleanup(current, current.joined || !current.incoming ? reason : null); });
+    socket.on('gcall:state', ({ conversationId, channelId, call }) => {
+      const key = channelId ? 'ch:' + Number(channelId) : 'dm:' + Number(conversationId);
+      if (call) running.set(key, call); else running.delete(key);
+      changed(key);
     });
     socket.on('sfu:new-producer', p => { if (current?.joined) current.session?.newProducer(p); });
     socket.on('sfu:producer-closed', p => { if (current?.joined) current.session?.producerClosed(p); });
@@ -377,24 +384,26 @@
 
     return {
       active: () => !!current,
-      // The call in progress in this chat, if any: { id, mode, count }.
-      running: conversationId => running.get(Number(conversationId)) || null,
-      inCall: conversationId => !!current?.joined && current.conversationId === Number(conversationId),
+      // Targets are a conversation id, or a key: 'dm:<conversationId>' / 'ch:<channelId>'.
+      keyOf,
+      // The call in progress there, if any: { id, mode, count }.
+      running: target => running.get(keyOf(target)) || null,
+      inCall: target => !!current?.joined && current.key === keyOf(target),
       onChange(fn) { listeners.add(fn); },
-      async refresh(conversationId) {
-        conversationId = Number(conversationId);
+      async refresh(target) {
+        const key = keyOf(target);
         try {
-          const { call } = await request('gcall:status', { conversationId });
-          if (call) running.set(conversationId, call); else running.delete(conversationId);
-          changed(conversationId);
+          const { call } = await request('gcall:status', scopeOf(key));
+          if (call) running.set(key, call); else running.delete(key);
+          changed(key);
         } catch { /* the header just won't show a Join button */ }
       },
-      // Starts a call in this group chat, or joins the one already running there.
-      start(conversationId, mode, title) {
-        conversationId = Number(conversationId);
-        if (current || otherCallActive()) return notify(new Error(current?.conversationId === conversationId && current.joined ? 'You are already in this call.' : 'Finish your current call first.'));
-        const existing = running.get(conversationId);
-        const c = current = { id: existing?.id || null, conversationId, mode: existing?.mode || mode, title, incoming: false };
+      // Starts a call there, or joins the one already running there.
+      start(target, mode, title) {
+        const key = keyOf(target);
+        if (current || otherCallActive()) return notify(new Error(current?.key === key && current.joined ? 'You are already in this call.' : 'Finish your current call first.'));
+        const existing = running.get(key);
+        const c = current = { id: existing?.id || null, key, mode: existing?.mode || mode, title, incoming: false };
         join(c);
       },
     };

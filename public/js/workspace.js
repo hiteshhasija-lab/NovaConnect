@@ -844,6 +844,7 @@
     if (state.active.type === 'channel') {
       const c = state.active.channel;
       channelTools.header(header, c, tab => showActiveTab(tab));
+      chatHeader.channelMeet(header, c);
     } else if (state.active.type === 'dm') {
       const c = state.active.conversation;
       const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
