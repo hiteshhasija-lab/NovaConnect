@@ -67,17 +67,19 @@ app.use(helmet({
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
 
-// Global rate limiter (applies to all requests)
+// General rate limiter: 1000 requests per 15 minutes, per signed-in user (per IP otherwise).
+// Registered further down, after static files and the session: it used to run first and count
+// every JS/CSS/image file too, so ordinary reloads — or several people behind one office IP —
+// hit 1000 and got locked out with 429s (found 2026-09-28).
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req) => (req.session?.user?.id ? 'user:' + req.session.user.id : 'ip:' + req.ip),
   skip: (req) => req.path === '/health', // Don't rate limit health checks
 });
-app.use(globalLimiter);
 
 // Stricter rate limiter for auth endpoints
 const authLimiter = rateLimit({
@@ -134,7 +136,7 @@ app.use((req, res, next) => {
 // ever reached here. Confirmed live 2026-09-21: that's exactly what was happening. Registering
 // this first, ahead of all of them, is simpler and safer than auditing/fixing every other
 // router's mount path individually.
-app.use('/api/integrations', integrationsInRoutes);
+app.use('/api/integrations', globalLimiter, integrationsInRoutes);
 
 const sessionMiddleware = session({
   store: new RedisStore({ client: redis, prefix: 'nc:sess:' }),
@@ -144,6 +146,7 @@ const sessionMiddleware = session({
   cookie: { maxAge: 1000 * 60 * 60 * 8 }
 });
 app.use(sessionMiddleware);
+app.use(globalLimiter); // after static files and the session — see its definition above
 
 app.use(attachUser);
 app.use((req, res, next) => {
