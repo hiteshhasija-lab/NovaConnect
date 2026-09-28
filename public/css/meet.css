@@ -93,7 +93,6 @@
   .meet-top-actions{grid-template-columns:1fr}.meet-content{padding:24px 16px}.meet-section-title{align-items:flex-start;flex-direction:column}
 }
 
-(End of file - total 21 lines)
 /* Teams-style self-view: while others are in the meeting, your own tile floats small in the corner
    and everyone else shares the gallery (meet-room.js toggles has-remote). */
 .meet-videos.has-remote #peer-local {
