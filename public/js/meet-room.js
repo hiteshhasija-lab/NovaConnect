@@ -15,11 +15,23 @@ function request(event,data){return new Promise((resolve,reject)=>socket.timeout
 
 function tile(id,name,media,muted=false){
   let item=document.getElementById('peer-'+id);
-  if(!item){item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;item.append(v);const p=document.createElement('p');p.textContent=name;item.append(p);videos.append(item)}
+  if(!item){
+    item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;
+    const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;
+    // Initials until a picture arrives, and whenever their camera is off (meet.css).
+    const av=document.createElement('div');av.className='meet-avatar';const ini=document.createElement('span');
+    ini.textContent=name.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';av.append(ini);
+    v.addEventListener('resize',()=>item.classList.toggle('has-video',v.videoWidth>0));
+    const p=document.createElement('p');const micIcon=document.createElement('i');micIcon.className='bi bi-mic-mute-fill meet-tile-mic';micIcon.setAttribute('role','img');micIcon.setAttribute('aria-label','Muted');
+    p.append(micIcon,document.createTextNode(name));
+    item.append(v,av,p);videos.append(item);
+  }
   const v=item.querySelector('video');v.srcObject=media;
   v.play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>v.play()});
   updateSelfView();
 }
+// Camera off → initials; microphone muted → muted icon (their stream is paused at the server).
+function setTileState(id,kind,paused){document.getElementById('peer-'+id)?.classList.toggle(kind==='audio'?'mic-off':'camera-off',paused)}
 // Teams-style: once anyone else is here, your own tile floats small in the corner (meet.css).
 function updateSelfView(){videos.classList.toggle('has-remote',[...videos.children].some(el=>el.id!=='peer-local'))}
 
@@ -95,6 +107,7 @@ async function enterMeeting(){
     }
     session=window.createSfuSession({request,roomId,routerRtpCapabilities,
       onPeerStream:(peerId,name,media)=>tile(peerId,name,media),
+      onPeerState:(peerId,kind,paused)=>setTileState(peerId,kind,paused),
       onPeerScreen:(peerId,name,media)=>{screens.delete(peerId);if(media)screens.set(peerId,{name,stream:media});renderShare()},
       onError:e=>{if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}});
     const existing=await session.start();
@@ -126,6 +139,7 @@ function renderLobbyQueue(){
 
 socket.on('sfu:new-producer',p=>{if(joined)session?.newProducer(p)});
 socket.on('sfu:producer-closed',p=>{if(joined)session?.producerClosed(p)});
+socket.on('sfu:producer-paused',p=>{if(joined)session?.producerPaused(p)});
 socket.on('sfu:peer-joined',({fullName})=>{if(joined)status.textContent=`${fullName} joined.`});
 socket.on('sfu:peer-left',({peerId,fullName})=>{if(!session?.hasPeer(peerId)&&!document.getElementById('peer-'+peerId))return;removePeer(peerId);if(joined)status.textContent=`${fullName||'A participant'} left.`});
 socket.on('disconnect',()=>{if(joined||waiting||joining){cleanup();status.textContent='Disconnected. Join again when your connection returns.'}});
@@ -155,8 +169,9 @@ enter.onclick=async()=>{
   }catch(e){leaveMeeting();status.textContent=e.message}
 };
 
-mic.onchange=()=>stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);
-camera.onchange=()=>stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);
+// In the meeting these also pause the stream at the server, so everyone else is told.
+mic.onchange=()=>{stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);if(joined){setTileState('local','audio',!mic.checked);session?.setPaused('audio',!mic.checked)}};
+camera.onchange=()=>{stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);if(joined){setTileState('local','video',!camera.checked);session?.setPaused('video',!camera.checked)}};
 exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
 window.addEventListener('pagehide',leaveMeeting);
 

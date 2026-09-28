@@ -6,7 +6,7 @@
 function createMeetSignaling(io, db, sfuInstance) {
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
-    produce, consume, resumeConsumer, listProducers, closeProducer, closePeerTransports,
+    produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, closePeerTransports,
     startRecording, stopRecording, getRecordingStatus,
   } = require('./sfu');
   const { nowStr } = require('./db');
@@ -224,6 +224,15 @@ function createMeetSignaling(io, db, sfuInstance) {
         producerId, peerId: mapping.peerId, kind, fullName: u.full_name, source,
       });
       return { producerId };
+    });
+
+    // Camera off / microphone muted (or back on): everyone else shows initials / a muted icon.
+    handle('sfu:pause-producer', async ({ roomId, producerId, paused }) => {
+      const mapping = admitted(roomId);
+      const kind = await setProducerPaused(roomId, mapping.peerId, producerId, paused === true);
+      if (kind === 'audio') mapping.micOff = paused === true; else mapping.camOff = paused === true;
+      socket.to(`sfu:${roomId}`).emit('sfu:producer-paused', { producerId, peerId: mapping.peerId, kind, paused: paused === true });
+      return { success: true };
     });
 
     // Stop one of your own streams (a screen share) while staying in the call.

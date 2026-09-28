@@ -251,10 +251,19 @@ function listProducers(roomId, exceptPeerId) {
     if (peerId === exceptPeerId) continue;
     for (const producer of peer.producers.values()) {
       if (producer.closed) continue;
-      out.push({ producerId: producer.id, peerId, kind: producer.kind, fullName: producer.appData.sourceFullName || '', source: producer.appData.source === 'screen' ? 'screen' : 'camera' });
+      out.push({ producerId: producer.id, peerId, kind: producer.kind, fullName: producer.appData.sourceFullName || '', source: producer.appData.source === 'screen' ? 'screen' : 'camera', paused: producer.paused });
     }
   }
   return out;
+}
+
+// Camera off / microphone muted: pausing the producer stops the stream at the server (a disabled
+// track would still send black frames or silence). Returns the producer's kind.
+async function setProducerPaused(roomId, peerId, producerId, paused) {
+  const producer = getRoom(roomId)?.peers.get(peerId)?.producers.get(producerId);
+  if (!producer) throw new Error('Producer not found');
+  if (paused) await producer.pause(); else await producer.resume();
+  return producer.kind;
 }
 
 // Stops one of a peer's streams (a screen share) without leaving; its consumers close via
@@ -533,6 +542,7 @@ module.exports = {
   getRoomPeers,
   listProducers,
   closeProducer,
+  setProducerPaused,
   closePeerTransports,
   rooms,
 };

@@ -118,6 +118,8 @@
         v.addEventListener('resize', () => t.classList.toggle('nc-has-video', v.videoWidth > 0));
         const overlay = document.createElement('div'); overlay.className = 'nc-video-overlay';
         const label = document.createElement('p'); label.className = 'nc-video-name'; label.textContent = name;
+        const mic = document.createElement('i'); mic.className = 'bi bi-mic-mute-fill nc-tile-mic'; mic.setAttribute('role', 'img'); mic.setAttribute('aria-label', 'Muted');
+        label.prepend(mic);
         overlay.append(label); t.append(v, avatar, overlay); grid.append(t);
       }
       const v = t.querySelector('video');
@@ -125,6 +127,11 @@
       // Autoplay with sound can be blocked until the user interacts; offer a play button then.
       v.play().catch(() => { if (current) $('callPlayback').hidden = false; });
       arrangeTiles();
+    }
+    // Camera off → initials; microphone muted → muted icon on their tile.
+    function setTileState(id, kind, paused) {
+      const t = allTiles().find(el => el.dataset.peerId === id);
+      if (t) t.classList.toggle(kind === 'audio' ? 'nc-mic-off' : 'nc-camera-off', paused);
     }
     function removeTile(id) { allTiles().find(el => el.dataset.peerId === id)?.remove(); arrangeTiles(); }
 
@@ -174,6 +181,7 @@
         c.session = createSfuSession({
           request, roomId: r.roomId, routerRtpCapabilities: r.routerRtpCapabilities,
           onPeerStream: (peerId, name, media) => { if (current === c) tile(peerId, name, media); },
+          onPeerState: (peerId, kind, paused) => { if (current === c) setTileState(peerId, kind, paused); },
           onPeerScreen: (peerId, name, media) => {
             if (current !== c) return;
             c.screens.delete(peerId);
@@ -213,6 +221,7 @@
     });
     socket.on('sfu:new-producer', p => { if (current?.joined) current.session?.newProducer(p); });
     socket.on('sfu:producer-closed', p => { if (current?.joined) current.session?.producerClosed(p); });
+    socket.on('sfu:producer-paused', p => { if (current?.joined) current.session?.producerPaused(p); });
     socket.on('sfu:peer-left', ({ peerId }) => { if (!current?.joined) return; current.session?.removePeer(peerId); removeTile(peerId); });
     socket.on('disconnect', () => {
       if (current) cleanup(current, 'Connection lost. Call ended.');
@@ -223,20 +232,20 @@
     $('callAccept').addEventListener('click', () => { if (ringing()) join(current); });
     $('callDecline').addEventListener('click', () => { if (ringing()) stop(current); });
     $('callHangup').addEventListener('click', () => { if (current) stop(current); });
-    $('callMute').addEventListener('click', () => {
-      const tracks = current?.stream?.getAudioTracks() || [];
+    // Mute / camera off also pause the stream at the server, so everyone else is told.
+    function toggleOwn(kind) {
+      const c = current;
+      const tracks = (kind === 'audio' ? c?.stream?.getAudioTracks() : c?.stream?.getVideoTracks()) || [];
       if (!tracks.length) return;
       const enabled = !tracks[0].enabled;
       tracks.forEach(t => { t.enabled = enabled; });
-      setCallToggle($('callMute'), !enabled, enabled ? 'Mute' : 'Unmute');
-    });
-    $('callCamera').addEventListener('click', () => {
-      const tracks = current?.stream?.getVideoTracks() || [];
-      if (!tracks.length) return;
-      const enabled = !tracks[0].enabled;
-      tracks.forEach(t => { t.enabled = enabled; });
-      setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
-    });
+      if (kind === 'audio') setCallToggle($('callMute'), !enabled, enabled ? 'Mute' : 'Unmute');
+      else setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
+      setTileState('local', kind, !enabled);
+      c.session?.setPaused(kind, !enabled);
+    }
+    $('callMute').addEventListener('click', () => toggleOwn('audio'));
+    $('callCamera').addEventListener('click', () => toggleOwn('video'));
     $('callScreenShare').addEventListener('click', () => { if (current?.joined) shareScreen(current); });
     $('callStopSharing').addEventListener('click', () => { if (current?.display) stopScreen(current); });
     $('callPlayback').addEventListener('click', () => {

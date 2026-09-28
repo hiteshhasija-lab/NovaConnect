@@ -6,9 +6,11 @@
   // listeners and forwards sfu:new-producer / sfu:producer-closed / sfu:peer-left here.
   //   onPeerStream(peerId, name, stream)        — their camera + microphone
   //   onPeerScreen(peerId, name, stream | null) — the screen they share (null when they stop)
-  window.createSfuSession = function ({ request, roomId, routerRtpCapabilities, onPeerStream, onPeerScreen, onError }) {
+  //   onPeerState(peerId, kind, paused)          — their camera turned off/on, microphone muted/unmuted
+  window.createSfuSession = function ({ request, roomId, routerRtpCapabilities, onPeerStream, onPeerScreen, onPeerState, onError }) {
     let device = null, sendTransport = null, recvTransport = null, recvReady = false, closed = false;
     let screenProducer = null;
+    const ownProducers = {};      // kind -> our camera/microphone producer
     const peers = new Map();      // peerId -> { name, consumers: Map(consumerId -> { consumer, source }) }
     const consumed = new Set();
     let pending = [];             // producers announced before the receive transport existed
@@ -42,7 +44,10 @@
         if (!p) { p = { name: fullName || 'Participant', consumers: new Map() }; peers.set(peerId, p); }
         p.consumers.set(consumer.id, { consumer, source: source === 'screen' ? 'screen' : 'camera' });
         if (source === 'screen') onPeerScreen?.(peerId, p.name, new MediaStream([consumer.track]));
-        else onPeerStream(peerId, p.name, cameraStream(p));
+        else {
+          onPeerStream(peerId, p.name, cameraStream(p));
+          if (r.producerPaused) onPeerState?.(peerId, r.kind, true); // camera already off / already muted
+        }
         // Consumers start paused on the server; resuming also asks the sender for a keyframe.
         await request('sfu:resume-consumer', { roomId, consumerId: consumer.id });
       } catch (e) {
@@ -70,7 +75,18 @@
       async publish(stream) {
         if (closed || !stream) return;
         const transport = await ensureSendTransport();
-        for (const track of stream.getTracks()) await transport.produce({ track, appData: { source: 'camera' } });
+        for (const track of stream.getTracks()) {
+          ownProducers[track.kind] = await transport.produce({ track, appData: { source: 'camera' } });
+          if (!track.enabled) await this.setPaused(track.kind, true); // joined with it off
+        }
+      },
+      // Camera off / microphone muted: pause our stream at the server so others are told (a
+      // disabled track alone still sends black frames or silence and looks like a live camera).
+      async setPaused(kind, paused) {
+        const producer = ownProducers[kind];
+        if (!producer || closed) return;
+        if (paused) producer.pause(); else producer.resume();
+        await request('sfu:pause-producer', { roomId, producerId: producer.id, paused }).catch(e => onError?.(e));
       },
       // Screen sharing: an extra stream alongside the camera, so the camera keeps going.
       // Screens carry text, so keep full resolution and give up frame rate instead when bandwidth
@@ -101,6 +117,9 @@
       newProducer(p) {
         if (closed) return;
         if (!recvReady) pending.push(p); else consume(p);
+      },
+      producerPaused({ peerId, kind, paused }) {
+        if (!closed) onPeerState?.(peerId, kind, paused);
       },
       // Someone stopped one stream (a screen share) but stayed in the call.
       producerClosed({ producerId, peerId }) {

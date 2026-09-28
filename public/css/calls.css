@@ -344,3 +344,9 @@
 .nc-call-max .nc-share-stage, .nc-call:fullscreen .nc-share-stage { flex: 1; min-height: 0; }
 .nc-call-max .nc-share-stage video, .nc-call:fullscreen .nc-share-stage video { height: 100%; aspect-ratio: auto; }
 .nc-call.nc-call-max.nc-call-presenting .nc-call-grid, .nc-call.nc-call-presenting:fullscreen .nc-call-grid { width: clamp(160px, 15vw, 240px); }
+
+/* Camera off (producer paused, sfu-client onPeerState) → initials; muted → icon before the name. */
+.nc-video-tile.nc-camera-off .nc-avatar { display: grid; }
+.nc-video-tile.nc-camera-off video { opacity: 0; }
+.nc-tile-mic { display: none; margin-right: 4px; color: #ff8a8e; }
+.nc-video-tile.nc-mic-off .nc-tile-mic { display: inline; }
