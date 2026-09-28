@@ -155,6 +155,7 @@
         setHand(false);
       },
       refresh,
+      notice,
     };
   };
 })();

@@ -394,3 +394,14 @@
 .nc-device-picker select { width: 100%; padding: 7px 8px; border-radius: 8px; border: 1px solid #535a78; background: #0c1020; color: #f5f6ff; }
 .nc-device-picker label[hidden] { display: none; }
 .nc-settings-note { margin: 4px 0 0; font-size: .75rem; color: #b7baf7; }
+
+/* Recording: toolbar button (red dot; pulsing while recording) and the banner everyone sees. */
+.nc-rec-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ff5a5f; }
+.nc-record-btn.nc-active { background: rgba(255, 90, 95, .2); border-color: #ff5a5f; }
+.nc-record-btn.nc-active .nc-rec-dot { border-radius: 2px; animation: pulse 1s infinite; }
+.nc-call-rec {
+  position: absolute; top: 60px; left: 12px; z-index: 5; display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; background: rgba(8, 11, 24, .8); color: #fff; font-size: .8rem; font-weight: 600;
+}
+.nc-call-rec .nc-rec-dot { width: 9px; height: 9px; animation: pulse 1.2s infinite; }
+@media (prefers-reduced-motion: reduce) { .nc-rec-dot { animation: none !important; } }

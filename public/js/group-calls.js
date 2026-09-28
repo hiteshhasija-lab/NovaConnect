@@ -45,6 +45,7 @@
       setCallToggle($('callCamera'), false, 'Turn camera off');
       $('callScreenShare').hidden = !(c.joined && navigator.mediaDevices?.getDisplayMedia) || !!c.display;
       $('callStopSharing').hidden = !c.display; $('callPlayback').hidden = true;
+      $('callRecord').hidden = !c.joined;
       (ringing ? $('callAccept') : $('callHangup')).focus();
     }
     function kindLabel(c) {
@@ -155,6 +156,7 @@
       allTiles().forEach(t => t.remove());
       panel.classList.remove('nc-call-video', 'nc-call-presenting');
       extras.stop();
+      clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
       $('callShareStage').hidden = true; $('callShareVideo').srcObject = null;
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
@@ -205,6 +207,7 @@
         await c.session.publish(stream);
         if (current !== c) return;
         extras.start({ roomId: c.roomId, peerId: c.peerId, userId: window.__NC__?.currentUser?.id ?? null });
+        request('meet:recording-status', { roomId: c.roomId }).then(({ recording }) => { if (recording && current === c) setRecording(c, recording.recordingId, recording.startTime); }).catch(() => {});
         if (c.pendingDisplay) { const d = c.pendingDisplay; c.pendingDisplay = null; shareScreen(c, d); }
         let started = Date.now();
         const tick = () => {
@@ -231,6 +234,46 @@
         chatForm: $('callChatForm'), chatInput: $('callChatInput'), notices: $('callNotices'),
       },
       extraPanels: [[$('callSettings'), $('callSettingsPanel')]],
+    });
+
+    // Recording (anyone in the call, as in Teams). Everyone sees the banner; when it stops, the video
+    // is composed on the server and posted into this chat/channel as a file (meet:recording-ready).
+    let recTimer = null;
+    function setRecording(c, recordingId, startTime) {
+      c.recordingId = recordingId;
+      const on = !!recordingId;
+      $('callRecord').classList.toggle('nc-active', on);
+      $('callRecord').setAttribute('aria-pressed', String(on));
+      $('callRecord').title = on ? 'Stop recording' : 'Start recording'; $('callRecord').setAttribute('aria-label', $('callRecord').title);
+      $('callRecBanner').hidden = !on;
+      clearInterval(recTimer);
+      if (on) {
+        const tick = () => { const s = Math.max(0, Math.floor((Date.now() - startTime) / 1000)); $('callRecTimer').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+        tick(); recTimer = setInterval(tick, 1000);
+      }
+    }
+    $('callRecord').addEventListener('click', async () => {
+      const c = current; if (!c?.joined) return;
+      $('callRecord').disabled = true;
+      try {
+        if (c.recordingId) await request('meet:stop-recording', { roomId: c.roomId, recordingId: c.recordingId });
+        else { const r = await request('meet:start-recording', { roomId: c.roomId }); if (current === c && !c.recordingId) setRecording(c, r.recordingId, Date.now()); }
+      } catch (e) { notify(e); }
+      $('callRecord').disabled = false;
+    });
+    socket.on('meet:recording-started', ({ roomId, recordingId, startedBy, startTime }) => {
+      const c = current; if (!c?.joined || roomId !== c.roomId) return;
+      setRecording(c, recordingId, startTime || Date.now());
+      extras.notice(startedBy + ' started recording');
+    });
+    socket.on('meet:recording-stopped', ({ roomId, stoppedBy }) => {
+      const c = current; if (!c?.joined || roomId !== c.roomId) return;
+      setRecording(c, null);
+      extras.notice(stoppedBy + ' stopped recording — it will be posted in the chat');
+    });
+    socket.on('meet:recording-ready', ({ roomId, failed }) => {
+      const c = current; if (!c?.joined || roomId !== c.roomId) return;
+      extras.notice(failed ? 'The recording failed: nothing was captured' : 'The recording is ready in the chat');
     });
 
     // Devices panel (devices.js): switching microphone/camera mid-call replaces the track being sent

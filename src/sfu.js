@@ -127,6 +127,7 @@ function deleteRoom(roomId) {
       transport.close();
     }
   }
+  stopRecordingsInRoom(roomId);
   room.audioObserver?.close();
   rooms.delete(roomId);
   logger.info({ roomId }, 'SFU room deleted');
@@ -212,6 +213,7 @@ async function produce(room, peerId, transportId, kind, rtpParameters, appData =
 
   peer.producers.set(producer.id, producer);
   if (kind === 'audio' && appData.source !== 'screen') roomObj.audioObserver?.addProducer({ producerId: producer.id }).catch(() => {});
+  recordNewProducer(room, producer);
 
   logger.info({ room, peerId, producerId: producer.id, kind }, 'Producer created');
   return producer.id;
@@ -334,11 +336,14 @@ async function resumeConsumer(roomId, peerId, consumerId) {
 }
 
 // ---------------- Recording ----------------
-// mediasoup's PlainTransport sends RTP to an external destination it's told about via
-// connect({ip, port}) — it has no in-process 'rtp' event. The standard pattern (mirroring
-// mediasoup's own official recording demo) is: one PlainTransport+Consumer per producer,
-// each pointed at its own loopback UDP port, and a single ffmpeg process fed an SDP file
-// describing every stream so it can receive them all and composite them into one output.
+// Each stream (a person's camera, microphone or shared screen) is recorded separately while the
+// call runs: mediasoup sends its RTP to a loopback port (PlainTransport + Consumer), and one ffmpeg
+// per stream copies it to a Matroska file as-is (no encoding, so it starts almost at once and is
+// cheap). Streams that appear later (late joiners, a new screen share) get their own recorder;
+// streams that stop just end. When the recording stops, one MP4 is composed from those files on a
+// timeline: videos in a grid, each shown only while it was live (blank while a camera was off or
+// after someone left), and all sound mixed with silence filling any gaps. Nothing waits on a live
+// stream, so a stream stopping can't stall the recording, and nothing is lost to start-up probing.
 const { spawn } = require('child_process');
 const fs = require('fs');
 const fsp = require('fs/promises');
@@ -346,7 +351,11 @@ const os = require('os');
 const path = require('path');
 const { uploadFile } = require('./storage');
 
-const recordings = new Map(); // recordingId -> recorder state
+const recordings = new Map(); // recordingId -> recorder
+
+// Told when a recording has been composed (or failed): meet-signaling saves it and tells people.
+let recordingFinishedHandler = null;
+function setRecordingFinishedHandler(fn) { recordingFinishedHandler = fn; }
 
 const RECORDING_PORT_START = 50000;
 const RECORDING_PORT_END = 50998;
@@ -357,182 +366,202 @@ function allocateRecordingPort() {
   if (nextRecordingPort > RECORDING_PORT_END) nextRecordingPort = RECORDING_PORT_START;
   return port;
 }
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const recordingDir = id => path.join(cfg.LOCAL_UPLOAD_ROOT || path.join(__dirname, '..', 'data', 'uploads'), '.recording-' + id);
 
-async function startRecording(roomId) {
-  const room = getRoom(roomId);
-  if (!room) throw new Error('Room not found');
+// Starts recording one producer into its own file.
+async function recordStream(recorder, producer) {
+  if (recorder.stopping || recorder.streams.some(s => s.producerId === producer.id)) return;
+  const room = getRoom(recorder.roomId);
+  if (!room || producer.closed) return;
+  const index = recorder.nextIndex++;
+  const port = allocateRecordingPort();
+  const transport = await room.router.createPlainTransport({ listenIp: { ip: '127.0.0.1' }, rtcpMux: true, comedia: false });
+  await transport.connect({ ip: '127.0.0.1', port });
+  const consumer = await transport.consume({ producerId: producer.id, rtpCapabilities: room.router.rtpCapabilities, paused: true });
+  const codec = consumer.rtpParameters.codecs[0];
+  const codecName = codec.mimeType.split('/')[1].toUpperCase();
+  const sdp = ['v=0', 'o=- 0 0 IN IP4 127.0.0.1', 's=NovaConnect Recording', 'c=IN IP4 127.0.0.1', 't=0 0',
+    `m=${consumer.kind} ${port} RTP/AVP ${codec.payloadType}`,
+    consumer.kind === 'audio' ? `a=rtpmap:${codec.payloadType} ${codecName}/${codec.clockRate}/${codec.channels || 2}` : `a=rtpmap:${codec.payloadType} ${codecName}/${codec.clockRate}`,
+    'a=recvonly'].join('\n') + '\n';
+  const sdpPath = path.join(os.tmpdir(), `${recorder.recordingId}-${index}.sdp`);
+  await fsp.writeFile(sdpPath, sdp);
+  const file = path.join(recorder.dir, `${index}-${consumer.kind}.mkv`);
+  const ffmpeg = spawn('ffmpeg', ['-y', '-loglevel', 'warning', '-protocol_whitelist', 'file,udp,rtp',
+    '-analyzeduration', '2000000', '-probesize', '2000000', '-fflags', '+genpts',
+    '-i', sdpPath, '-map', '0', '-c', 'copy', '-f', 'matroska', file], { stdio: ['ignore', 'ignore', 'pipe'] });
+  ffmpeg.stderr.on('data', d => logger.debug({ recordingId: recorder.recordingId, index, stderr: d.toString() }, 'ffmpeg (stream)'));
+  ffmpeg.on('error', err => logger.error({ recordingId: recorder.recordingId, err }, 'ffmpeg spawn error'));
 
-  const peerProducers = [];
-  for (const peer of room.peers.values()) {
-    for (const [producerId, producer] of peer.producers.entries()) {
-      peerProducers.push({ producerId, kind: producer.kind });
-    }
+  const stream = {
+    index, producerId: producer.id, kind: consumer.kind, source: producer.appData.source || 'camera',
+    transport, consumer, ffmpeg, sdpPath, file, startedAt: null, endedAt: null,
+    pauses: [], pausedSince: producer.paused ? Date.now() : null, done: false,
+  };
+  recorder.streams.push(stream);
+  // Camera off / mute pauses the producer: remember when, so the composed video can show a blank
+  // tile (not a frozen frame) for that stretch.
+  consumer.on('producerpause', () => { if (!stream.pausedSince) stream.pausedSince = Date.now(); });
+  consumer.on('producerresume', () => {
+    if (stream.pausedSince) { stream.pauses.push([stream.pausedSince, Date.now()]); stream.pausedSince = null; }
+    if (stream.kind === 'video') consumer.requestKeyFrame().catch(() => {});
+  });
+  consumer.on('producerclose', () => finishStream(stream).catch(() => {}));
+
+  // Give ffmpeg a moment to bind its socket, then start the RTP and ask for a keyframe (ffmpeg
+  // can't size the video without one; asked twice in case the first is lost).
+  await wait(400);
+  if (stream.done) return;
+  await consumer.resume();
+  stream.startedAt = Date.now();
+  if (stream.kind === 'video') {
+    consumer.requestKeyFrame().catch(() => {});
+    setTimeout(() => { if (!stream.done) consumer.requestKeyFrame().catch(() => {}); }, 1500);
   }
-  if (peerProducers.length === 0) throw new Error('No active producers to record');
-
-  const recordingId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const streams = [];
-
-  for (const { producerId, kind } of peerProducers) {
-    const port = allocateRecordingPort();
-    const transport = await room.router.createPlainTransport({
-      listenIp: { ip: '127.0.0.1' },
-      rtcpMux: true,
-      comedia: false,
-    });
-    await transport.connect({ ip: '127.0.0.1', port });
-    // paused: true — mediasoup's own recommendation, so we don't start sending RTP
-    // (and risk losing the first keyframe) before ffmpeg is actually listening.
-    const consumer = await transport.consume({
-      producerId,
-      rtpCapabilities: room.router.rtpCapabilities,
-      paused: true,
-    });
-    const codec = consumer.rtpParameters.codecs[0];
-    streams.push({
-      kind, port, transport, consumer,
-      payloadType: codec.payloadType,
-      codecName: codec.mimeType.split('/')[1].toUpperCase(),
-      clockRate: codec.clockRate,
-      channels: codec.channels,
-    });
-  }
-
-  const sdpLines = ['v=0', 'o=- 0 0 IN IP4 127.0.0.1', 's=NovaConnect Recording', 'c=IN IP4 127.0.0.1', 't=0 0'];
-  for (const s of streams) {
-    sdpLines.push(`m=${s.kind} ${s.port} RTP/AVP ${s.payloadType}`);
-    sdpLines.push(s.kind === 'audio'
-      ? `a=rtpmap:${s.payloadType} ${s.codecName}/${s.clockRate}/${s.channels || 2}`
-      : `a=rtpmap:${s.payloadType} ${s.codecName}/${s.clockRate}`);
-    sdpLines.push('a=recvonly');
-  }
-  const sdpPath = path.join(os.tmpdir(), `${recordingId}.sdp`);
-  await fsp.writeFile(sdpPath, sdpLines.join('\n') + '\n');
-
-  const tempDir = cfg.LOCAL_UPLOAD_ROOT || path.join(__dirname, '..', 'data', 'uploads');
-  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-  const webmPath = path.join(tempDir, `${recordingId}.webm`);
-
-  const videoStreams = streams.filter((s) => s.kind === 'video');
-  const audioStreams = streams.filter((s) => s.kind === 'audio');
-  const ffmpegArgs = ['-y', '-protocol_whitelist', 'file,udp,rtp', '-i', sdpPath];
-  const filterParts = [];
-  let videoMap = null;
-  let audioMap = null;
-
-  if (videoStreams.length === 1) {
-    // All streams arrive through ONE input (the SDP file), so they're addressed as
-    // 0:<stream index in SDP order> — "N:v" would mean a nonexistent input file N.
-    videoMap = `0:${streams.indexOf(videoStreams[0])}`;
-  } else if (videoStreams.length > 1) {
-    // Simple fixed grid — real gallery/large-view composition is out of MVP scope (see roadmap v2).
-    const cols = Math.ceil(Math.sqrt(videoStreams.length));
-    const rows = Math.ceil(videoStreams.length / cols);
-    const tileW = Math.floor(1280 / cols);
-    const tileH = Math.floor(720 / rows);
-    videoStreams.forEach((s, i) => {
-      filterParts.push(`[0:${streams.indexOf(s)}]scale=${tileW}:${tileH}[v${i}]`);
-    });
-    const layout = videoStreams.map((_, i) => `${(i % cols) * tileW}_${Math.floor(i / cols) * tileH}`).join('|');
-    filterParts.push(`${videoStreams.map((_, i) => `[v${i}]`).join('')}xstack=inputs=${videoStreams.length}:layout=${layout}[vout]`);
-    videoMap = 'vout';
-  }
-  if (audioStreams.length === 1) {
-    audioMap = `0:${streams.indexOf(audioStreams[0])}`;
-  } else if (audioStreams.length > 1) {
-    filterParts.push(`${audioStreams.map((s) => `[0:${streams.indexOf(s)}]`).join('')}amix=inputs=${audioStreams.length}:normalize=0[aout]`);
-    audioMap = 'aout';
-  }
-
-  if (filterParts.length) ffmpegArgs.push('-filter_complex', filterParts.join(';'));
-  if (videoMap) ffmpegArgs.push('-map', filterParts.some((f) => f.includes('[vout]')) ? '[vout]' : videoMap);
-  if (audioMap) ffmpegArgs.push('-map', filterParts.some((f) => f.includes('[aout]')) ? '[aout]' : audioMap);
-  ffmpegArgs.push('-c:v', 'libvpx-vp9', '-b:v', '2M', '-c:a', 'libopus', '-b:a', '128k', '-f', 'webm', webmPath);
-
-  const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
-  ffmpeg.stderr.on('data', (d) => logger.debug({ recordingId, stderr: d.toString() }, 'ffmpeg stderr'));
-  ffmpeg.on('error', (err) => logger.error({ recordingId, err }, 'ffmpeg spawn error'));
-
-  const recorder = { roomId, recordingId, streams, ffmpeg, sdpPath, webmPath, startTime: Date.now() };
-  recordings.set(recordingId, recorder);
-
-  // Give ffmpeg time to bind its input sockets before RTP starts arriving.
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  await Promise.all(streams.map((s) => s.consumer.resume()));
-  // A resumed video consumer only gets whatever frame the producer happens to be sending —
-  // ffmpeg's SDP demuxer can't determine VP8/VP9/H264 frame size without decoding an actual
-  // keyframe, and the producer's own keyframe interval may be tens of seconds away, so without
-  // this the recording can sit at "Could not find codec parameters... unspecified size"
-  // indefinitely. requestKeyFrame() forces one immediately.
-  await Promise.all(streams.filter((s) => s.kind === 'video').map((s) => s.consumer.requestKeyFrame()));
-
-  logger.info({ recordingId, roomId, streamCount: streams.length }, 'Recording started');
-  return { recordingId };
 }
 
-async function stopRecording(recordingId) {
-  const recorder = recordings.get(recordingId);
-  if (!recorder) throw new Error('Recording not found');
-  recordings.delete(recordingId);
-
-  for (const s of recorder.streams) {
-    s.consumer.close();
-    s.transport.close();
+async function finishStream(stream) {
+  if (stream.done) return;
+  stream.done = true;
+  stream.endedAt = Date.now();
+  if (stream.pausedSince) { stream.pauses.push([stream.pausedSince, stream.endedAt]); stream.pausedSince = null; }
+  try { stream.consumer.close(); } catch { /* already closed */ }
+  try { stream.transport.close(); } catch { /* already closed */ }
+  if (stream.ffmpeg && stream.ffmpeg.exitCode === null) {
+    stream.ffmpeg.kill('SIGINT'); // ffmpeg's documented way to finalize the file
+    await new Promise(resolve => { stream.ffmpeg.once('close', resolve); setTimeout(resolve, 6000); });
   }
+  await fsp.unlink(stream.sdpPath).catch(() => {});
+}
 
-  if (recorder.ffmpeg && !recorder.ffmpeg.killed) {
-    recorder.ffmpeg.kill('SIGINT'); // ffmpeg's documented way to finalize/flush the container
-    await new Promise((resolve) => {
-      recorder.ffmpeg.once('close', resolve);
-      setTimeout(resolve, 8000);
+// meta: { startedBy, startedByName, meetingCode, scope } — handed back to the finished handler.
+async function startRecording(roomId, meta = {}) {
+  const room = getRoom(roomId);
+  if (!room) throw new Error('Room not found');
+  if ([...recordings.values()].some(r => r.roomId === roomId && !r.stopping)) throw new Error('This call is already being recorded.');
+  const producers = [];
+  for (const peer of room.peers.values()) for (const producer of peer.producers.values()) if (!producer.closed) producers.push(producer);
+  if (producers.length === 0) throw new Error('Nothing to record yet: nobody has a camera, microphone or screen on.');
+
+  const recordingId = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const recorder = { recordingId, roomId, meta, dir: recordingDir(recordingId), streams: [], nextIndex: 0, startTime: Date.now(), stopping: false };
+  await fsp.mkdir(recorder.dir, { recursive: true });
+  recordings.set(recordingId, recorder);
+  await Promise.all(producers.map(p => recordStream(recorder, p).catch(err => logger.error({ recordingId, err }, 'Could not record a stream'))));
+  logger.info({ recordingId, roomId, streamCount: recorder.streams.length }, 'Recording started');
+  return { recordingId, startTime: recorder.startTime };
+}
+
+// A producer created while a room is being recorded (someone joined, or started sharing).
+function recordNewProducer(roomId, producer) {
+  for (const recorder of recordings.values()) {
+    if (recorder.roomId === roomId && !recorder.stopping) recordStream(recorder, producer).catch(err => logger.error({ recordingId: recorder.recordingId, err }, 'Could not record a stream'));
+  }
+}
+
+// Builds the ffmpeg filter graph that lays the stream files out on the recording's timeline.
+function composeArgs(recorder, stopTime, output) {
+  const total = Math.max(1, (stopTime - recorder.startTime) / 1000);
+  const usable = recorder.streams.filter(s => s.startedAt && fs.existsSync(s.file) && fs.statSync(s.file).size > 0);
+  const videos = usable.filter(s => s.kind === 'video');
+  const audios = usable.filter(s => s.kind === 'audio');
+  const args = ['-y', '-loglevel', 'error'];
+  usable.forEach(s => args.push('-i', s.file));
+  const inputOf = s => usable.indexOf(s);
+  const at = ms => ((ms - recorder.startTime) / 1000).toFixed(3);
+  const parts = [`color=c=0x1b1f3a:s=1280x720:r=15:d=${total.toFixed(3)}[base0]`];
+  let last = 'base0';
+  if (videos.length) {
+    const cols = Math.ceil(Math.sqrt(videos.length)), rows = Math.ceil(videos.length / cols);
+    const tileW = Math.floor(1280 / cols / 2) * 2, tileH = Math.floor(720 / rows / 2) * 2;
+    videos.forEach((s, i) => {
+      const x = (i % cols) * tileW + Math.floor((1280 - cols * tileW) / 2);
+      const y = Math.floor(i / cols) * tileH + Math.floor((720 - rows * tileH) / 2);
+      parts.push(`[${inputOf(s)}:v]setpts=PTS-STARTPTS+${at(s.startedAt)}/TB,scale=${tileW}:${tileH}:force_original_aspect_ratio=decrease,pad=${tileW}:${tileH}:(ow-iw)/2:(oh-ih)/2:color=black,fps=15[v${i}]`);
+      // Shown only while live: from its start to its end, minus any time the camera was off.
+      const hidden = s.pauses.map(([a, b]) => `between(t,${at(a)},${at(b)})`);
+      const enable = `between(t,${at(s.startedAt)},${at(s.endedAt || stopTime)})` + (hidden.length ? `*not(${hidden.join('+')})` : '');
+      parts.push(`[${last}][v${i}]overlay=${x}:${y}:eof_action=pass:enable='${enable}'[base${i + 1}]`);
+      last = `base${i + 1}`;
     });
   }
-  await fsp.unlink(recorder.sdpPath).catch(() => {});
-
-  const duration = Date.now() - recorder.startTime;
-
-  // Second ffmpeg pass: transcode WebM (VP8/VP9+Opus, what mediasoup actually negotiates)
-  // to MP4 for broad playback compatibility, without touching the SFU's codec preferences.
-  let finalPath = recorder.webmPath;
-  let finalName = `${recordingId}.webm`;
-  let finalMime = 'video/webm';
-  if (fs.existsSync(recorder.webmPath)) {
-    const mp4Path = recorder.webmPath.replace(/\.webm$/, '.mp4');
-    try {
-      await new Promise((resolve, reject) => {
-        const transcode = spawn('ffmpeg', ['-y', '-i', recorder.webmPath, '-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', mp4Path]);
-        transcode.on('error', reject);
-        transcode.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg mp4 transcode exited ${code}`))));
-      });
-      finalPath = mp4Path;
-      finalName = `${recordingId}.mp4`;
-      finalMime = 'video/mp4';
-      await fsp.unlink(recorder.webmPath).catch(() => {});
-    } catch (err) {
-      logger.error({ recordingId, err }, 'MP4 transcode failed, keeping WebM');
-    }
+  const maps = ['-map', `[${last}]`];
+  if (audios.length) {
+    audios.forEach((s, i) => {
+      const delay = Math.max(0, Math.round(s.startedAt - recorder.startTime));
+      // async: fill gaps (muted stretches) with silence so later sound stays in sync.
+      parts.push(`[${inputOf(s)}:a]aresample=48000:async=1000:first_pts=0,adelay=${delay}:all=1[a${i}]`);
+    });
+    parts.push(`${audios.map((_, i) => `[a${i}]`).join('')}amix=inputs=${audios.length}:normalize=0:duration=longest,apad[aout]`);
+    maps.push('-map', '[aout]');
   }
+  args.push('-filter_complex', parts.join(';'), ...maps,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
+  if (audios.length) args.push('-c:a', 'aac', '-b:a', '128k');
+  args.push('-t', total.toFixed(3), '-movflags', '+faststart', output);
+  return { args, streamCount: usable.length };
+}
 
-  // No file (or an empty one) means ffmpeg captured nothing — report that instead of handing
-  // out a download link to a file that doesn't exist.
-  if (!fs.existsSync(finalPath) || fs.statSync(finalPath).size === 0) {
-    logger.error({ recordingId, duration }, 'Recording produced no file');
-    return { recordingId, duration, failed: true };
-  }
+// Stops recording now; the MP4 is composed in the background and reported to the finished
+// handler (compose time grows with the recording's length). Returns right away.
+async function stopRecording(recordingId, reason = 'stopped') {
+  const recorder = recordings.get(recordingId);
+  if (!recorder) throw new Error('Recording not found');
+  if (recorder.stopping) return { recordingId, duration: recorder.stopTime - recorder.startTime };
+  recorder.stopping = true;
+  recorder.stopTime = Date.now();
+  const duration = recorder.stopTime - recorder.startTime;
+  logger.info({ recordingId, duration, reason }, 'Recording stopped; composing');
+  finalizeRecording(recorder).catch(err => logger.error({ recordingId, err }, 'Recording finalize failed'));
+  return { recordingId, duration };
+}
 
-  // If the upload itself fails, the file is still where ffmpeg wrote it (the local upload
-  // root), which the /uploads route serves.
-  let storageResult = { driver: 'local', url: `/uploads/${finalName}`, key: finalName };
+async function finalizeRecording(recorder) {
+  const { recordingId } = recorder;
+  const duration = recorder.stopTime - recorder.startTime;
+  let result = { recordingId, duration, failed: true };
   try {
-    const stats = fs.statSync(finalPath);
-    const stored = await uploadFile({ path: finalPath, originalname: finalName, mimetype: finalMime, size: stats.size });
-    storageResult = { driver: stored.driver, url: stored.url, key: stored.key };
+    await Promise.all(recorder.streams.map(finishStream));
+    const output = path.join(recorder.dir, `${recordingId}.mp4`);
+    const { args, streamCount } = composeArgs(recorder, recorder.stopTime, output);
+    if (!streamCount) throw new Error('No stream produced any media');
+    await new Promise((resolve, reject) => {
+      const ff = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      let err = '';
+      ff.stderr.on('data', d => { err += d.toString(); });
+      ff.on('error', reject);
+      ff.on('close', code => (code === 0 ? resolve() : reject(new Error(`compose exited ${code}: ${err.slice(-400)}`))));
+    });
+    const stats = fs.statSync(output);
+    if (!stats.size) throw new Error('Composed file is empty');
+    let stored;
+    try {
+      // Recordings aren't user uploads: no chat-upload size cap (long meetings run to hundreds of MB).
+      const up = await uploadFile({ path: output, originalname: `${recordingId}.mp4`, mimetype: 'video/mp4', size: stats.size }, { skipSizeLimit: true });
+      stored = { driver: up.driver, url: up.url, key: up.key };
+    } catch (err) {
+      // Keep the file rather than lose it with the working folder: move it into the local uploads.
+      logger.error({ recordingId, err }, 'Failed to upload recording; keeping it in local uploads');
+      const root = cfg.LOCAL_UPLOAD_ROOT || path.join(__dirname, '..', 'data', 'uploads');
+      await fsp.mkdir(root, { recursive: true });
+      await fsp.copyFile(output, path.join(root, `${recordingId}.mp4`));
+      stored = { driver: 'local', url: `/uploads/${recordingId}.mp4`, key: `${recordingId}.mp4` };
+    }
+    result = { recordingId, duration, failed: false, size: stats.size, ...stored };
+    logger.info({ recordingId, duration, streamCount, bytes: stats.size }, 'Recording composed');
   } catch (err) {
-    logger.error({ recordingId, err }, 'Failed to upload recording');
+    logger.error({ recordingId, err: err.message }, 'Recording produced no file');
+  } finally {
+    recordings.delete(recordingId);
+    await fsp.rm(recorder.dir, { recursive: true, force: true }).catch(() => {});
   }
+  try { await recordingFinishedHandler?.(result, recorder); } catch (err) { logger.error({ recordingId, err }, 'Recording finished handler failed'); }
+}
 
-  logger.info({ recordingId, duration }, 'Recording stopped');
-  return { recordingId, duration, failed: false, ...storageResult };
+// The room ended (last person left): finish any recording in it.
+function stopRecordingsInRoom(roomId) {
+  for (const recorder of recordings.values()) if (recorder.roomId === roomId && !recorder.stopping) stopRecording(recorder.recordingId, 'room ended').catch(() => {});
 }
 
 function getRecordingStatus(recordingId) {
@@ -544,7 +573,14 @@ function getRecordingStatus(recordingId) {
     startTime: recorder.startTime,
     duration: Date.now() - recorder.startTime,
     streamCount: recorder.streams.length,
+    stopping: recorder.stopping,
   };
+}
+
+// The recording running in a room, if any (so people who join late see the REC banner).
+function recordingInRoom(roomId) {
+  for (const recorder of recordings.values()) if (recorder.roomId === roomId && !recorder.stopping) return { recordingId: recorder.recordingId, startTime: recorder.startTime, startedByName: recorder.meta?.startedByName || '' };
+  return null;
 }
 
 module.exports = {
@@ -561,6 +597,8 @@ module.exports = {
   startRecording,
   stopRecording,
   getRecordingStatus,
+  recordingInRoom,
+  setRecordingFinishedHandler,
   getRoomPeers,
   listProducers,
   closeProducer,

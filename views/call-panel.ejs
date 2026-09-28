@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/css/calls.css?v=16">
+<link rel="stylesheet" href="/css/calls.css?v=17">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
@@ -24,6 +24,8 @@
     <div class="nc-call-self" id="callSelfTile"></div>
     <!-- Short in-call notices: "Name raised their hand", chat previews while the chat is closed. -->
     <div class="nc-call-notices" id="callNotices" aria-live="polite"></div>
+    <!-- Shown to everyone in the call while it's being recorded. -->
+    <div class="nc-call-rec" id="callRecBanner" role="status" hidden><span class="nc-rec-dot" aria-hidden="true"></span> Recording <span id="callRecTimer">0:00</span></div>
     <!-- Group calls: a screen someone shares fills this stage; the gallery becomes a side strip. -->
     <div class="nc-share-stage" id="callShareStage" hidden>
       <video id="callShareVideo" autoplay playsinline muted aria-label="Shared screen"></video>
@@ -82,6 +84,7 @@
           <svg class="icon-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="12" r="4"/></svg>
           <svg class="icon-cam-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" hidden><line x1="1" y1="1" x2="23" y2="23"/><path d="M21 21a6 6 0 0 0-12 0"/><path d="M15 12a3 3 0 1 1-6 0"/></svg>
         </button>
+        <button type="button" class="nc-btn-icon nc-record-btn" id="callRecord" hidden aria-pressed="false" aria-label="Start recording" title="Start recording"><span class="nc-rec-dot" aria-hidden="true"></span></button>
         <button type="button" class="nc-btn-icon" id="callScreenShare" aria-label="Share screen" title="Share screen (S)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="23 7 16 12 23 17 23 7"/><path d="M21 16v-6a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
         </button>

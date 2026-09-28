@@ -126,6 +126,7 @@ function cleanup(){
   stream?.getTracks().forEach(t=>t.stop());stream=null;
   videos.replaceChildren();updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
+  hideRecordingIndicator();currentRecordingId=null;
   enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;
   setShareButton();
 }
@@ -155,6 +156,7 @@ async function enterMeeting(){
     try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
     setShareButton();
     extras.start({roomId,peerId:ownPeerId,userId:ownUserId});
+    syncRecording();
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
 
@@ -219,36 +221,47 @@ camera.onchange=()=>{stream?.getVideoTracks().forEach(t=>t.enabled=camera.checke
 exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
 window.addEventListener('pagehide',leaveMeeting);
 
-// Recording events (recording controls are shown to the meeting owner only)
-socket.on('meet:recording-started',({startedBy})=>{
-  status.textContent=`Recording started by ${startedBy}`;
-  showRecordingIndicator();
+// Recording (controls are shown to the meeting owner only; everyone sees the REC banner).
+// Stopping returns at once; the video is composed on the server and announced with
+// meet:recording-ready, which carries the download link for the owner.
+function setRecording(recordingId,startTime){
+  currentRecordingId=recordingId;
+  if(recordingId)showRecordingIndicator(startTime);else hideRecordingIndicator();
+  if(recordBtn){recordBtn.classList.toggle('d-none',!!recordingId);recordBtn.disabled=false}
+  if(stopRecordBtn){stopRecordBtn.classList.toggle('d-none',!recordingId);stopRecordBtn.disabled=false}
+}
+socket.on('meet:recording-started',({roomId:r,recordingId,startedBy,startTime})=>{
+  if(r&&r!==roomId)return;
+  status.textContent=`Recording started by ${startedBy}. Everyone in the meeting can see this.`;
+  setRecording(recordingId,startTime);
 });
-
-socket.on('meet:recording-stopped',({recordingId,stoppedBy,duration,downloadUrl,failed})=>{
-  status.textContent=failed
-    ? `Recording stopped by ${stoppedBy}, but it failed: no video or audio was captured.`
-    : `Recording stopped by ${stoppedBy} (${formatDuration(duration)})`;
-  hideRecordingIndicator();
-  currentRecordingId=null;
-  if(recordBtn){recordBtn.classList.remove('d-none');recordBtn.disabled=false;}
-  if(stopRecordBtn){stopRecordBtn.classList.add('d-none');stopRecordBtn.disabled=false;}
-  if(downloadUrl)showDownloadLink(downloadUrl,recordingId);
+socket.on('meet:recording-stopped',({roomId:r,stoppedBy})=>{
+  if(r&&r!==roomId)return;
+  setRecording(null);
+  status.textContent=`Recording stopped by ${stoppedBy}. Preparing the video…`;
 });
+socket.on('meet:recording-ready',({roomId:r,failed,duration,downloadUrl})=>{
+  if(r&&r!==roomId)return;
+  if(failed){status.textContent='The recording failed: no video or audio was captured.';return}
+  status.textContent=`The recording is ready (${formatDuration(duration)}).`+(downloadUrl?'':' The meeting owner can download it.');
+  if(downloadUrl)showDownloadLink(downloadUrl,duration);
+});
+// Joining while a recording is already running: show the banner (and, for the owner, Stop).
+async function syncRecording(){
+  try{const {recording}=await request('meet:recording-status',{roomId});if(recording)setRecording(recording.recordingId,recording.startTime)}catch{}
+}
 
-function showRecordingIndicator(){
+function showRecordingIndicator(startTime=Date.now()){
   hideRecordingIndicator();
   const indicator=document.createElement('div');
   indicator.id='recordingIndicator';
   indicator.className='meet-recording-indicator';
+  indicator.setAttribute('role','status');
   indicator.innerHTML='<span class="recording-dot"></span><span>REC</span><span id="recordingTimer">00:00</span>';
   document.body.appendChild(indicator);
-  let seconds=0;
   const timerEl=document.getElementById('recordingTimer');
-  window.recordingTimerInterval=setInterval(()=>{
-    seconds++;
-    timerEl.textContent=`${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
-  },1000);
+  const tick=()=>{timerEl.textContent=formatDuration(Math.max(0,Date.now()-startTime))};
+  tick();window.recordingTimerInterval=setInterval(tick,1000);
 }
 
 function hideRecordingIndicator(){
@@ -256,12 +269,12 @@ function hideRecordingIndicator(){
   if(window.recordingTimerInterval){clearInterval(window.recordingTimerInterval);window.recordingTimerInterval=null}
 }
 
-function showDownloadLink(downloadUrl,recordingId){
+function showDownloadLink(downloadUrl,duration){
+  status.parentNode.querySelectorAll('.meet-download-link').forEach(l=>l.remove());
   const link=document.createElement('a');
   link.href=downloadUrl;
   link.className='meet-download-link btn btn-success mt-2';
-  link.target='_blank';
-  link.textContent=`Download recording (${recordingId})`;
+  link.textContent=`Download recording (${formatDuration(duration)})`;
   status.parentNode.appendChild(link);
 }
 
@@ -275,11 +288,7 @@ async function startRecording(){
   try{
     recordBtn.disabled=true;
     const result=await request('meet:start-recording',{roomId});
-    currentRecordingId=result.recordingId;
-    recordBtn.classList.add('d-none');
-    stopRecordBtn.classList.remove('d-none');
-    stopRecordBtn.disabled=false;
-    status.textContent='Recording started';
+    setRecording(result.recordingId,Date.now());
   }catch(e){status.textContent=e.message;recordBtn.disabled=false}
 }
 
@@ -287,7 +296,6 @@ async function stopRecording(){
   if(!currentRecordingId)return;
   try{
     stopRecordBtn.disabled=true;
-    // Button/indicator state resets on the meet:recording-stopped event.
     await request('meet:stop-recording',{roomId,recordingId:currentRecordingId});
   }catch(e){status.textContent=e.message;stopRecordBtn.disabled=false}
 }

@@ -73,6 +73,9 @@ async function cleanupExpiredRecordings() {
   for (const rec of expired) {
     try {
       if (rec.storage_key) await deleteFile(rec.storage_key, rec.storage_driver);
+      // A call recording was also posted in its chat/channel as a file: drop that attachment too,
+      // so the message doesn't keep a download link to a file that no longer exists.
+      if (rec.storage_key) await db.prepare('DELETE FROM attachments WHERE storage_key = ?').run(rec.storage_key);
       await db.prepare('DELETE FROM recordings WHERE id = ?').run(rec.id);
     } catch (e) {
       console.error('Failed to clean up expired recording', rec.id, e.message);

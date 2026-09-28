@@ -9,14 +9,46 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
     produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, setActiveSpeakerHandler, closePeerTransports,
-    startRecording, stopRecording, getRecordingStatus,
+    startRecording, stopRecording, getRecordingStatus, recordingInRoom, setRecordingFinishedHandler,
   } = require('./sfu');
   const { nowStr } = require('./db');
 
   // The loudest microphone in a call room (sfu.js), so everyone can highlight that tile.
   setActiveSpeakerHandler((roomId, peerId) => io.to('sfu:' + roomId).emit('sfu:active-speaker', { roomId, peerId }));
   const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
-  const { postToScope } = require('./callPosts');
+  const { postToScope, formatDuration } = require('./callPosts');
+
+  // A recording has been composed (sfu.js). Meetings: saved for the meeting owner, who alone can
+  // download it. Calls: posted into the call's chat or channel as a file — everyone who can see
+  // that chat/channel can download it there — and saved for retention.
+  setRecordingFinishedHandler(async (result, recorder) => {
+    const { roomId, meta = {} } = recorder;
+    const scope = meta.scope || null;
+    let downloadUrl = null;
+    if (!result.failed && scope) {
+      const stamp = new Date(recorder.startTime).toISOString().slice(0, 16).replace('T', ' ').replace(':', '.');
+      const post = await postToScope(io, scope, meta.startedBy, `🔴 Recording · ${formatDuration(result.duration)}`, { recording: result.recordingId },
+        { originalName: `Recording ${stamp} UTC.mp4`, mimeType: 'video/mp4', size: result.size || null, storageDriver: result.driver, storageKey: result.key });
+      const att = post.attachments?.[0];
+      if (att) downloadUrl = `/api/attachments/${att.id}/download`;
+    } else if (!result.failed) {
+      downloadUrl = `/api/recordings/${encodeURIComponent(result.recordingId)}/download`;
+    } else if (scope) {
+      await postToScope(io, scope, meta.startedBy, '🔴 The recording failed: nothing was captured.', { recording: result.recordingId, failed: true }).catch(() => {});
+    }
+    await db.prepare(
+      `INSERT INTO recordings (id, room_id, meeting_link_code, scope_type, scope_id, started_by, status, storage_driver, storage_key, download_url, duration_ms, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(result.recordingId, roomId, meta.meetingCode || null, scope?.type || null, scope?.id || null, meta.startedBy || null,
+      result.failed ? 'failed' : 'completed', result.driver || null, result.key || null, downloadUrl, result.duration, nowStr());
+    // Tell whoever is still there. A meeting's download link goes only to its owner's connections.
+    const ready = { roomId, recordingId: result.recordingId, failed: !!result.failed, duration: result.duration };
+    for (const [sid, m] of sfuInstance.roomUserMap.entries()) {
+      if (m.roomId !== roomId || m.inLobby) continue;
+      const mayDownload = scope ? true : m.userId === meta.startedBy;
+      io.to(sid).emit('meet:recording-ready', { ...ready, downloadUrl: mayDownload ? downloadUrl : null });
+    }
+  });
   // In-call chat so far, per room, for people who join late (kept while the room exists).
   const chatHistory = new Map();
   function rememberChat(roomId, m) {
@@ -331,61 +363,37 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       return { success: true };
     });
 
-    // Recording handlers
+    // Recording. Meetings: the meeting owner. Calls (1:1, group chats, channel meetings): anyone in
+    // the call, as in Teams. Everyone in the room sees a REC banner while it runs.
+    async function recordingPlace(roomId, u) {
+      admitted(roomId);
+      if (roomId.startsWith('meet:')) {
+        if ((await meetingOwnerId(roomId.slice(5))) !== u.id) throw Error('Only the meeting owner can record this meeting.');
+        return { meetingCode: roomId.slice(5), scope: null };
+      }
+      const scope = scopeForRoom(roomId);
+      if (!scope) throw Error('Recording is not available here.');
+      return { meetingCode: null, scope };
+    }
     handle('meet:start-recording', async ({ roomId }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-
-      // Check if user is meeting owner (creator of the link)
-      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
-      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can start recording');
-
-      const result = await startRecording(roomId);
-
-      // Notify all participants that recording started
-      io.to(`sfu:${roomId}`).emit('meet:recording-started', {
-        recordingId: result.recordingId,
-        startedBy: u.full_name,
-      });
-
+      const place = await recordingPlace(roomId, u);
+      const result = await startRecording(roomId, { startedBy: u.id, startedByName: u.full_name, ...place });
+      io.to(`sfu:${roomId}`).emit('meet:recording-started', { roomId, recordingId: result.recordingId, startedBy: u.full_name, startTime: result.startTime });
       return { recordingId: result.recordingId };
     });
-
+    // Stops at once; the video is composed in the background and announced with meet:recording-ready.
     handle('meet:stop-recording', async ({ roomId, recordingId }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-
-      // Check if user is meeting owner
-      const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(meetingId);
-      if (!link || link.created_by !== u.id) throw Error('Only meeting owner can stop recording');
-
-      const result = await stopRecording(recordingId);
-      // Served by the signed-in-only download route in routes/meet.js, not the raw storage URL.
-      if (!result.failed) result.url = `/api/recordings/${encodeURIComponent(result.recordingId)}/download`;
-
-      await db.prepare(
-        `INSERT INTO recordings (id, room_id, meeting_link_code, started_by, status, storage_driver, storage_key, download_url, duration_ms, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(result.recordingId, roomId, meetingId, u.id, result.failed ? 'failed' : 'completed',
-        result.driver || null, result.key || null, result.url || null, result.duration, nowStr());
-
-      // Notify all participants that recording stopped. Only the owner (who is the one stopping
-      // it) gets the download link — the download route refuses everyone else anyway.
-      const stoppedEvent = {
-        recordingId: result.recordingId,
-        stoppedBy: u.full_name,
-        duration: result.duration,
-        failed: Boolean(result.failed),
-      };
-      socket.to(`sfu:${roomId}`).emit('meet:recording-stopped', { ...stoppedEvent, downloadUrl: null });
-      socket.emit('meet:recording-stopped', { ...stoppedEvent, downloadUrl: result.url || null });
-
-      return { success: true, recording: result };
-    });
-
-    handle('meet:get-recording-status', async ({ roomId, recordingId }, u) => {
-      if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-
+      await recordingPlace(roomId, u);
       const status = getRecordingStatus(recordingId);
-      return { status };
+      if (!status || status.roomId !== roomId || status.stopping) throw Error('This recording has already stopped.');
+      const result = await stopRecording(recordingId);
+      io.to(`sfu:${roomId}`).emit('meet:recording-stopped', { roomId, recordingId, stoppedBy: u.full_name, duration: result.duration, processing: true });
+      return { success: true };
+    });
+    // Whether this room is being recorded right now (for people who join mid-recording).
+    handle('meet:recording-status', async ({ roomId }) => {
+      admitted(roomId);
+      return { recording: recordingInRoom(roomId) };
     });
 
     socket.on('meet:leave', leave);

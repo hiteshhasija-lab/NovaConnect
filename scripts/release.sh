@@ -14,8 +14,9 @@
 #      :stable = :<version> = running image, MEDIASOUP_ANNOUNCED_IP set, recent log errors,
 #      login page status) and updates STABLE-RELEASE.json.
 # Only for overlay releases (src/ views/ public/). A change to dependencies or Containerfile.base
-# needs the base image rebuilt first, and a schema change needs "databaseChanges": true — neither
-# is handled here.
+# needs the base image rebuilt first. A schema change must be applied (additively, so the running
+# version keeps working) before releasing, then released with NOVACONNECT_DB_MIGRATION set to the
+# migration's name — recorded as "databaseChanges": true in the manifest, notes and STABLE-RELEASE.
 #
 # Settings (environment): NOVACONNECT_SSH_KEY (default ~/.ssh/nuvrion_lab), NOVACONNECT_SSH_USER
 # (default hiteshhasija), NOVACONNECT_HOSTS (default "10.0.0.102 10.0.0.101" — the first that
@@ -32,6 +33,7 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 KEY=${NOVACONNECT_SSH_KEY:-$HOME/.ssh/nuvrion_lab}
 USER_AT=${NOVACONNECT_SSH_USER:-hiteshhasija}
 HOSTS=${NOVACONNECT_HOSTS:-"10.0.0.102 10.0.0.101"}
+MIGRATION=${NOVACONNECT_DB_MIGRATION:-}
 
 # --- local checks: what we release is exactly what's pushed, and the version files agree ---
 cd "$REPO"
@@ -50,20 +52,23 @@ done
 echo "Releasing NovaConnect $V ($C) via $H"
 
 CHANGES=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@")
-MANIFEST=$(python3 - "$V" "$C" "$REASON" "$CHANGES" <<'EOF'
+MANIFEST=$(python3 - "$V" "$C" "$REASON" "$CHANGES" "$MIGRATION" <<'EOF'
 import json, sys
-v, c, reason, changes = sys.argv[1:5]
-print(json.dumps({"version": v, "artifact": f"NovaConnect-Overlay-{v}.tar.gz", "gitCommit": c,
-  "product": "NovaConnect", "databaseChanges": False, "source": "hiteshhasija-lab/NovaConnect",
-  "reason": reason, "changes": json.loads(changes)}, indent=2))
+v, c, reason, changes, migration = sys.argv[1:6]
+m = {"version": v, "artifact": f"NovaConnect-Overlay-{v}.tar.gz", "gitCommit": c,
+  "product": "NovaConnect", "databaseChanges": bool(migration), "source": "hiteshhasija-lab/NovaConnect",
+  "reason": reason, "changes": json.loads(changes)}
+if migration: m["databaseMigration"] = migration + " (additive; applied before this release)"
+print(json.dumps(m, indent=2))
 EOF
 )
-NOTESFILE=$(printf '# NovaConnect %s\n\n- %s No database changes.\n' "$V" "$NOTES")
+if [ -n "$MIGRATION" ]; then DBNOTE="Database migration $MIGRATION (additive, applied beforehand)."; else DBNOTE="No database changes."; fi
+NOTESFILE=$(printf '# NovaConnect %s\n\n- %s %s\n' "$V" "$NOTES" "$DBNOTE")
 
 # The remote script's arguments go through the remote shell, so quote them for it.
-ssh -i "$KEY" -o ConnectTimeout=8 "$USER_AT@$H" bash -s -- $(printf '%q ' "$V" "$C" "$REASON") <<REMOTE
+ssh -i "$KEY" -o ConnectTimeout=8 "$USER_AT@$H" bash -s -- $(printf '%q ' "$V" "$C" "$REASON" "$DBNOTE") <<REMOTE
 set -euo pipefail
-V=\$1; C=\$2; REASON=\$3
+V=\$1; C=\$2; REASON=\$3; DBNOTE=\$4
 D=~/novaconnect-upgrades/releases/NovaConnect-v\$V
 [ ! -e "\$D" ] || { echo "\$D already exists — pick the next version." >&2; exit 1; }
 echo "latest release before: \$(ls ~/novaconnect-upgrades/releases | sort -V | tail -1)"
@@ -87,14 +92,14 @@ echo ":stable / :\$V / running: \$(podman image inspect --format '{{.Id}}' local
 echo "log errors (2 min, excluding machine-id noise): \$(podman logs --since 2m novaconnect-api 2>&1 | grep -i 'error\|exception' | grep -vc machine-id || true)"
 RB=\$(ls -t ~/novaconnect-upgrades/backups | head -1)
 cd ~/novaconnect-upgrades && cp STABLE-RELEASE.json STABLE-RELEASE.json.bak-before-\$V
-python3 - "\$V" "\$C" "\$RB" "\$REASON" <<'PY'
+python3 - "\$V" "\$C" "\$RB" "\$REASON" "\$DBNOTE" <<'PY'
 import json, sys, datetime
-v, c, rb, reason = sys.argv[1:5]
+v, c, rb, reason, dbnote = sys.argv[1:6]
 p = "STABLE-RELEASE.json"; d = json.load(open(p))
 d.update(stableVersion=v, markedStableAt=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
   markedBy="scripts/release.sh (user-authorized deployment)", image=f"localhost/novaconnect:{v}",
   releaseDirectory=f"/home/hiteshhasija/novaconnect-upgrades/releases/NovaConnect-v{v}",
-  rollbackImage="localhost/novaconnect:rollback-" + rb, reason=reason + f" gitCommit {c}. No DB changes.")
+  rollbackImage="localhost/novaconnect:rollback-" + rb, reason=reason + f" gitCommit {c}. " + dbnote)
 json.dump(d, open(p, "w"), indent=2); print("STABLE-RELEASE.json ->", d["stableVersion"])
 PY
 echo "login page: \$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://10.0.0.102/login)"

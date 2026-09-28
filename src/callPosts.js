@@ -9,10 +9,16 @@ const { indexMessage } = require('./search');
 
 const room = scope => (scope.type === 'channel' ? 'channel:' : 'dm:') + scope.id;
 
-async function postToScope(io, scope, userId, body, metadata = null) {
+// attachment (optional): a stored file to attach, like a chat upload —
+// { originalName, mimeType, size, storageDriver, storageKey } (e.g. a call recording).
+async function postToScope(io, scope, userId, body, metadata = null, attachment = null) {
   const column = scope.type === 'channel' ? 'channel_id' : 'conversation_id';
   const row = await db.prepare(`INSERT INTO messages (${column}, user_id, body, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *`)
     .get(scope.id, userId, body, metadata ? JSON.stringify(metadata) : null, nowStr(), nowStr());
+  if (attachment) {
+    await db.prepare(`INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(row.id, attachment.storageKey, attachment.originalName, attachment.mimeType, attachment.size, userId, attachment.storageDriver, attachment.storageKey);
+  }
   // Like a normal chat message: brings a hidden chat back and marks it unread for everyone else.
   if (scope.type === 'dm') await db.prepare('UPDATE dm_participants SET is_hidden = 0, is_unread = CASE WHEN user_id = ? THEN 0 ELSE 1 END WHERE conversation_id = ?').run(userId, scope.id);
   const message = await hydrateOne(row, null);

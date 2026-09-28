@@ -37,12 +37,13 @@ function generateKey(originalName) {
   return `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
 }
 
-function validateFile(file) {
+// skipSizeLimit: for files the server makes itself (call recordings), not user uploads.
+function validateFile(file, { skipSizeLimit = false } = {}) {
   const ext = path.extname(file.originalname).toLowerCase();
   if (BLOCKED_EXTENSIONS.has(ext)) {
     throw new Error(`Files of type "${ext}" are not allowed.`);
   }
-  if (file.size > MAX_FILE_SIZE) {
+  if (!skipSizeLimit && file.size > MAX_FILE_SIZE) {
     throw new Error(`File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit.`);
   }
 }
@@ -72,8 +73,8 @@ async function uploadFileS3(file, key) {
   return { key, url, driver: 's3' };
 }
 
-async function uploadFile(file) {
-  validateFile(file);
+async function uploadFile(file, options = {}) {
+  validateFile(file, options);
   const key = generateKey(file.originalname);
   if (STORAGE_DRIVER === 's3') {
     return uploadFileS3(file, key);
