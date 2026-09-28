@@ -59,6 +59,9 @@
       lastFocus = document.activeElement;
       panel.hidden = false;
       $('callGrid').hidden = true; $('callMedia1to1').hidden = false;
+      // No empty video boxes: your preview appears once your camera starts (video calls only),
+      // the other person's once their video actually arrives (or they share their screen).
+      $('callLocal').hidden = true; $('callRemote').hidden = true;
       $('callName').textContent = c.name;
       $('callKind').textContent = c.mode === 'video' ? 'Video call' : 'Audio call';
       status(text);
@@ -124,8 +127,7 @@
         layout(c);
       }
       $('callLocal').srcObject = stream;
-      $('callLocal').hidden = c.mode !== 'video';
-      $('callRemote').hidden = c.mode !== 'video';
+      $('callLocal').hidden = !stream.getVideoTracks().length;
       $('callMute').hidden = false;
       $('callCamera').hidden = !c.camera || !!c.display;
       $('callScreenShare').hidden = !navigator.mediaDevices.getDisplayMedia;
@@ -145,7 +147,10 @@
         // macOS also left the microphone sending silence.
         $('callRemote').srcObject = remote;
         $('callRemoteAudio').srcObject = remote;
-        if (track.kind === 'video') track.onunmute = () => { if (current === c) $('callRemote').hidden = false; };
+        if (track.kind === 'video') {
+          track.onunmute = () => { if (current === c) $('callRemote').hidden = false; };
+          if (!track.muted) $('callRemote').hidden = false;
+        }
         $('callRemote').play().catch(() => {});
         $('callRemoteAudio').play().then(() => { if (current === c) $('callPlayback').hidden = true; }).catch(() => { if (current === c && $('callRemoteAudio').paused) $('callPlayback').hidden = false; });
       };
