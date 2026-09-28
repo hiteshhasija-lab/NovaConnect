@@ -8,7 +8,7 @@ const recordingControls=document.getElementById('recordingControls'),recordBtn=d
 let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,routerRtpCapabilities=null,session=null,currentRecordingId=null;
 const shareBtn=document.getElementById('meetShare'),shareStage=document.getElementById('meetShareStage'),shareVideo=document.getElementById('meetShareVideo'),shareLabel=document.getElementById('meetShareLabel');
 let display=null;              // our own screen while we share
-let ownPeerId=null;            // our id in the meeting room (to tell our own tile / messages apart)
+let ownPeerId=null,ownUserId=null; // our ids in the meeting room (to tell our own tile / messages apart)
 const screens=new Map();       // peerId -> { name, stream } for screens others share
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
@@ -133,7 +133,7 @@ async function enterMeeting(){
     if(!existing&&!session.peerCount)status.textContent='You are the first participant. Share the meeting link to invite others.';
     try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
     setShareButton();
-    extras.start({roomId,peerId:ownPeerId});
+    extras.start({roomId,peerId:ownPeerId,userId:ownUserId});
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
 
@@ -180,7 +180,7 @@ enter.onclick=async()=>{
     if(mic.checked||camera.checked)stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked,video:camera.checked});
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
     const r=await request('meet:join',{code});
-    roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;ownPeerId=r.peerId;
+    roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;ownPeerId=r.peerId;ownUserId=r.userId;
     const a=await request('meet:request-join',{roomId});
     if(a.admitted){await enterMeeting();if(noDevices&&joined)status.textContent='Joined without camera and microphone: your browser only allows them on a secure (https) connection.';return}
     joining=false;waiting=true;

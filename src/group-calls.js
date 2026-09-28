@@ -1,7 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const { createRoom, deleteRoom, closePeerTransports } = require('./sfu');
-const { hydrateOne } = require('./messageUtils');
-const { nowStr } = require('./db');
+const { postToScope, updatePost, formatDuration } = require('./callPosts');
 
 // Calls through the SFU, in three kinds of place:
 //   - a group chat: starting one rings every member; anyone in the chat can join while it runs;
@@ -74,8 +73,23 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     tellScope(call, 'gcall:state', { ...where, call: active ? summary(call) : null });
   }
 
+  // What the chat/channel shows once a call is over (Teams-style): the channel's "Started a meeting"
+  // post becomes "Meeting ended · 12m"; a chat gets "Call ended · 5m" or "Missed call".
+  async function postOutcome(call) {
+    const talked = call.connectedAt ? formatDuration(Date.now() - call.connectedAt) : null;
+    const since = formatDuration(Date.now() - call.startedAt);
+    if (call.scope.type === 'channel') {
+      if (call.postId) await updatePost(io, call.scope, call.postId, `📹 Meeting ended · ${since}`, { call: 'ended', callId: call.id });
+    } else if (call.direct) {
+      await postToScope(io, call.scope, call.startedBy, talked ? `📞 Call ended · ${talked}` : '📞 Missed call', { call: talked ? 'ended' : 'missed', callId: call.id });
+    } else {
+      await postToScope(io, call.scope, call.startedBy, talked ? `📞 Group call ended · ${since}` : '📞 Missed group call', { call: talked ? 'ended' : 'missed', callId: call.id });
+    }
+  }
+
   function end(call, reason = null) {
     if (!calls.delete(call.id)) return;
+    postOutcome(call).catch(() => {});
     byScope.delete(call.scope.key);
     clearTimeout(call.ringTimer);
     // Anyone still connected (the other person in a 1:1 call) is taken out of the room first.
@@ -132,6 +146,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       }
       const call = {
         id: randomUUID(), scope, mode: data.mode, startedBy: user.id, direct: place.direct, connected: false,
+        startedAt: Date.now(), connectedAt: null, postId: null,
         userIds: (place.members || []).map(m => m.id), members: new Map(), ringTimer: null,
       };
       call.roomId = 'gcall:' + call.id;
@@ -149,10 +164,10 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
         }
       } else {
         // Meet now: post in the channel so people who aren't looking at it right now find out.
+        // The post is rewritten to "Meeting ended · …" when it's over.
         try {
-          const row = await db.prepare(`INSERT INTO messages (channel_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING *`)
-            .get(scope.id, user.id, `📹 Started a ${call.mode === 'video' ? 'video' : 'audio'} meeting in this channel. Use **Join** at the top of the channel to join.`, nowStr(), nowStr());
-          io.to(`channel:${scope.id}`).emit('message:new', await hydrateOne(row, null));
+          const post = await postToScope(io, scope, user.id, `📹 Started a ${call.mode === 'video' ? 'video' : 'audio'} meeting in this channel. Use **Join** at the top of the channel to join.`, { call: 'started', callId: call.id });
+          call.postId = post.id;
         } catch { /* the header Join button still announces it */ }
       }
       // Stop ringing after a while. A 1:1 call nobody answered ends ("No answer"); a group or
@@ -181,6 +196,8 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       const peerId = `${user.id}-${socket.id}`;
       const member = { userId: user.id, peerId, fullName: user.full_name };
       call.members.set(socket.id, member);
+      // Connected = two different people have been in it (a call's length is counted from then).
+      if (!call.connectedAt && distinctUsers(call) >= 2) call.connectedAt = Date.now();
       if (call.direct && distinctUsers(call) >= 2) { call.connected = true; clearTimeout(call.ringTimer); }
       sfuInstance.roomUserMap.set(socket.id, { roomId: call.roomId, peerId, userId: user.id, fullName: user.full_name, inLobby: false });
       socket.join('sfu:' + call.roomId);
@@ -222,7 +239,13 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     });
   }
 
-  return { attach, isBusy: inGroupCall };
+  // The chat or channel a call room belongs to (for saving its in-call chat), if any.
+  function scopeForRoom(roomId) {
+    for (const call of calls.values()) if (call.roomId === roomId) return call.scope;
+    return null;
+  }
+
+  return { attach, isBusy: inGroupCall, scopeForRoom };
 }
 
 module.exports = { createGroupCalls };

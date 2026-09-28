@@ -202,7 +202,7 @@
         await c.session.start();
         await c.session.publish(stream);
         if (current !== c) return;
-        extras.start({ roomId: c.roomId, peerId: c.peerId });
+        extras.start({ roomId: c.roomId, peerId: c.peerId, userId: window.__NC__?.currentUser?.id ?? null });
         if (c.pendingDisplay) { const d = c.pendingDisplay; c.pendingDisplay = null; shareScreen(c, d); }
         let started = Date.now();
         const tick = () => {
@@ -249,6 +249,14 @@
       changed(key);
     });
     socket.on('sfu:new-producer', p => { if (current?.joined) current.session?.newProducer(p); });
+    // The call's chat is the chat/channel it belongs to: messages posted there during the call show
+    // in the call too. (Messages sent from the call are saved there already and arrive via sfu:chat.)
+    socket.on('message:new', msg => {
+      const c = current;
+      if (!c?.joined || msg.parent_message_id || msg.metadata?.callChat || msg.metadata?.call) return;
+      const key = msg.channel_id ? 'ch:' + msg.channel_id : 'dm:' + msg.conversation_id;
+      if (key === c.key && msg.body) extras.addExternal({ userId: msg.author?.id, fullName: msg.author?.full_name || 'Someone', text: msg.body, messageId: msg.id });
+    });
     socket.on('sfu:producer-closed', p => { if (current?.joined) current.session?.producerClosed(p); });
     socket.on('sfu:producer-paused', p => { if (current?.joined) current.session?.producerPaused(p); });
     socket.on('sfu:peer-left', ({ peerId }) => { if (!current?.joined) return; current.session?.removePeer(peerId); removeTile(peerId); });

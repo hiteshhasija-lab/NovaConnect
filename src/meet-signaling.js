@@ -3,7 +3,9 @@
 // roomUserMap is used (shared peer-mapping state); every actual media/room operation
 // below comes straight from ./sfu, since sfu-signaling.js's own copies are just
 // unchanged re-exports of the same functions.
-function createMeetSignaling(io, db, sfuInstance) {
+// scopeForRoom(roomId) → the chat/channel a call room belongs to (group-calls.js), so its in-call
+// chat can be saved there; meeting rooms have none.
+function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } = {}) {
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
     produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, setActiveSpeakerHandler, closePeerTransports,
@@ -14,6 +16,16 @@ function createMeetSignaling(io, db, sfuInstance) {
   // The loudest microphone in a call room (sfu.js), so everyone can highlight that tile.
   setActiveSpeakerHandler((roomId, peerId) => io.to('sfu:' + roomId).emit('sfu:active-speaker', { roomId, peerId }));
   const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
+  const { postToScope } = require('./callPosts');
+  // In-call chat so far, per room, for people who join late (kept while the room exists).
+  const chatHistory = new Map();
+  function rememberChat(roomId, m) {
+    for (const id of chatHistory.keys()) if (!getRoom(id)) chatHistory.delete(id);
+    const list = chatHistory.get(roomId) || [];
+    list.push(m);
+    if (list.length > 200) list.shift();
+    chatHistory.set(roomId, list);
+  }
 
   async function meetingOwnerId(code) {
     const link = await db.prepare('SELECT created_by FROM meet_links WHERE code = ?').get(code);
@@ -128,6 +140,7 @@ function createMeetSignaling(io, db, sfuInstance) {
         title: link.title,
         roomId,
         peerId,
+        userId: u.id,
         routerRtpCapabilities: room.router.rtpCapabilities,
         isOwner: link.created_by === u.id,
       };
@@ -264,12 +277,25 @@ function createMeetSignaling(io, db, sfuInstance) {
       io.to(`sfu:${roomId}`).emit('sfu:reaction', { roomId, peerId: m.peerId, fullName: m.fullName, emoji });
       return {};
     });
+    // A call's chat is saved into the chat or channel the call belongs to, so it's still there
+    // afterwards (as in Teams); a standalone meeting's chat lasts as long as the meeting.
     handle('sfu:chat', async ({ roomId, text }) => {
       const m = admitted(roomId);
       const body = String(text || '').trim().slice(0, 2000);
       if (!body) throw Error('Type a message first.');
-      io.to(`sfu:${roomId}`).emit('sfu:chat', { roomId, peerId: m.peerId, fullName: m.fullName, text: body, at: new Date().toISOString() });
+      const msg = { roomId, peerId: m.peerId, userId: m.userId, fullName: m.fullName, text: body, at: new Date().toISOString() };
+      const scope = scopeForRoom(roomId);
+      if (scope) {
+        const saved = await postToScope(io, scope, m.userId, body, { callChat: true, room: roomId });
+        msg.messageId = saved.id;
+      }
+      rememberChat(roomId, msg);
+      io.to(`sfu:${roomId}`).emit('sfu:chat', msg);
       return {};
+    });
+    handle('sfu:chat-history', async ({ roomId }) => {
+      admitted(roomId);
+      return { messages: chatHistory.get(roomId) || [] };
     });
 
     // Stop one of your own streams (a screen share) while staying in the call.

@@ -74,7 +74,7 @@ function attach(server, sessionMiddleware) {
   // sfu:produce, etc.) once a peer has gone through meet:join — it needs sfu-signaling's
   // roomUserMap instance (passed in here) but NOT its .attach(), since attaching both would
   // register two competing handlers for the same event names and race each other.
-  const meet = require('./meet-signaling').createMeetSignaling(io, db, sfu);
+  const meet = require('./meet-signaling').createMeetSignaling(io, db, sfu, { scopeForRoom: roomId => groupCalls.scopeForRoom(roomId) });
   io.on('connection', (socket) => {
     calls.attach(socket);
     meet.attach(socket);

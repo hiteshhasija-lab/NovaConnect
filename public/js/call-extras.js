@@ -11,7 +11,8 @@
     const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
     const panels = [[els.participantsBtn, els.participantsPanel], [els.reactionsBtn, els.reactionsPanel], [els.chatBtn, els.chatPanel]];
     const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn];
-    let ctx = null;                // { roomId, peerId, hand } while in a call
+    let ctx = null;                // { roomId, peerId, userId, hand } while in a call
+    const seen = new Set();        // chat messages already shown (history and live can overlap)
     let unreadChat = 0, refreshTimer = null;
     const initials = name => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
     const ours = roomId => ctx && roomId === ctx.roomId;
@@ -76,15 +77,19 @@
       el.addEventListener('animationend', () => el.remove());
       setTimeout(() => el.remove(), 3500);
     }
-    function addChatMessage(m) {
-      const mine = m.peerId === ctx.peerId;
+    // quiet: from the history loaded on joining — no unread badge or notice for those.
+    function addChatMessage(m, quiet = false) {
+      const key = m.messageId || (m.at + '|' + m.peerId + '|' + m.text);
+      if (seen.has(key)) return;
+      seen.add(key);
+      const mine = m.peerId === ctx.peerId || (ctx.userId != null && m.userId === ctx.userId);
       const row = document.createElement('div'); row.className = 'nc-chat-message' + (mine ? ' local' : '');
       const who = document.createElement('span'); who.className = 'nc-chat-sender'; who.textContent = mine ? 'You' : m.fullName;
       const text = document.createElement('div'); text.className = 'nc-chat-text'; text.textContent = m.text;
       const time = document.createElement('span'); time.className = 'nc-chat-time'; time.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       row.append(who, text, time);
       els.chatMessages.appendChild(row); els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
-      if (els.chatPanel.hidden && !mine) { badge(els.chatBadge, ++unreadChat); notice(m.fullName + ': ' + m.text.slice(0, 80)); }
+      if (els.chatPanel.hidden && !mine && !quiet) { badge(els.chatBadge, ++unreadChat); notice(m.fullName + ': ' + m.text.slice(0, 80)); }
     }
 
     els.reactionGrid.replaceChildren(...REACTIONS.map(e => {
@@ -126,14 +131,22 @@
 
     return {
       // Call once you are in the room (you know your own peerId there).
-      start({ roomId, peerId }) {
-        ctx = { roomId, peerId, hand: false };
+      start({ roomId, peerId, userId = null }) {
+        const mine = ctx = { roomId, peerId, userId, hand: false };
         buttons.forEach(b => { b.hidden = false; });
         setHand(false);
         refresh();
+        // What was said before you joined (or before this device joined).
+        request('sfu:chat-history', { roomId }).then(({ messages }) => {
+          if (ctx === mine) messages.forEach(m => addChatMessage(m, true));
+        }).catch(() => {});
+      },
+      // A message posted in the chat/channel itself while you're in its call (not via the call).
+      addExternal({ userId, fullName, text, messageId }) {
+        if (ctx) addChatMessage({ peerId: null, userId, fullName, text, messageId, at: new Date().toISOString() });
       },
       stop() {
-        ctx = null; clearTimeout(refreshTimer);
+        ctx = null; clearTimeout(refreshTimer); seen.clear();
         for (const [btn, panel] of panels) { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
         buttons.forEach(b => { b.hidden = true; });
         els.chatMessages.replaceChildren(); els.participantList.replaceChildren(); els.notices.replaceChildren();
