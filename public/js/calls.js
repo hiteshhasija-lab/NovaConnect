@@ -60,8 +60,9 @@
       panel.hidden = false;
       $('callGrid').hidden = true; $('callMedia1to1').hidden = false;
       // No empty video boxes: your preview appears once your camera starts (video calls only),
-      // the other person's once their video actually arrives (or they share their screen).
-      $('callLocal').hidden = true; $('callRemote').hidden = true;
+      // the other person's once a real frame of their video arrives (see the resize handler).
+      $('callLocal').hidden = true;
+      $('callRemote').hidden = false; $('callRemote').classList.add('nc-video-waiting');
       $('callName').textContent = c.name;
       $('callKind').textContent = c.mode === 'video' ? 'Video call' : 'Audio call';
       status(text);
@@ -147,10 +148,6 @@
         // macOS also left the microphone sending silence.
         $('callRemote').srcObject = remote;
         $('callRemoteAudio').srcObject = remote;
-        if (track.kind === 'video') {
-          track.onunmute = () => { if (current === c) $('callRemote').hidden = false; };
-          if (!track.muted) $('callRemote').hidden = false;
-        }
         $('callRemote').play().catch(() => {});
         $('callRemoteAudio').play().then(() => { if (current === c) $('callPlayback').hidden = true; }).catch(() => { if (current === c && $('callRemoteAudio').paused) $('callPlayback').hidden = false; });
       };
@@ -240,11 +237,15 @@
       if (!c || c.id !== data.id) return;
       c.remoteSharing = !!data.sharing;
       // In an audio call the remote video only exists while they share.
-      if (c.remoteSharing) $('callRemote').hidden = false;
-      else if (c.mode !== 'video') $('callRemote').hidden = true;
+      if (!c.remoteSharing && c.mode !== 'video') $('callRemote').classList.add('nc-video-waiting');
+      // Sharing again at the same size fires no resize event, so reveal on the share notice too.
+      if (c.remoteSharing && $('callRemote').videoWidth > 0) $('callRemote').classList.remove('nc-video-waiting');
       layout(c);
     });
     socket.on('disconnect', () => { if (current) cleanup(current, 'Connection lost. Call ended.'); });
+    // A remote video track can report itself live before any picture arrives (the caller's side of
+    // an audio call does), so reveal the box only once a frame has actually been decoded.
+    $('callRemote').addEventListener('resize', () => { if (current && $('callRemote').videoWidth > 0) $('callRemote').classList.remove('nc-video-waiting'); });
     $('callAccept').onclick = async () => {
       const c = current;
       if (!c || c.accepting) return;

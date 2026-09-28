@@ -248,12 +248,18 @@
   inset: 12px; width: auto; max-height: none; display: flex; flex-direction: column;
 }
 .nc-call:fullscreen { inset: 0; border: 0; border-radius: 0; }
-/* Beats the group-call width rule above (it matches by #callGrid, so needs an id here too). */
-#callPanel.nc-call.nc-call-max, #callPanel.nc-call:fullscreen { width: auto; }
-.nc-call-max .nc-call-media, .nc-call:fullscreen .nc-call-media { flex: 1; min-height: 0; }
-.nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 { height: 100%; grid-template-columns: 3fr 1fr; align-items: start; }
-.nc-call-max .nc-call-media-1to1 video, .nc-call:fullscreen .nc-call-media-1to1 video { max-height: calc(100dvh - 190px); }
-.nc-call-max .nc-call-media-1to1 #callRemote, .nc-call:fullscreen .nc-call-media-1to1 #callRemote { height: calc(100dvh - 190px); }
+/* The id beats the group-call width rule above (it matches by #callGrid).
+   compact-ui.css shrinks the floating panel (zoom .77); maximized/full screen use full size. The
+   videos then fill the space through the flex chain below, not viewport units (which a zoomed
+   element scales down, leaving the video short of the window). */
+#callPanel.nc-call.nc-call-max, #callPanel.nc-call:fullscreen { width: auto; zoom: 1; }
+.nc-call-max .nc-call-media, .nc-call:fullscreen .nc-call-media { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.nc-call-max .nc-call-media-1to1, .nc-call:fullscreen .nc-call-media-1to1 {
+  flex: 1; min-height: 0; grid-template-columns: 3fr 1fr; grid-template-rows: minmax(0, 1fr); align-items: start;
+}
+.nc-call-max .nc-call-media-1to1 video, .nc-call:fullscreen .nc-call-media-1to1 video { max-height: 100%; }
+.nc-call-max .nc-call-media-1to1 #callRemote, .nc-call:fullscreen .nc-call-media-1to1 #callRemote { height: 100%; }
+.nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { flex: 1; min-height: 0; overflow: auto; }
 .nc-call-max .nc-call-grid, .nc-call:fullscreen .nc-call-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-content: start; }
 .nc-call video { cursor: zoom-in; }
 @media (max-width: 600px) {
@@ -262,10 +268,10 @@
 
 /* Screen sharing in a 1:1 call: the shared screen (or, for the presenter, the other person) fills
    the call area and the other video floats small in the corner. Set by calls.js layout(). */
-.nc-call-pip .nc-call-media-1to1 { display: block; position: relative; height: auto; }
+.nc-call-pip .nc-call-media-1to1 { display: block; position: relative; }
 .nc-call-pip .nc-call-media-1to1 #callRemote { width: 100%; height: auto; max-height: 60vh; object-fit: contain; }
 .nc-call-pip.nc-call-max .nc-call-media-1to1 #callRemote,
-.nc-call-pip:fullscreen .nc-call-media-1to1 #callRemote { height: calc(100dvh - 190px); max-height: none; }
+.nc-call-pip:fullscreen .nc-call-media-1to1 #callRemote { height: 100%; max-height: none; }
 .nc-call-pip .nc-call-media-1to1 #callLocal {
   position: absolute; right: 10px; bottom: 10px; z-index: 1;
   width: 24%; min-width: 120px; height: auto; max-height: 30%;
@@ -273,3 +279,11 @@
 }
 /* Your own screen preview is not a camera: don't mirror it. */
 .nc-local-screen .nc-call-media-1to1 #callLocal { transform: none; }
+
+/* The other person's video in a 1:1 call stays rendered but invisible and out of the layout until
+   a real frame arrives (calls.js), so audio calls and not-yet-started video show no empty box.
+   Not display:none — Chromium doesn't decode video for an element that isn't rendered. */
+.nc-call #callRemote.nc-video-waiting {
+  position: absolute !important; width: 2px !important; height: 2px !important;
+  opacity: 0; pointer-events: none; border: 0;
+}

@@ -1,6 +1,6 @@
 {
   "name": "novaconnect",
-  "version": "1.0.92",
+  "version": "1.0.93",
   "description": "NovaConnect: a team chat and collaboration app (channels, DMs, presence, threads, file sharing)",
   "main": "src/server.js",
   "scripts": {
