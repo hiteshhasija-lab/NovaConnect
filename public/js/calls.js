@@ -75,11 +75,26 @@
       setCallToggle($('callCamera'), false, 'Turn camera off');
       (c.incoming ? $('callAccept') : $('callHangup')).focus();
     }
+    // Presentation layout while either side shares its screen (calls.css .nc-call-pip): the shared
+    // screen (or, for the presenter, the other person) fills the area, the other video floats small.
+    function layout(c) {
+      if (current !== c) return;
+      panel.classList.toggle('nc-call-pip', !!(c.display || c.remoteSharing));
+      panel.classList.toggle('nc-local-screen', !!c.display);
+      $('callKind').textContent = c.display ? 'You are sharing your screen'
+        : c.remoteSharing ? c.name + ' is sharing their screen'
+        : c.mode === 'video' ? 'Video call' : 'Audio call';
+    }
+    function announceShare(c) {
+      layout(c);
+      if (c.id && c.pc?.connectionState === 'connected') request('call:share', { id: c.id, sharing: !!c.display }).catch(() => {});
+    }
     function cleanup(c, message) {
       clearTimeout(c.timer); clearTimeout(c.disconnectTimer); clearInterval(c.clock);
       c.pc?.close(); c.camera?.stop(); c.stream?.getTracks().forEach(t => t.stop()); c.display?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
+      panel.classList.remove('nc-call-pip', 'nc-local-screen');
       $('callLocal').srcObject = null; $('callRemote').srcObject = null; $('callRemoteAudio').srcObject = null;
       panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
@@ -106,6 +121,7 @@
         if (!screen || screen.readyState === 'ended') throw new Error('Screen sharing was cancelled.');
         stream.addTrack(screen); screen.onended = () => stopSharing(c);
         $('callStopSharing').hidden = false;
+        layout(c);
       }
       $('callLocal').srcObject = stream;
       $('callLocal').hidden = c.mode !== 'video';
@@ -144,6 +160,7 @@
             status('Connected · ' + Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
           };
           clearInterval(c.clock); tick(); c.clock = setInterval(tick, 1000);
+          if (c.display) announceShare(c);
         } else if (pc.connectionState === 'failed') stop(c, 'The call could not connect. Try again or contact your administrator.');
         else if (pc.connectionState === 'disconnected') {
           clearInterval(c.clock); status('Reconnecting…');
@@ -213,6 +230,15 @@
         else c.candidates.push(data.signal.candidate);
       }).catch(e => { if (current === c) stop(c, e.message); });
     });
+    socket.on('call:share', data => {
+      const c = current;
+      if (!c || c.id !== data.id) return;
+      c.remoteSharing = !!data.sharing;
+      // In an audio call the remote video only exists while they share.
+      if (c.remoteSharing) $('callRemote').hidden = false;
+      else if (c.mode !== 'video') $('callRemote').hidden = true;
+      layout(c);
+    });
     socket.on('disconnect', () => { if (current) cleanup(current, 'Connection lost. Call ended.'); });
     $('callAccept').onclick = async () => {
       const c = current;
@@ -257,6 +283,7 @@
       $('callLocal').hidden = !c.camera;
       $('callCamera').hidden = !c.camera;
       $('callStopSharing').hidden = true;
+      announceShare(c);
     }
     $('callStopSharing').onclick = () => { if (current) stopSharing(current); };
     const controller = { async share(conversationId, name) {
@@ -277,6 +304,7 @@
         track.onended = () => stopSharing(existing);
         $('callLocal').srcObject = existing.stream; $('callLocal').hidden = false;
         $('callCamera').hidden = true; $('callStopSharing').hidden = false;
+        announceShare(existing);
       } catch (e) {
         display?.getTracks().forEach(t => t.stop());
         if (e.name !== 'NotAllowedError') notify(e);

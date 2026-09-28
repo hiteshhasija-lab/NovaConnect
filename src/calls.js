@@ -103,6 +103,15 @@ function createCalls(io, db, { ringMs = 30000, connectMs = 45000, inGroupCall = 
       io.to(caller ? call.calleeSocket : call.callerSocket).emit('call:signal', { id: call.id, signal: s });
       return {};
     });
+    // Screen sharing on/off, so the other side can switch to the presentation layout. The media
+    // itself just swaps the video track (replaceTrack); this only carries the state.
+    handle('call:share', data => {
+      const call = boundCall(socket, data.id);
+      if (call.state === 'ringing') throw new Error('Call has not been accepted.');
+      const caller = socket.id === call.callerSocket;
+      io.to(caller ? call.calleeSocket : call.callerSocket).emit('call:share', { id: call.id, sharing: data.sharing === true });
+      return {};
+    });
     socket.on('disconnect', () => {
       for (const call of calls.values()) {
         if (call.callerSocket === socket.id || call.calleeSocket === socket.id) end(call, 'Connection lost');
