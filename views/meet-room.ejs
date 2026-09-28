@@ -1,8 +1,8 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=4">
-<link rel="stylesheet" href="/css/calls.css?v=11">
+<link rel="stylesheet" href="/css/meet.css?v=5">
+<link rel="stylesheet" href="/css/calls.css?v=12">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
     <h1><%= link.title %></h1>
@@ -15,6 +15,7 @@
       <label><input id="meetCamera" type="checkbox" checked> Camera</label>
       <button class="btn btn-primary" id="meetEnter">Join meeting</button>
       <button class="btn btn-danger" id="meetLeave" hidden>Leave meeting</button>
+      <button type="button" class="btn btn-outline-secondary" id="meetShare" hidden><i class="bi bi-display" aria-hidden="true"></i> <span>Share screen</span></button>
     </div>
     <div class="meet-room-controls meet-recording-controls" id="recordingControls" hidden>
       <button type="button" class="btn btn-outline-danger" id="recordBtn" title="Start recording"><i class="bi bi-record-circle"></i> Record</button>
@@ -32,13 +33,18 @@
     <h2>Waiting to join</h2>
     <ul id="meetLobbyList"></ul>
   </aside>
+  <!-- A screen someone shares fills this stage; the participant tiles shrink to a strip below. -->
+  <section class="meet-share-stage" id="meetShareStage" hidden aria-label="Shared screen">
+    <video id="meetShareVideo" autoplay playsinline muted></video>
+    <p id="meetShareLabel"></p>
+  </section>
   <div class="meet-videos" id="meetVideos"></div>
 </main>
 <%- include('call-panel') %>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
-<script src="/js/sfu-client.js?v=1"></script>
-<script src="/js/meet-room.js?v=9"></script>
+<script src="/js/sfu-client.js?v=2"></script>
+<script src="/js/meet-room.js?v=10"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

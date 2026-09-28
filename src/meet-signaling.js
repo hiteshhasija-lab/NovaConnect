@@ -6,7 +6,7 @@
 function createMeetSignaling(io, db, sfuInstance) {
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
-    produce, consume, resumeConsumer, listProducers, closePeerTransports,
+    produce, consume, resumeConsumer, listProducers, closeProducer, closePeerTransports,
     startRecording, stopRecording, getRecordingStatus,
   } = require('./sfu');
   const { nowStr } = require('./db');
@@ -211,17 +211,27 @@ function createMeetSignaling(io, db, sfuInstance) {
 
     handle('sfu:produce', async ({ roomId, transportId, kind, rtpParameters, appData }, u) => {
       const mapping = admitted(roomId);
+      const source = appData?.source === 'screen' ? 'screen' : 'camera';
       const producerId = await produce(roomId, `${u.id}-${socket.id}`, transportId, kind, rtpParameters, {
         ...appData,
+        source,
         sourcePeerId: `${u.id}-${socket.id}`,
         sourceUserId: u.id,
         sourceFullName: u.full_name,
       });
       // Everyone already in the meeting starts receiving this new stream from the SFU.
       socket.to(`sfu:${roomId}`).emit('sfu:new-producer', {
-        producerId, peerId: mapping.peerId, kind, fullName: u.full_name,
+        producerId, peerId: mapping.peerId, kind, fullName: u.full_name, source,
       });
       return { producerId };
+    });
+
+    // Stop one of your own streams (a screen share) while staying in the call.
+    handle('sfu:close-producer', async ({ roomId, producerId }) => {
+      const mapping = admitted(roomId);
+      closeProducer(roomId, mapping.peerId, producerId);
+      socket.to(`sfu:${roomId}`).emit('sfu:producer-closed', { producerId, peerId: mapping.peerId });
+      return { success: true };
     });
 
     // What a newly admitted peer should consume: every stream already in the meeting.

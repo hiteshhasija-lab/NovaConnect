@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/css/calls.css?v=11">
+<link rel="stylesheet" href="/css/calls.css?v=12">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
@@ -22,6 +22,10 @@
   <div class="nc-call-media" id="callMedia">
     <!-- Group calls: your own tile floats here while others are in the call (group-calls.js). -->
     <div class="nc-call-self" id="callSelfTile"></div>
+    <!-- Group calls: a screen someone shares fills this stage; the gallery becomes a side strip. -->
+    <div class="nc-share-stage" id="callShareStage" hidden>
+      <video id="callShareVideo" autoplay playsinline muted aria-label="Shared screen"></video>
+    </div>
     <!-- Group call: grid layout -->
     <div class="nc-call-grid" id="callGrid" hidden>
       <template id="videoTileTemplate">

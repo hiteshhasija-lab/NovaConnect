@@ -6,6 +6,9 @@ const socket=io(),code=document.querySelector('[data-code]').dataset.code,status
 const lobby=document.getElementById('meetLobby'),lobbyQueue=document.getElementById('meetLobbyQueue'),lobbyList=document.getElementById('meetLobbyList');
 const recordingControls=document.getElementById('recordingControls'),recordBtn=document.getElementById('recordBtn'),stopRecordBtn=document.getElementById('stopRecordBtn');
 let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,routerRtpCapabilities=null,session=null,currentRecordingId=null;
+const shareBtn=document.getElementById('meetShare'),shareStage=document.getElementById('meetShareStage'),shareVideo=document.getElementById('meetShareVideo'),shareLabel=document.getElementById('meetShareLabel');
+let display=null;              // our own screen while we share
+const screens=new Map();       // peerId -> { name, stream } for screens others share
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
@@ -26,14 +29,53 @@ function removePeer(peerId){
   updateSelfView();
 }
 
+// Teams-style presentation: the latest screen someone else shares fills the stage and the
+// participant tiles shrink to a strip (meet.css .presenting). Your own share isn't shown back to you.
+function renderShare(){
+  const latest=[...screens.values()].pop();
+  shareStage.hidden=!latest;
+  document.querySelector('.meet-room').classList.toggle('presenting',!!latest);
+  if(shareVideo.srcObject!==(latest?.stream||null)){shareVideo.srcObject=latest?.stream||null;if(latest)shareVideo.play().catch(()=>{})}
+  shareLabel.textContent=latest?latest.name+' is sharing their screen':'';
+}
+function setShareButton(){
+  shareBtn.hidden=!joined||!navigator.mediaDevices?.getDisplayMedia;
+  shareBtn.querySelector('span').textContent=display?'Stop sharing':'Share screen';
+  shareBtn.classList.toggle('btn-warning',!!display);shareBtn.classList.toggle('btn-outline-secondary',!display);
+}
+async function startShare(){
+  if(!joined||!session||display)return;
+  let d;
+  try{
+    d=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
+    if(!joined||!session||display){d.getTracks().forEach(t=>t.stop());return}
+    const track=d.getVideoTracks()[0];
+    display=d;track.onended=stopShare; // the browser's own "Stop sharing" bar
+    await session.shareScreen(track);
+    status.textContent='You are sharing your screen.';
+  }catch(e){d?.getTracks().forEach(t=>t.stop());if(display===d)display=null;if(e.name!=='NotAllowedError')status.textContent='Screen sharing failed: '+e.message}
+  setShareButton();
+}
+async function stopShare(){
+  const d=display;if(!d)return;display=null;
+  d.getTracks().forEach(t=>{t.onended=null;t.stop()});
+  await session?.stopScreen();
+  if(joined)status.textContent='You stopped sharing.';
+  setShareButton();
+}
+shareBtn.onclick=()=>display?stopShare():startShare();
+
 function cleanup(){
   joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
+  display?.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null;
+  screens.clear();renderShare();
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
   videos.replaceChildren();updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
   enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;
+  setShareButton();
 }
 
 // Called once we are actually in the meeting — straight away for the owner, on admission for others.
@@ -53,10 +95,12 @@ async function enterMeeting(){
     }
     session=window.createSfuSession({request,roomId,routerRtpCapabilities,
       onPeerStream:(peerId,name,media)=>tile(peerId,name,media),
+      onPeerScreen:(peerId,name,media)=>{screens.delete(peerId);if(media)screens.set(peerId,{name,stream:media});renderShare()},
       onError:e=>{if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}});
     const existing=await session.start();
     if(!existing&&!session.peerCount)status.textContent='You are the first participant. Share the meeting link to invite others.';
     try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
+    setShareButton();
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
 
@@ -81,6 +125,7 @@ function renderLobbyQueue(){
 }
 
 socket.on('sfu:new-producer',p=>{if(joined)session?.newProducer(p)});
+socket.on('sfu:producer-closed',p=>{if(joined)session?.producerClosed(p)});
 socket.on('sfu:peer-joined',({fullName})=>{if(joined)status.textContent=`${fullName} joined.`});
 socket.on('sfu:peer-left',({peerId,fullName})=>{if(!session?.hasPeer(peerId)&&!document.getElementById('peer-'+peerId))return;removePeer(peerId);if(joined)status.textContent=`${fullName||'A participant'} left.`});
 socket.on('disconnect',()=>{if(joined||waiting||joining){cleanup();status.textContent='Disconnected. Join again when your connection returns.'}});

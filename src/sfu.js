@@ -250,10 +250,20 @@ function listProducers(roomId, exceptPeerId) {
     if (peerId === exceptPeerId) continue;
     for (const producer of peer.producers.values()) {
       if (producer.closed) continue;
-      out.push({ producerId: producer.id, peerId, kind: producer.kind, fullName: producer.appData.sourceFullName || '' });
+      out.push({ producerId: producer.id, peerId, kind: producer.kind, fullName: producer.appData.sourceFullName || '', source: producer.appData.source === 'screen' ? 'screen' : 'camera' });
     }
   }
   return out;
+}
+
+// Stops one of a peer's streams (a screen share) without leaving; its consumers close via
+// their 'producerclose' handlers.
+function closeProducer(roomId, peerId, producerId) {
+  const peer = getRoom(roomId)?.peers.get(peerId);
+  const producer = peer?.producers.get(producerId);
+  if (!producer) throw new Error('Producer not found');
+  producer.close();
+  peer.producers.delete(producerId);
 }
 
 function getRoomPeers(roomId) {
@@ -521,6 +531,7 @@ module.exports = {
   getRecordingStatus,
   getRoomPeers,
   listProducers,
+  closeProducer,
   closePeerTransports,
   rooms,
 };

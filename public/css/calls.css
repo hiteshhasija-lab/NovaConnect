@@ -323,3 +323,24 @@
 }
 .nc-call-self .nc-avatar span { width: 40px; height: 40px; font-size: 1rem; }
 .nc-video-tile.nc-has-video .nc-avatar { display: none; }
+
+/* Group-call screen sharing, Teams-style (panel class nc-call-presenting, group-calls.js): the
+   shared screen fills the stage and everyone's tiles become a strip down the right side. */
+.nc-share-stage { position: relative; background: #000; }
+.nc-share-stage video {
+  display: block; width: 100%; aspect-ratio: 16 / 9; max-height: none; min-height: 240px;
+  object-fit: contain; border-radius: 0; background: #000; cursor: zoom-in;
+}
+.nc-call.nc-call-presenting .nc-call-grid {
+  position: absolute; top: 58px; right: 10px; bottom: 86px; z-index: 2; width: 150px;
+  display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; padding: 0;
+}
+.nc-call.nc-call-presenting .nc-call-grid .nc-video-tile {
+  flex: 0 0 auto; border: 1px solid #8990b8; border-radius: 8px; box-shadow: 0 4px 12px #0007;
+}
+.nc-call.nc-call-presenting .nc-call-grid .nc-video-tile video { height: auto; max-height: none; aspect-ratio: 16 / 9; }
+.nc-call.nc-call-presenting .nc-video-tile .nc-avatar span { width: 36px; height: 36px; font-size: .9rem; }
+.nc-call.nc-call-presenting .nc-video-name { font-size: .75rem; }
+.nc-call-max .nc-share-stage, .nc-call:fullscreen .nc-share-stage { flex: 1; min-height: 0; }
+.nc-call-max .nc-share-stage video, .nc-call:fullscreen .nc-share-stage video { height: 100%; aspect-ratio: auto; }
+.nc-call.nc-call-max.nc-call-presenting .nc-call-grid, .nc-call.nc-call-presenting:fullscreen .nc-call-grid { width: clamp(160px, 15vw, 240px); }

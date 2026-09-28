@@ -30,7 +30,7 @@
       grid.hidden = !c.joined;
       panel.classList.toggle('nc-call-video', !!c.joined);
       $('callName').textContent = c.title;
-      $('callKind').textContent = c.mode === 'video' ? 'Group video call' : 'Group audio call';
+      $('callKind').textContent = kindLabel(c);
       status(text);
       const ringing = c.incoming && !c.joined && !c.joining;
       $('callAccept').hidden = !ringing; $('callDecline').hidden = !ringing; $('callAccept').disabled = false;
@@ -39,8 +39,59 @@
       $('callCamera').hidden = !c.stream?.getVideoTracks().length;
       setCallToggle($('callMute'), false, 'Mute');
       setCallToggle($('callCamera'), false, 'Turn camera off');
-      $('callScreenShare').hidden = true; $('callStopSharing').hidden = true; $('callPlayback').hidden = true;
+      $('callScreenShare').hidden = !(c.joined && navigator.mediaDevices?.getDisplayMedia) || !!c.display;
+      $('callStopSharing').hidden = !c.display; $('callPlayback').hidden = true;
       (ringing ? $('callAccept') : $('callHangup')).focus();
+    }
+    function kindLabel(c) {
+      const presenter = c.screens && [...c.screens.values()].pop();
+      return c.display ? 'You are sharing your screen'
+        : presenter ? presenter.name + ' is sharing their screen'
+        : c.mode === 'video' ? 'Group video call' : 'Group audio call';
+    }
+
+    // Teams-style presentation: a screen someone else shares fills the stage and the gallery
+    // becomes a strip down the side (calls.css .nc-call-presenting). The latest share wins.
+    // Your own share isn't shown back to you — you keep the gallery, like Teams' presenter view.
+    function renderShare(c) {
+      if (current !== c) return;
+      const latest = [...c.screens.values()].pop();
+      panel.classList.toggle('nc-call-presenting', !!latest);
+      $('callShareStage').hidden = !latest;
+      if ($('callShareVideo').srcObject !== (latest?.stream || null)) {
+        $('callShareVideo').srcObject = latest?.stream || null;
+        if (latest) $('callShareVideo').play().catch(() => {});
+      }
+      $('callKind').textContent = kindLabel(c);
+      arrangeTiles();
+    }
+    async function shareScreen(c) {
+      if (!navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
+      let display;
+      try {
+        display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        if (current !== c || !c.joined || !c.session || c.display) { display.getTracks().forEach(t => t.stop()); return; }
+        const track = display.getVideoTracks()[0];
+        c.display = display;
+        track.onended = () => stopScreen(c); // the browser's own "Stop sharing" bar
+        await c.session.shareScreen(track);
+        $('callScreenShare').hidden = true; $('callStopSharing').hidden = false;
+        $('callKind').textContent = kindLabel(c);
+      } catch (e) {
+        display?.getTracks().forEach(t => t.stop());
+        if (c.display === display) c.display = null;
+        if (e.name !== 'NotAllowedError') notify(e); // NotAllowedError = picker cancelled
+      }
+    }
+    async function stopScreen(c) {
+      const display = c.display;
+      if (!display) return;
+      c.display = null;
+      display.getTracks().forEach(t => { t.onended = null; t.stop(); });
+      await c.session?.stopScreen();
+      if (current !== c) return;
+      $('callStopSharing').hidden = true; $('callScreenShare').hidden = !navigator.mediaDevices?.getDisplayMedia;
+      $('callKind').textContent = kindLabel(c);
     }
 
     const allTiles = () => [...grid.querySelectorAll('.nc-video-tile'), ...$('callSelfTile').querySelectorAll('.nc-video-tile')];
@@ -51,7 +102,8 @@
       const mine = allTiles().find(t => t.dataset.peerId === 'local');
       if (!mine) return;
       const others = [...grid.querySelectorAll('.nc-video-tile')].some(t => t.dataset.peerId !== 'local');
-      const box = others ? $('callSelfTile') : grid;
+      // While someone presents, everyone (you included) sits in the side strip.
+      const box = others && !panel.classList.contains('nc-call-presenting') ? $('callSelfTile') : grid;
       if (mine.parentNode !== box) { box.appendChild(mine); const v = mine.querySelector('video'); if (v.paused) v.play().catch(() => {}); }
     }
     function tile(id, name, media, local = false) {
@@ -78,13 +130,15 @@
 
     function cleanup(c, message) {
       clearInterval(c.clock);
+      c.display?.getTracks().forEach(t => { t.onended = null; t.stop(); }); c.display = null;
       c.session?.close();
       c.stream?.getTracks().forEach(t => t.stop());
       if (current !== c) return;
       current = null;
       changed(c.conversationId);
       allTiles().forEach(t => t.remove());
-      panel.classList.remove('nc-call-video');
+      panel.classList.remove('nc-call-video', 'nc-call-presenting');
+      $('callShareStage').hidden = true; $('callShareVideo').srcObject = null;
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -116,9 +170,16 @@
         changed(c.conversationId); // the header's Join button hides once we are in
         show(c, 'Connecting…');
         tile('local', 'You', stream, true);
+        c.screens = new Map(); // peerId -> { name, stream } for screens being shared
         c.session = createSfuSession({
           request, roomId: r.roomId, routerRtpCapabilities: r.routerRtpCapabilities,
           onPeerStream: (peerId, name, media) => { if (current === c) tile(peerId, name, media); },
+          onPeerScreen: (peerId, name, media) => {
+            if (current !== c) return;
+            c.screens.delete(peerId);
+            if (media) c.screens.set(peerId, { name, stream: media });
+            renderShare(c);
+          },
           onError: e => { if (current === c) status('Could not receive a participant\'s media: ' + e.message); },
         });
         await c.session.start();
@@ -151,6 +212,7 @@
       changed(conversationId);
     });
     socket.on('sfu:new-producer', p => { if (current?.joined) current.session?.newProducer(p); });
+    socket.on('sfu:producer-closed', p => { if (current?.joined) current.session?.producerClosed(p); });
     socket.on('sfu:peer-left', ({ peerId }) => { if (!current?.joined) return; current.session?.removePeer(peerId); removeTile(peerId); });
     socket.on('disconnect', () => {
       if (current) cleanup(current, 'Connection lost. Call ended.');
@@ -175,6 +237,8 @@
       tracks.forEach(t => { t.enabled = enabled; });
       setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
     });
+    $('callScreenShare').addEventListener('click', () => { if (current?.joined) shareScreen(current); });
+    $('callStopSharing').addEventListener('click', () => { if (current?.display) stopScreen(current); });
     $('callPlayback').addEventListener('click', () => {
       if (!current) return;
       allTiles().forEach(t => t.querySelector('video').play().catch(() => {}));
