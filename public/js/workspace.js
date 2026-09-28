@@ -793,8 +793,22 @@
 
   // In-app error notice (bottom centre) instead of a blocking browser alert(): stays until
   // dismissed or 7s pass (paused while hovered); the same message isn't stacked twice.
+  // Browser media errors arrive as terse names ("Permission denied"); say what to do instead.
+  const MEDIA_ERRORS = {
+    NotAllowedError: 'NovaConnect isn\'t allowed to use your microphone or camera. Allow it in your browser\'s site settings (or System Settings → Privacy & Security on a Mac), then try again.',
+    NotFoundError: 'No microphone or camera was found. Connect one and try again.',
+    NotReadableError: 'Your microphone or camera is being used by another app. Close that app and try again.',
+    OverconstrainedError: 'Your camera doesn\'t support the requested settings. Try again with a different camera.',
+  };
+  // The call code passes only the message on, so match Chromium's wording as well as the name.
+  const MEDIA_MESSAGES = [
+    [/^Permission (denied|dismissed)/i, 'NotAllowedError'],
+    [/Requested device not found/i, 'NotFoundError'],
+    [/Could not start (audio|video) source/i, 'NotReadableError'],
+  ];
   function showToastError(e) {
-    const text = (e && e.message) || 'Something went wrong.';
+    const byMessage = MEDIA_MESSAGES.find(([re]) => re.test((e && e.message) || ''));
+    const text = (e && MEDIA_ERRORS[e.name]) || (byMessage && MEDIA_ERRORS[byMessage[1]]) || (e && e.message) || 'Something went wrong.';
     let region = document.getElementById('ncToasts');
     if (!region) {
       region = document.createElement('div'); region.id = 'ncToasts'; region.className = 'nc-toasts';
