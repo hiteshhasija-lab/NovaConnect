@@ -272,7 +272,12 @@
     });
     // The call ended for everyone (last person left; a 1:1 call was declined, unanswered or hung up).
     const SAY_WHY = new Set(['Call declined', 'No answer']);
-    socket.on('gcall:ended', ({ id, reason }) => { if (current?.id === id) cleanup(current, !current.incoming && SAY_WHY.has(reason) ? reason : null); });
+    socket.on('gcall:ended', ({ id, reason }) => {
+      if (current?.id !== id) return;
+      const say = reason === 'The server is restarting' ? (current.joined ? 'The call ended because the server is restarting.' : null)
+        : !current.incoming && SAY_WHY.has(reason) ? reason : null;
+      cleanup(current, say);
+    });
     socket.on('gcall:state', ({ conversationId, channelId, call }) => {
       const key = channelId ? 'ch:' + Number(channelId) : 'dm:' + Number(conversationId);
       if (call) running.set(key, call); else running.delete(key);

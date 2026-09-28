@@ -210,7 +210,12 @@ initDb()
     // to wait out the full timeout and fall back to SIGKILL.
     const shutdown = async (signal) => {
       logger.info({ signal }, 'Shutting down...');
+      // Armed first: previously this sat after the awaits below, which could wait forever.
+      setTimeout(() => process.exit(1), 8000).unref();
       try {
+        // End running calls cleanly (their chats get "Call ended" posts) and drop the sockets,
+        // which otherwise hold server.close() open.
+        await realtime.shutdownRealtime('The server is restarting');
         await Promise.all(servers.map(s => new Promise(resolve => s.close(resolve))));
         await shutdownTelemetry();
         logger.info('Shutdown complete');
@@ -220,7 +225,6 @@ initDb()
         await shutdownTelemetry();
         process.exit(1);
       }
-      setTimeout(() => process.exit(1), 5000).unref();
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));

@@ -3,6 +3,7 @@ const { createRoom, deleteRoom, closePeerTransports } = require('./sfu');
 const { postToScope, updatePost, formatDuration } = require('./callPosts');
 const { nowStr } = require('./db');
 const { logger } = require('./logger');
+const { redis } = require('./redis');
 
 // Calls through the SFU, in three kinds of place:
 //   - a group chat: starting one rings every member; anyone in the chat can join while it runs;
@@ -79,23 +80,37 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
   // post becomes "Meeting ended · 12m"; a chat gets "Call ended · 5m" or "Missed call".
   // A 1:1 call that never connected says why: declined, not answered, or cancelled by the caller.
   const UNCONNECTED = { 'Call declined': '📞 Call declined', 'No answer': '📞 Missed call' };
-  async function postOutcome(call, reason) {
-    const talked = call.connectedAt ? formatDuration(Date.now() - call.connectedAt) : null;
-    const since = formatDuration(Date.now() - call.startedAt);
-    if (call.scope.type === 'channel') {
-      if (call.postId) await updatePost(io, call.scope, call.postId, `📹 Meeting ended · ${since}`, { call: 'ended', callId: call.id });
-    } else if (call.direct) {
+  // rec is a live call or a record recovered after a crash (same fields). A recovered call's end
+  // time is only known to within the 30s heartbeat, so its length says "about … (interrupted)".
+  async function postOutcome(rec, reason, { endedAt = Date.now(), interrupted = false } = {}) {
+    const len = from => (interrupted ? 'about ' : '') + formatDuration(endedAt - from) + (interrupted ? ' (interrupted)' : '');
+    const talked = rec.connectedAt ? len(rec.connectedAt) : null;
+    const since = len(rec.startedAt);
+    if (rec.scope.type === 'channel') {
+      if (rec.postId) await updatePost(io, rec.scope, rec.postId, `📹 Meeting ended · ${since}`, { call: 'ended', callId: rec.id });
+    } else if (rec.direct) {
       const text = talked ? `📞 Call ended · ${talked}` : (UNCONNECTED[reason] || '📞 Call cancelled');
       const kind = talked ? 'ended' : reason === 'Call declined' ? 'declined' : reason === 'No answer' ? 'missed' : 'cancelled';
-      await postToScope(io, call.scope, call.startedBy, text, { call: kind, callId: call.id });
+      await postToScope(io, rec.scope, rec.startedBy, text, { call: kind, callId: rec.id });
     } else {
-      await postToScope(io, call.scope, call.startedBy, talked ? `📞 Group call ended · ${since}` : '📞 Missed group call', { call: talked ? 'ended' : 'missed', callId: call.id });
+      await postToScope(io, rec.scope, rec.startedBy, talked ? `📞 Group call ended · ${since}` : '📞 Missed group call', { call: talked ? 'ended' : 'missed', callId: rec.id });
     }
   }
 
+  // Running calls are also recorded in Redis (refreshed every 30s), so if the server dies without
+  // a clean shutdown, the next start can still post each call's outcome (startup sweep below).
+  const REDIS_PREFIX = 'nc:gcall:';
+  function persist(call) {
+    const rec = { id: call.id, scope: call.scope, startedBy: call.startedBy, direct: call.direct, startedAt: call.startedAt, connectedAt: call.connectedAt, postId: call.postId, lastSeenAt: Date.now() };
+    redis.set(REDIS_PREFIX + call.id, JSON.stringify(rec), 'EX', 7 * 24 * 3600).catch(() => {});
+  }
+  const heartbeat = setInterval(() => { for (const call of calls.values()) persist(call); }, 30000);
+  heartbeat.unref?.();
+
+  // Resolves once the outcome is posted and the Redis record dropped (awaited on clean shutdown).
   function end(call, reason = null) {
-    if (!calls.delete(call.id)) return;
-    postOutcome(call, reason).catch(() => {});
+    if (!calls.delete(call.id)) return Promise.resolve();
+    const posted = postOutcome(call, reason).then(() => redis.del(REDIS_PREFIX + call.id)).catch(() => {});
     byScope.delete(call.scope.key);
     clearTimeout(call.ringTimer);
     // Anyone still connected (the other person in a 1:1 call) is taken out of the room first.
@@ -108,6 +123,14 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     deleteRoom(call.roomId);
     tellScope(call, 'gcall:ended', { id: call.id, reason });
     broadcastState(call, false);
+    return posted;
+  }
+
+  // Clean shutdown (a release restarts the server): end every call properly — everyone is told,
+  // and each chat/channel gets its normal outcome post with the real length.
+  async function endAll(reason) {
+    const all = [...calls.values()].map(call => end(call, reason));
+    await Promise.race([Promise.all(all), new Promise(resolve => setTimeout(resolve, 3000))]);
   }
 
   function leave(socket, call) {
@@ -176,6 +199,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
           call.postId = post.id;
         } catch { /* the header Join button still announces it */ }
       }
+      persist(call);
       // Stop ringing after a while. A 1:1 call nobody answered ends ("No answer"); a group or
       // channel call stays joinable, unless the caller never actually joined.
       call.ringTimer = setTimeout(() => {
@@ -203,7 +227,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       const member = { userId: user.id, peerId, fullName: user.full_name };
       call.members.set(socket.id, member);
       // Connected = two different people have been in it (a call's length is counted from then).
-      if (!call.connectedAt && distinctUsers(call) >= 2) call.connectedAt = Date.now();
+      if (!call.connectedAt && distinctUsers(call) >= 2) { call.connectedAt = Date.now(); persist(call); }
       if (call.direct && distinctUsers(call) >= 2) { call.connected = true; clearTimeout(call.ringTimer); }
       sfuInstance.roomUserMap.set(socket.id, { roomId: call.roomId, peerId, userId: user.id, fullName: user.full_name, inLobby: false });
       socket.join('sfu:' + call.roomId);
@@ -250,6 +274,19 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
   // or the meeting predates the "Meeting ended" rewrite). Mark them ended; the length isn't known.
   // (Delayed: this module is set up before the database has finished initialising.)
   setTimeout(async () => {
+    // Calls that were running when the server last died without a clean shutdown: post their
+    // outcome now, timed to their last heartbeat.
+    try {
+      const keys = await redis.keys(REDIS_PREFIX + '*');
+      for (const key of keys) {
+        let rec = null; try { rec = JSON.parse(await redis.get(key)); } catch {}
+        if (rec && !calls.has(rec.id)) {
+          await postOutcome(rec, 'Interrupted', { endedAt: rec.lastSeenAt || Date.now(), interrupted: true }).catch(() => {});
+          await redis.del(key);
+        }
+      }
+      if (keys.length) logger.info({ recovered: keys.length }, 'Posted outcomes for calls interrupted by a restart');
+    } catch (e) { logger.warn({ err: e.message }, 'Interrupted-call recovery failed'); }
     try {
       const stale = await db.prepare(`SELECT id, metadata FROM messages WHERE channel_id IS NOT NULL AND deleted = 0
         AND body LIKE '📹 Started a % meeting in this channel.%'`).all();
@@ -272,7 +309,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     return null;
   }
 
-  return { attach, isBusy: inGroupCall, scopeForRoom };
+  return { attach, isBusy: inGroupCall, scopeForRoom, endAll };
 }
 
 module.exports = { createGroupCalls };

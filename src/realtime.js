@@ -7,6 +7,7 @@ const { createGroupCalls } = require('./group-calls');
 const { createSfuSignaling } = require('./sfu-signaling');
 
 let io = null;
+let endAllCalls = async () => {}; // set in attach(): ends running calls cleanly on shutdown
 // userId -> Set of live socket ids. A user counts as "online" while this set is non-empty.
 const onlineSockets = new Map();
 // userId -> pending setTimeout for the debounced "went offline" transition, so a quick
@@ -70,6 +71,7 @@ function attach(server, sessionMiddleware) {
   const sfu = createSfuSignaling(io, db);
   sfu.setIo(io);
   const groupCalls = createGroupCalls(io, db, sfu, { inDirectCall: id => calls.isBusy(id) });
+  endAllCalls = reason => groupCalls.endAll(reason);
   // meet-signaling.js owns all lobby/SFU-transport socket events (sfu:create-transport,
   // sfu:produce, etc.) once a peer has gone through meet:join — it needs sfu-signaling's
   // roomUserMap instance (passed in here) but NOT its .attach(), since attaching both would
@@ -175,4 +177,11 @@ async function resyncUserRooms(userId) {
   }
 }
 
-module.exports = { attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms };
+// Clean shutdown: end running calls (posts their outcomes), then drop every socket so the HTTP
+// servers can actually close (open websockets otherwise keep server.close() waiting forever).
+async function shutdownRealtime(reason) {
+  try { await endAllCalls(reason); } catch { /* best effort */ }
+  if (io) io.disconnectSockets(true);
+}
+
+module.exports = { attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };
