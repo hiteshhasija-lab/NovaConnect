@@ -388,12 +388,11 @@ async function recordStream(recorder, producer) {
   const sdpPath = path.join(os.tmpdir(), `${recorder.recordingId}-${index}.sdp`);
   await fsp.writeFile(sdpPath, sdp);
   const file = path.join(recorder.dir, `${index}-${consumer.kind}.mkv`);
-  // Every packet is stamped with the wall clock when it arrives, and those absolute times are kept
-  // in the file (-copyts): composing then places each file by its real times, so a stream whose
-  // first usable frame arrives late shows a short blank instead of shifting (and desyncing) the rest.
+  // (Wall-clock packet timestamps were tried in 1.0.114 and broke ffmpeg's RTP reordering; the
+  // file's real start is taken from mediasoup's keyframe trace instead — see below.)
   const ffmpeg = spawn('ffmpeg', ['-y', '-loglevel', 'warning', '-protocol_whitelist', 'file,udp,rtp',
-    '-analyzeduration', '2000000', '-probesize', '2000000', '-use_wallclock_as_timestamps', '1',
-    '-i', sdpPath, '-map', '0', '-c', 'copy', '-copyts', '-f', 'matroska', file], { stdio: ['ignore', 'ignore', 'pipe'] });
+    '-analyzeduration', '2000000', '-probesize', '2000000', '-fflags', '+genpts',
+    '-i', sdpPath, '-map', '0', '-c', 'copy', '-f', 'matroska', file], { stdio: ['ignore', 'ignore', 'pipe'] });
   ffmpeg.stderr.on('data', d => logger.debug({ recordingId: recorder.recordingId, index, stderr: d.toString() }, 'ffmpeg (stream)'));
   ffmpeg.on('error', err => logger.error({ recordingId: recorder.recordingId, err }, 'ffmpeg spawn error'));
 
@@ -411,6 +410,13 @@ async function recordStream(recorder, producer) {
     if (stream.kind === 'video') consumer.requestKeyFrame().catch(() => {});
   });
   consumer.on('producerclose', () => finishStream(stream).catch(() => {}));
+  // mediasoup sends a video receiver nothing until the sender produces a keyframe, so a video file
+  // really starts at its first keyframe — which for a camera that was already running can be
+  // seconds after recording started. Note when it goes out, to place the file there.
+  if (consumer.kind === 'video') {
+    await consumer.enableTraceEvent(['keyframe']).catch(() => {});
+    consumer.on('trace', trace => { if (trace.type === 'keyframe' && !stream.firstMediaAt) stream.firstMediaAt = Date.now(); });
+  }
 
   // Give ffmpeg a moment to bind its socket, then start the RTP and ask for a keyframe (ffmpeg
   // can't size the video without one; asked twice in case the first is lost).
@@ -418,24 +424,12 @@ async function recordStream(recorder, producer) {
   if (stream.done) return;
   await consumer.resume();
   stream.startedAt = Date.now();
+  if (stream.kind === 'audio') stream.firstMediaAt = stream.startedAt; // audio flows at once
   if (stream.kind === 'video') {
     // A stream that was already running needs a keyframe before anything can be recorded; senders
     // may ignore a request (rate-limited), so ask a few times in the first seconds.
     for (const ms of [0, 500, 1200, 2500, 4000]) setTimeout(() => { if (!stream.done) consumer.requestKeyFrame().catch(() => {}); }, ms);
   }
-}
-
-// A recorded file's first packet time (ms since epoch), from the wall-clock timestamps it was
-// written with; null if unreadable.
-function fileStartMs(file) {
-  return new Promise(resolve => {
-    if (!fs.existsSync(file)) return resolve(null);
-    const p = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=start_time', '-of', 'default=nw=1:nk=1', file]);
-    let out = '';
-    p.stdout.on('data', d => { out += d; });
-    p.on('error', () => resolve(null));
-    p.on('close', () => { const sec = parseFloat(out); resolve(Number.isFinite(sec) ? Math.round(sec * 1000) : null); });
-  });
 }
 
 async function finishStream(stream) {
@@ -481,9 +475,9 @@ function recordNewProducer(roomId, producer) {
 function composeArgs(recorder, stopTime, output) {
   const total = Math.max(1, (stopTime - recorder.startTime) / 1000);
   const usable = recorder.streams.filter(s => s.startedAt && fs.existsSync(s.file) && fs.statSync(s.file).size > 0);
-  // Where each file really starts: its first packet's wall-clock time (see recordStream), else the
-  // time its stream was resumed.
-  const firstAt = s => (s.fileStartMs && s.fileStartMs > recorder.startTime - 60000 ? s.fileStartMs : s.startedAt);
+  // Where each file really starts: when its first media went out (a video's first keyframe; see
+  // recordStream), else when its stream was resumed.
+  const firstAt = s => s.firstMediaAt || s.startedAt;
   const videos = usable.filter(s => s.kind === 'video');
   const audios = usable.filter(s => s.kind === 'audio');
   const args = ['-y', '-loglevel', 'error'];
@@ -543,7 +537,6 @@ async function finalizeRecording(recorder) {
   let result = { recordingId, duration, failed: true };
   try {
     await Promise.all(recorder.streams.map(finishStream));
-    await Promise.all(recorder.streams.map(async s => { s.fileStartMs = await fileStartMs(s.file); }));
     const output = path.join(recorder.dir, `${recordingId}.mp4`);
     const { args, streamCount } = composeArgs(recorder, recorder.stopTime, output);
     if (!streamCount) throw new Error('No stream produced any media');
