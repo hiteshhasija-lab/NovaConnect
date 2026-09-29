@@ -405,7 +405,9 @@ bgSelect.onchange=()=>{
   if(joined&&cam)swapCamera(cam).catch(e=>{status.textContent='Could not change the background: '+e.message});
   else if(preview){stopPreview();showPreview()}
 };
-exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();showPreview();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
+// Like Teams, leaving doesn't turn your camera back on: the preview comes back only when you rejoin
+// or switch the camera on again.
+exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();stopPreview();if(!wasWaiting)enter.textContent='Rejoin';status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
 window.addEventListener('pagehide',leaveMeeting);
 
 // Recording (controls are shown to the meeting owner only; everyone sees the REC banner).
