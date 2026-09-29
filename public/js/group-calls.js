@@ -103,17 +103,28 @@
       fitShareLayout();
     }
 
-    const allTiles = () => [...grid.querySelectorAll('.nc-video-tile'), ...$('callSelfTile').querySelectorAll('.nc-video-tile')];
+    const allTiles = () => [...grid.querySelectorAll('.nc-video-tile'), ...$('callSelfTile').querySelectorAll('.nc-video-tile'), ...$('callFocusStage').querySelectorAll('.nc-video-tile')];
+    let focusPeer = null; // pinned or spotlighted person (call-extras.js onFocus), shown large
     const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
     // Teams-style gallery: everyone else shares the stage; your own tile floats small in the corner
-    // (and fills the stage while you're alone).
+    // (and fills the stage while you're alone). A pinned or spotlighted person fills the stage
+    // instead and everyone else (you included) sits in the side strip, as with a shared screen —
+    // which wins while there is one.
+    const moveTile = (t, box) => { if (t.parentNode === box) return; box.appendChild(t); const v = t.querySelector('video'); if (v?.paused) v.play().catch(() => {}); };
     function arrangeTiles() {
+      const presenting = panel.classList.contains('nc-call-presenting');
+      const stage = $('callFocusStage');
+      const focusId = focusPeer && current ? (focusPeer === current.peerId ? 'local' : focusPeer) : null;
+      const focused = !presenting && focusId ? allTiles().find(t => t.dataset.peerId === focusId) : null;
+      [...stage.querySelectorAll('.nc-video-tile')].forEach(t => { if (t !== focused) moveTile(t, grid); });
+      if (focused) moveTile(focused, stage);
+      stage.hidden = !focused;
+      panel.classList.toggle('nc-call-focus', !!focused);
       const mine = allTiles().find(t => t.dataset.peerId === 'local');
-      if (!mine) return;
-      const others = [...grid.querySelectorAll('.nc-video-tile')].some(t => t.dataset.peerId !== 'local');
-      // While someone presents, everyone (you included) sits in the side strip.
-      const box = others && !panel.classList.contains('nc-call-presenting') ? $('callSelfTile') : grid;
-      if (mine.parentNode !== box) { box.appendChild(mine); const v = mine.querySelector('video'); if (v.paused) v.play().catch(() => {}); }
+      if (mine && mine !== focused) {
+        const others = allTiles().some(t => t.dataset.peerId !== 'local');
+        moveTile(mine, others && !presenting && !focused ? $('callSelfTile') : grid);
+      }
       fitShareLayout();
     }
     // While a screen is shared, as in Teams, only people whose camera is on get a tile: no black
@@ -157,6 +168,8 @@
         label.prepend(mic);
         const hand = document.createElement('span'); hand.className = 'nc-tile-hand'; hand.setAttribute('role', 'img'); hand.setAttribute('aria-label', 'Hand raised'); hand.textContent = '✋';
         overlay.append(label); t.append(v, avatar, hand, overlay); grid.append(t);
+        extras.decorate(t, id);
+        if (!local) current?.session?.watchSize(id, t); // simulcast: receive the size that fits
       }
       const v = t.querySelector('video');
       v.srcObject = media;
@@ -183,7 +196,8 @@
       current = null;
       changed(c.key);
       allTiles().forEach(t => t.remove());
-      panel.classList.remove('nc-call-video', 'nc-call-presenting', 'nc-call-compact');
+      panel.classList.remove('nc-call-video', 'nc-call-presenting', 'nc-call-compact', 'nc-call-focus');
+      $('callFocusStage').hidden = true; focusPeer = null;
       extras.stop();
       clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
       $('callShareStage').hidden = true; $('callShareVideo').srcObject = null;
@@ -263,6 +277,7 @@
         chatForm: $('callChatForm'), chatInput: $('callChatInput'), notices: $('callNotices'),
       },
       extraPanels: [[$('callSettings'), $('callSettingsPanel')]],
+      onFocus: peerId => { focusPeer = peerId; if (current) arrangeTiles(); },
     });
 
     // Recording (anyone in the call, as in Teams). Everyone sees the banner; when it stops, the video
@@ -322,7 +337,8 @@
       const short = kind === 'audioinput' ? 'audio' : 'video';
       const old = short === 'audio' ? c.stream.getAudioTracks()[0] : c.stream.getVideoTracks()[0];
       if (!old) return; // e.g. choosing a camera during an audio call — used next time
-      const wanted = id ? { deviceId: { exact: id } } : true;
+      const size = short === 'video' ? NovaDevices.video() : {}; // keep 720p for simulcast (devices.js)
+      const wanted = id ? { ...size, deviceId: { exact: id } } : (short === 'video' ? size : true);
       const fresh = (await navigator.mediaDevices.getUserMedia({ [short]: wanted }))[short === 'audio' ? 'getAudioTracks' : 'getVideoTracks']()[0];
       if (current !== c) { fresh.stop(); return; }
       fresh.enabled = old.enabled; // stay muted / camera-off if you were

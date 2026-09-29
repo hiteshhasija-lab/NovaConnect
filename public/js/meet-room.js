@@ -10,6 +10,9 @@ const shareBtn=document.getElementById('meetShare'),shareStage=document.getEleme
 let display=null;              // our own screen while we share
 let ownPeerId=null,ownUserId=null; // our ids in the meeting room (to tell our own tile / messages apart)
 const screens=new Map();       // peerId -> { name, stream } for screens others share
+const focusStage=document.getElementById('meetFocusStage');
+let focusPeer=null;            // pinned or spotlighted person (call-extras.js onFocus), shown large
+const allTiles=()=>[...videos.children,...focusStage.children];
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
@@ -17,7 +20,7 @@ function request(event,data){return new Promise((resolve,reject)=>socket.timeout
 function tile(id,name,media,muted=false){
   let item=document.getElementById('peer-'+id);
   if(!item){
-    item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;
+    item=document.createElement('section');item.className='meet-video';item.id='peer-'+id;item.dataset.peerId=id;
     const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=muted;
     // Initials until a picture arrives, and whenever their camera is off (meet.css).
     const av=document.createElement('div');av.className='meet-avatar';const ini=document.createElement('span');
@@ -27,21 +30,35 @@ function tile(id,name,media,muted=false){
     p.append(micIcon,document.createTextNode(name));
     const hand=document.createElement('span');hand.className='nc-tile-hand';hand.setAttribute('role','img');hand.setAttribute('aria-label','Hand raised');hand.textContent='✋';
     item.append(v,av,hand,p);videos.append(item);
+    extras.decorate(item,id);
+    if(!muted)session?.watchSize(id,item); // simulcast: receive the size that fits
   }
   const v=item.querySelector('video');v.srcObject=media;
   if(!muted)NovaDevices.applySpeaker(v);
   v.play().catch(()=>{status.textContent='Click the participant video to play their audio.';item.onclick=()=>v.play()});
-  updateSelfView();
+  arrangeFocus();
 }
 // Camera off → initials; microphone muted → muted icon (their stream is paused at the server).
 function setTileState(id,kind,paused){document.getElementById('peer-'+id)?.classList.toggle(kind==='audio'?'mic-off':'camera-off',paused)}
 // Teams-style: once anyone else is here, your own tile floats small in the corner (meet.css).
-function updateSelfView(){videos.classList.toggle('has-remote',[...videos.children].some(el=>el.id!=='peer-local'))}
+function updateSelfView(){videos.classList.toggle('has-remote',allTiles().some(el=>el.id!=='peer-local'))}
+// Pin / spotlight: that person's tile moves to the stage above, the rest shrink to a strip
+// (meet.css .focus), like a shared screen — which wins while there is one.
+function arrangeFocus(){
+  const id=focusPeer?(focusPeer===ownPeerId?'local':focusPeer):null;
+  const focused=shareStage.hidden&&id?document.getElementById('peer-'+id):null;
+  const move=(t,box)=>{if(t.parentNode===box)return;box.append(t);const v=t.querySelector('video');if(v?.paused)v.play().catch(()=>{})};
+  [...focusStage.children].forEach(t=>{if(t!==focused)move(t,videos)});
+  if(focused)move(focused,focusStage);
+  focusStage.hidden=!focused;
+  document.querySelector('.meet-room').classList.toggle('focus',!!focused);
+  updateSelfView();
+}
 
 function removePeer(peerId){
   session?.removePeer(peerId);
   document.getElementById('peer-'+peerId)?.remove();
-  updateSelfView();
+  arrangeFocus();
 }
 
 // Teams-style presentation: the latest screen someone else shares fills the stage and the
@@ -52,6 +69,7 @@ function renderShare(){
   document.querySelector('.meet-room').classList.toggle('presenting',!!latest);
   if(shareVideo.srcObject!==(latest?.stream||null)){shareVideo.srcObject=latest?.stream||null;if(latest)shareVideo.play().catch(()=>{})}
   shareLabel.textContent=latest?latest.name+' is sharing their screen':'';
+  arrangeFocus();
 }
 function setShareButton(){
   shareBtn.hidden=!joined||!navigator.mediaDevices?.getDisplayMedia;
@@ -86,12 +104,13 @@ const devicePicker=NovaDevices.bind(
   {audioinput:document.getElementById('meetMicSelect'),videoinput:document.getElementById('meetCameraSelect'),audiooutput:document.getElementById('meetSpeakerSelect')},
   (kind,id)=>switchDevice(kind,id).catch(e=>{status.textContent='Could not switch device: '+e.message}));
 async function switchDevice(kind,id){
-  if(kind==='audiooutput'){[...videos.children].forEach(t=>{if(t.id!=='peer-local')NovaDevices.applySpeaker(t.querySelector('video'))});return}
+  if(kind==='audiooutput'){allTiles().forEach(t=>{if(t.id!=='peer-local')NovaDevices.applySpeaker(t.querySelector('video'))});return}
   if(!joined||!stream)return; // used when you join
   const short=kind==='audioinput'?'audio':'video';
   const old=short==='audio'?stream.getAudioTracks()[0]:stream.getVideoTracks()[0];
   if(!old)return;
-  const fresh=(await navigator.mediaDevices.getUserMedia({[short]:id?{deviceId:{exact:id}}:true}))[short==='audio'?'getAudioTracks':'getVideoTracks']()[0];
+  const size=short==='video'?NovaDevices.video():{}; // keep 720p for simulcast (devices.js)
+  const fresh=(await navigator.mediaDevices.getUserMedia({[short]:id?{...size,deviceId:{exact:id}}:(short==='video'?size:true)}))[short==='audio'?'getAudioTracks':'getVideoTracks']()[0];
   if(!joined){fresh.stop();return}
   fresh.enabled=old.enabled;
   await session?.replaceTrack(short,fresh);
@@ -104,10 +123,11 @@ async function switchDevice(kind,id){
 const $=id=>document.getElementById(id);
 const extras=createCallExtras({
   socket,request,notify:e=>{status.textContent=e.message},
-  tiles:()=>[...videos.children],
+  tiles:allTiles,
   tileFor:peerId=>document.getElementById('peer-'+(peerId===ownPeerId?'local':peerId)),
   reactionHost:()=>shareStage.hidden?null:shareStage,
   fallbackHost:videos,
+  onFocus:peerId=>{focusPeer=peerId;arrangeFocus()},
   els:{
     participantsBtn:$('meetParticipantsBtn'),participantsBadge:$('meetParticipantsBadge'),participantsPanel:$('meetParticipantsPanel'),
     participantCount:$('meetParticipantCount'),participantList:$('meetParticipantList'),handBtn:$('meetHandBtn'),
@@ -124,7 +144,7 @@ function cleanup(){
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
-  videos.replaceChildren();updateSelfView();lobby.hidden=true;
+  videos.replaceChildren();focusStage.replaceChildren();focusStage.hidden=true;focusPeer=null;document.querySelector('.meet-room').classList.remove('focus');updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
   hideRecordingIndicator();currentRecordingId=null;
   enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;

@@ -33,6 +33,27 @@
     }
     const cameraStream = p => new MediaStream([...p.consumers.values()].filter(x => x.source !== 'screen').map(x => x.consumer.track));
 
+    // Simulcast: every camera is sent in three sizes (publish below). For each person we ask the
+    // server for the size that fits their tile as shown (watchSize), so a strip of small tiles
+    // doesn't pull everyone's full-size video. A hidden tile gets the smallest.
+    const LAYER_WIDTHS = [400, 800]; // device pixels a tile must exceed for the middle / largest size
+    const layers = new Map();        // peerId -> wanted spatial layer (0-2)
+    const watched = new Map();       // tile element -> peerId
+    const sizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => entries.forEach(e => fitLayer(e.target))) : null;
+    const cameraVideo = p => [...p.consumers.values()].find(x => x.source === 'camera' && x.consumer.kind === 'video')?.consumer;
+    function fitLayer(el) {
+      const peerId = watched.get(el);
+      if (!peerId) return;
+      const px = el.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+      setLayer(peerId, px > LAYER_WIDTHS[1] ? 2 : px > LAYER_WIDTHS[0] ? 1 : 0);
+    }
+    function setLayer(peerId, layer, force = false) {
+      if (!force && layers.get(peerId) === layer) return;
+      layers.set(peerId, layer);
+      const consumer = peers.get(peerId) && cameraVideo(peers.get(peerId));
+      if (consumer && !closed) request('sfu:set-layers', { roomId, consumerId: consumer.id, spatialLayer: layer }).catch(() => {});
+    }
+
     async function consume({ producerId, peerId, fullName, source }) {
       if (closed || !recvTransport || consumed.has(producerId)) return;
       consumed.add(producerId);
@@ -50,6 +71,7 @@
         }
         // Consumers start paused on the server; resuming also asks the sender for a keyframe.
         await request('sfu:resume-consumer', { roomId, consumerId: consumer.id });
+        if (source !== 'screen' && r.kind === 'video' && layers.has(peerId)) setLayer(peerId, layers.get(peerId), true);
       } catch (e) {
         consumed.delete(producerId);
         if (!closed) onError?.(e);
@@ -71,12 +93,22 @@
         for (const p of [...producers, ...queued]) await consume(p);
         return producers.length;
       },
-      // Sends every track of our local camera/microphone stream to the room.
+      // Sends every track of our local camera/microphone stream to the room. The camera goes out in
+      // three sizes (simulcast: a quarter, half and full size) so each viewer can take the one that
+      // fits; the browser drops the larger ones itself when our upload is short.
       async publish(stream) {
         if (closed || !stream) return;
         const transport = await ensureSendTransport();
         for (const track of stream.getTracks()) {
-          ownProducers[track.kind] = await transport.produce({ track, appData: { source: 'camera' } });
+          const simulcast = track.kind === 'video' ? {
+            encodings: [
+              { scaleResolutionDownBy: 4, maxBitrate: 150000 },
+              { scaleResolutionDownBy: 2, maxBitrate: 500000 },
+              { scaleResolutionDownBy: 1, maxBitrate: 1500000 },
+            ],
+            codecOptions: { videoGoogleStartBitrate: 1000 },
+          } : {};
+          ownProducers[track.kind] = await transport.produce({ track, ...simulcast, appData: { source: 'camera' } });
           if (!track.enabled) await this.setPaused(track.kind, true); // joined with it off
         }
       },
@@ -144,13 +176,22 @@
         if (!p) return;
         let hadScreen = false;
         for (const x of p.consumers.values()) { consumed.delete(x.consumer.producerId); x.consumer.close(); if (x.source === 'screen') hadScreen = true; }
-        peers.delete(peerId);
+        peers.delete(peerId); layers.delete(peerId);
+        for (const [el, id] of watched) if (id === peerId) this.unwatchSize(el);
         if (hadScreen) onPeerScreen?.(peerId, p.name, null);
       },
+      // Show-size tracking for a person's tile (simulcast size choice, above). Call again when the
+      // tile element is replaced; unwatch when it's removed.
+      watchSize(peerId, el) {
+        if (!sizeObserver || !el || peerId === 'local') return;
+        watched.set(el, peerId); sizeObserver.observe(el); fitLayer(el);
+      },
+      unwatchSize(el) { if (el && watched.delete(el)) sizeObserver.unobserve(el); },
       hasPeer: peerId => peers.has(peerId),
       get peerCount() { return peers.size; },
       close() {
         closed = true;
+        sizeObserver?.disconnect(); watched.clear();
         screenProducer?.close(); screenProducer = null;
         for (const id of [...peers.keys()]) this.removePeer(id);
         sendTransport?.close(); recvTransport?.close();

@@ -7,7 +7,7 @@
 function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } = {}) {
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
-    produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, setActiveSpeakerHandler, closePeerTransports,
+    produce, consume, resumeConsumer, setConsumerLayers, listProducers, closeProducer, setProducerPaused, setActiveSpeakerHandler, closePeerTransports,
     startRecording, stopRecording, getRecordingStatus, recordingInRoom, setRecordingFinishedHandler,
   } = require('./sfu');
   const { nowStr } = require('./db');
@@ -299,14 +299,33 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
     });
 
     // In-call extras (any call room): participant list, raise hand, reactions, in-call chat.
-    handle('sfu:participants', async ({ roomId }) => {
+    handle('sfu:participants', async ({ roomId }, u) => {
       admitted(roomId);
       const participants = [];
       for (const m of roomUserMap.values()) {
         if (m.roomId === roomId && !m.inLobby) participants.push({ peerId: m.peerId, userId: m.userId, fullName: m.fullName, hand: !!m.hand, micOff: !!m.micOff, camOff: !!m.camOff });
       }
-      // Who is talking right now: speaker changes are only announced as they happen.
-      return { participants, speaker: getRoom(roomId)?.speaker || null };
+      // Who is talking right now: speaker changes are only announced as they happen. The spotlight
+      // is dropped once that person has left.
+      const room = getRoom(roomId);
+      const spotlight = participants.some(p => p.peerId === room?.spotlight) ? room.spotlight : null;
+      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u) };
+    });
+    // Spotlight: one person's video shown large for everyone in the call (Teams "Spotlight for
+    // everyone"). Meetings: the owner. Calls: anyone in the call, as with recording. null clears it.
+    async function maySpotlight(roomId, u) {
+      return !roomId.startsWith('meet:') || (await meetingOwnerId(roomId.slice(5))) === u.id;
+    }
+    handle('sfu:spotlight', async ({ roomId, peerId }, u) => {
+      admitted(roomId);
+      if (!await maySpotlight(roomId, u)) throw Error('Only the meeting owner can spotlight someone.');
+      const room = getRoom(roomId);
+      if (!room) throw Error('This call has ended.');
+      const target = peerId == null ? null : [...roomUserMap.values()].find(m => m.roomId === roomId && !m.inLobby && m.peerId === peerId);
+      if (peerId != null && !target) throw Error('That person has left the call.');
+      room.spotlight = target ? target.peerId : null;
+      io.to(`sfu:${roomId}`).emit('sfu:spotlight', { roomId, peerId: room.spotlight, fullName: target?.fullName || null, byName: u.full_name });
+      return {};
     });
     handle('sfu:hand', async ({ roomId, raised }) => {
       const m = admitted(roomId);
@@ -376,6 +395,12 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       admitted(roomId);
       await resumeConsumer(roomId, `${u.id}-${socket.id}`, consumerId);
       return { success: true };
+    });
+    // Which size of someone's camera to receive (simulcast), from how large their tile is shown.
+    handle('sfu:set-layers', async ({ roomId, consumerId, spatialLayer }) => {
+      const m = admitted(roomId);
+      await setConsumerLayers(roomId, m.peerId, consumerId, spatialLayer);
+      return {};
     });
 
     handle('sfu:leave', async ({ roomId }, u) => {

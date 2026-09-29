@@ -14,7 +14,9 @@
     chosen: read,
     // getUserMedia constraint for one kind: the remembered device if any (falling back to default).
     audio() { const id = read('audioinput'); return id ? { deviceId: { ideal: id } } : true; },
-    video() { const id = read('videoinput'); return id ? { deviceId: { ideal: id } } : true; },
+    // 720p when the camera can: the browser's default (640x480) is too small for the three simulcast
+    // sizes (sfu-client.js) — the smallest would be 160 wide.
+    video() { const id = read('videoinput'); return { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, ...(id ? { deviceId: { ideal: id } } : {}) }; },
     // Plays remote sound on the chosen speaker (where the browser supports choosing one).
     applySpeaker(el) {
       const id = read('audiooutput');

@@ -8,13 +8,19 @@
   // Each page passes its own elements (els), how to find a participant's tile (tileFor, tiles)
   // and, optionally, where reactions should float while a screen is being presented.
   // extraPanels: more [button, panel] pairs (e.g. device settings) that open/close with the others.
-  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [] }) {
+  //
+  // Pin and spotlight (Teams "Pin for me" / "Spotlight for everyone"): a pin is yours alone; a
+  // spotlight comes from the server (sfu:spotlight) and is the same for everyone. Your pin wins over
+  // the spotlight for you. onFocus(peerId | null) tells the page whose video to show large; the page
+  // calls decorate(tile, peerId) for each tile it creates, which adds the tile's pin button.
+  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [], onFocus = () => {} }) {
     const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
     const panels = [[els.participantsBtn, els.participantsPanel], [els.reactionsBtn, els.reactionsPanel], [els.chatBtn, els.chatPanel], ...extraPanels];
     const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn, ...extraPanels.map(([btn]) => btn)];
     let ctx = null;                // { roomId, peerId, userId, hand } while in a call
     const seen = new Set();        // chat messages already shown (history and live can overlap)
     let unreadChat = 0, refreshTimer = null;
+    let pinned = null, spotlight = null, canSpotlight = false, lastFocus;
     const initials = name => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
     const ours = roomId => ctx && roomId === ctx.roomId;
 
@@ -35,15 +41,38 @@
       while (els.notices.children.length > 3) els.notices.firstElementChild.remove();
       setTimeout(() => el.remove(), 4500);
     }
+    function applyFocus() {
+      tiles().forEach(t => {
+        const id = t.dataset.peerId;
+        t.classList.toggle('nc-pinned', id === pinned);
+        t.classList.toggle('nc-spotlit', !!spotlight && (id === spotlight || (id === 'local' && spotlight === ctx?.peerId)));
+        const pin = t.querySelector('.nc-tile-pin');
+        if (pin) { const on = id === pinned; pin.setAttribute('aria-pressed', String(on)); pin.title = on ? 'Unpin' : 'Pin for me'; pin.setAttribute('aria-label', pin.title); }
+      });
+      const focus = ctx ? (pinned || spotlight) : null;
+      if (focus !== lastFocus) { lastFocus = focus; onFocus(focus); }
+    }
+    function togglePin(peerId) {
+      if (!ctx || peerId === ctx.peerId) return;
+      pinned = pinned === peerId ? null : peerId;
+      applyFocus(); refresh();
+    }
+    function setSpotlight(peerId) {
+      if (!ctx) return;
+      request('sfu:spotlight', { roomId: ctx.roomId, peerId }).catch(e => notify(e));
+    }
     // Participant list, refreshed (debounced) whenever someone joins/leaves or changes state.
     function refresh() {
       clearTimeout(refreshTimer);
       const mine = ctx;
       refreshTimer = setTimeout(async () => {
         if (!mine || ctx !== mine) return;
-        let list, speaker;
-        try { ({ participants: list, speaker } = await request('sfu:participants', { roomId: mine.roomId })); } catch { return; }
+        let list, speaker, spot, may;
+        try { ({ participants: list, speaker, spotlight: spot, canSpotlight: may } = await request('sfu:participants', { roomId: mine.roomId })); } catch { return; }
         if (ctx !== mine) return;
+        spotlight = spot || null; canSpotlight = !!may;
+        if (pinned && !list.some(p => p.peerId === pinned)) pinned = null;
+        applyFocus();
         // Speaker changes are only announced as they happen; this catches someone joining mid-talk.
         if (speaker && !tiles().some(t => t.classList.contains('nc-speaking'))) tileFor(speaker)?.classList.add('nc-speaking');
         badge(els.participantsBadge, list.length);
@@ -59,6 +88,12 @@
           st.append(p.micOff ? icon('bi-mic-mute-fill', 'Muted') : icon('bi-mic-fill', 'Microphone on'));
           st.append(p.camOff ? icon('bi-camera-video-off-fill', 'Camera off') : icon('bi-camera-video-fill', 'Camera on'));
           info.append(name, st); row.append(av, info);
+          // Pin (for you) and spotlight (for everyone, if you may): a small action per person.
+          const act = document.createElement('div'); act.className = 'nc-participant-actions';
+          const action = (label, pressed, run) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'nc-participant-action'; b.textContent = label; b.setAttribute('aria-pressed', String(pressed)); b.setAttribute('aria-label', label + ': ' + p.fullName); b.onclick = run; return b; };
+          if (p.peerId !== mine.peerId) act.append(action(p.peerId === pinned ? 'Unpin' : 'Pin', p.peerId === pinned, () => togglePin(p.peerId)));
+          if (canSpotlight) act.append(action(p.peerId === spotlight ? 'Stop spotlight' : 'Spotlight', p.peerId === spotlight, () => setSpotlight(p.peerId === spotlight ? null : p.peerId)));
+          if (act.childElementCount) row.append(act);
           return row;
         }));
       }, 250);
@@ -128,12 +163,27 @@
       tiles().forEach(t => t.classList.remove('nc-speaking'));
       if (peerId) tileFor(peerId)?.classList.add('nc-speaking');
     });
+    socket.on('sfu:spotlight', ({ roomId, peerId, fullName, byName }) => {
+      if (!ours(roomId)) return;
+      const was = spotlight; spotlight = peerId || null;
+      if (spotlight && spotlight !== was) notice(peerId === ctx.peerId ? byName + ' spotlighted you' : byName + ' spotlighted ' + fullName);
+      else if (!spotlight && was) notice('Spotlight ended');
+      applyFocus(); refresh();
+    });
+    // Someone left: drop your pin on them (the spotlight comes back cleared with the next refresh).
+    socket.on('sfu:peer-left', ({ peerId }) => {
+      if (!ctx) return;
+      if (pinned === peerId) pinned = null;
+      if (spotlight === peerId) spotlight = null;
+      applyFocus();
+    });
     for (const event of ['sfu:peer-joined', 'sfu:peer-left', 'sfu:producer-paused']) socket.on(event, () => { if (ctx) refresh(); });
 
     return {
       // Call once you are in the room (you know your own peerId there).
       start({ roomId, peerId, userId = null }) {
         const mine = ctx = { roomId, peerId, userId, hand: false };
+        pinned = spotlight = null; canSpotlight = false; lastFocus = undefined; applyFocus();
         buttons.forEach(b => { b.hidden = false; });
         setHand(false);
         refresh();
@@ -148,6 +198,7 @@
       },
       stop() {
         ctx = null; clearTimeout(refreshTimer); seen.clear();
+        pinned = spotlight = null; applyFocus();
         for (const [btn, panel] of panels) { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
         buttons.forEach(b => { b.hidden = true; });
         els.chatMessages.replaceChildren(); els.participantList.replaceChildren(); els.notices.replaceChildren();
@@ -156,6 +207,18 @@
       },
       refresh,
       notice,
+      // A new tile: give it the pin button (not your own tile) and its pin/spotlight marks.
+      decorate(tile, peerId) {
+        if (!tile || tile.querySelector('.nc-tile-pin') || peerId === 'local' || (ctx && peerId === ctx.peerId)) { applyFocus(); return; }
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'nc-tile-pin';
+        b.innerHTML = '<i class="bi bi-pin-angle-fill" aria-hidden="true"></i>';
+        b.addEventListener('click', e => { e.stopPropagation(); togglePin(peerId); });
+        b.addEventListener('dblclick', e => e.stopPropagation());
+        tile.appendChild(b);
+        applyFocus();
+      },
+      // A tile went away or was replaced: re-check what's shown large.
+      retile: applyFocus,
     };
   };
 })();

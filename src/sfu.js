@@ -254,7 +254,7 @@ async function consume(room, peerId, transportId, producerId, rtpCapabilities, a
 
   peer.consumers.set(consumer.id, consumer);
 
-  logger.info({ room, peerId, consumerId: consumer.id, producerId }, 'Consumer created');
+  logger.info({ room, peerId, consumerId: consumer.id, producerId, type: consumer.type }, 'Consumer created');
   return {
     id: consumer.id,
     producerId,
@@ -333,6 +333,16 @@ async function resumeConsumer(roomId, peerId, consumerId) {
   if (!consumer) throw Error('Consumer not found');
 
   await consumer.resume();
+}
+
+// Simulcast: a camera arrives in three sizes (sfu-client.js publish). Each viewer asks for the size
+// that fits where they show it (0 = smallest); mediasoup still goes lower on a short connection.
+async function setConsumerLayers(roomId, peerId, consumerId, spatialLayer) {
+  const consumer = getRoom(roomId)?.peers.get(peerId)?.consumers.get(consumerId);
+  if (!consumer || consumer.closed || consumer.type !== 'simulcast') return;
+  const layer = Math.max(0, Math.min(2, Number(spatialLayer) || 0));
+  await consumer.setPreferredLayers({ spatialLayer: layer, temporalLayer: 2 });
+  logger.debug({ roomId, peerId, consumerId, spatialLayer: layer }, 'Simulcast layer chosen');
 }
 
 // ---------------- Recording ----------------
@@ -608,6 +618,7 @@ module.exports = {
   produce,
   consume,
   resumeConsumer,
+  setConsumerLayers,
   startRecording,
   stopRecording,
   getRecordingStatus,
