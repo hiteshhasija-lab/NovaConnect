@@ -447,12 +447,20 @@ async function finishStream(stream) {
   stream.done = true;
   stream.endedAt = Date.now();
   if (stream.pausedSince) { stream.pauses.push([stream.pausedSince, stream.endedAt]); stream.pausedSince = null; }
+  // Stop ffmpeg while the stream still flows, then close it. ffmpeg finishes the file on SIGINT
+  // (writing out what it has buffered — for a short recording that can be all of its sound), but a
+  // first SIGINT is only noticed between packets: with nothing arriving (stream closed, camera off,
+  // muted) it would sit until its 10 s network timeout and the file be composed unfinished. A second
+  // SIGINT interrupts the waiting read; SIGKILL is the last resort.
+  const ff = stream.ffmpeg;
+  if (ff && ff.exitCode === null && ff.signalCode === null) {
+    const exited = new Promise(resolve => ff.once('close', resolve));
+    const within = ms => Promise.race([exited.then(() => true), wait(ms).then(() => false)]);
+    ff.kill('SIGINT');
+    if (!await within(1500)) { ff.kill('SIGINT'); if (!await within(5000)) { ff.kill('SIGKILL'); await within(2000); } }
+  }
   try { stream.consumer.close(); } catch { /* already closed */ }
   try { stream.transport.close(); } catch { /* already closed */ }
-  if (stream.ffmpeg && stream.ffmpeg.exitCode === null) {
-    stream.ffmpeg.kill('SIGINT'); // ffmpeg's documented way to finalize the file
-    await new Promise(resolve => { stream.ffmpeg.once('close', resolve); setTimeout(resolve, 6000); });
-  }
   await fsp.unlink(stream.sdpPath).catch(() => {});
 }
 
