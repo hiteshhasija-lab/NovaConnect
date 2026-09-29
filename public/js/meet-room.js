@@ -22,6 +22,10 @@ const PREFS={mic:'nc.meet.mic',camera:'nc.meet.camera'};
 const prefOn=k=>{try{return localStorage.getItem(PREFS[k])==='1'}catch{return false}};
 const setPref=(k,on)=>{try{localStorage.setItem(PREFS[k],on?'1':'0')}catch{}};
 let preview=null;              // camera stream shown before joining
+// Background blur (background-effects.js): the camera is processed on this device before it's shown
+// and sent. cam is the camera itself, camEffect its processing (camEffect.track is what's in stream
+// and sent); previewEffect does the same for the preview before joining.
+let cam=null,camEffect=null,previewEffect=null;
 mic.checked=prefOn('mic');camera.checked=prefOn('camera');
 async function showPreview(){
   if(joined||joining||waiting)return;
@@ -30,10 +34,12 @@ async function showPreview(){
   try{
     const s=await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()});
     if(!camera.checked||joined||joining||waiting){s.getTracks().forEach(t=>t.stop());return}
-    stopPreview();preview=s;previewVideo.srcObject=s;prejoin.classList.add('on');devicePicker.refresh();
+    const effect=await NovaBackground.process(s.getVideoTracks()[0]);
+    if(!camera.checked||joined||joining||waiting){effect.stop();s.getTracks().forEach(t=>t.stop());return}
+    stopPreview();preview=s;previewEffect=effect;previewVideo.srcObject=new MediaStream([effect.track]);prejoin.classList.add('on');devicePicker.refresh();
   }catch(e){camera.checked=false;setPref('camera',false);stopPreview();status.textContent='Your camera is not available: '+e.message}
 }
-function stopPreview(keepTrack=false){if(!keepTrack)preview?.getTracks().forEach(t=>t.stop());preview=null;previewVideo.srcObject=null;prejoin.classList.remove('on')}
+function stopPreview(keepTrack=false){previewEffect?.stop();previewEffect=null;if(!keepTrack)preview?.getTracks().forEach(t=>t.stop());preview=null;previewVideo.srcObject=null;prejoin.classList.remove('on')}
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
@@ -139,6 +145,7 @@ async function switchDevice(kind,id){
   const fresh=(await navigator.mediaDevices.getUserMedia({[short]:id?{...size,deviceId:{exact:id}}:(short==='video'?size:true)}))[short==='audio'?'getAudioTracks':'getVideoTracks']()[0];
   if(!joined){fresh.stop();return}
   fresh.enabled=old.enabled;
+  if(short==='video'){await swapCamera(fresh);status.textContent='Camera switched.';return}
   await session?.replaceTrack(short,fresh);
   stream.removeTrack(old);old.stop();stream.addTrack(fresh);
   if(short==='audio')extras.micChanged(); // captions follow the new microphone
@@ -178,6 +185,7 @@ function cleanup(){
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
+  camEffect?.stop();cam?.stop();cam=camEffect=null;
   videos.replaceChildren();focusStage.replaceChildren();focusStage.hidden=true;focusPeer=null;document.querySelector('.meet-room').classList.remove('focus');updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
   hideRecordingIndicator();currentRecordingId=null;
@@ -263,6 +271,7 @@ enter.onclick=async()=>{
       try{audio=(await navigator.mediaDevices.getUserMedia({audio:NovaDevices.audio()})).getAudioTracks()[0]}catch{if(mic.checked)status.textContent='Your microphone is not available; joining without it.'}
       if(camera.checked&&!video)try{video=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0]}catch{camera.checked=false}
       if(audio)audio.enabled=mic.checked;else mic.checked=false;
+      if(video){cam=video;camEffect=await NovaBackground.process(video);video=camEffect.track} // blur, if chosen
       const tracks=[audio,video].filter(Boolean);
       if(tracks.length)stream=new MediaStream(tracks);
       devicePicker.refresh(); // device names are only readable once access is granted
@@ -285,13 +294,16 @@ camera.onchange=()=>{
   setPref('camera',camera.checked);
   if(!joined){showPreview();return}
   if(camera.checked&&!stream?.getVideoTracks().length){addCamera();return}
-  stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);setTileState('local','video',!camera.checked);session?.setPaused('video',!camera.checked);
+  stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);if(cam)cam.enabled=camera.checked;setTileState('local','video',!camera.checked);session?.setPaused('video',!camera.checked);
 };
 // Joined with the camera off: turning it on opens it now and sends it as a new stream.
 async function addCamera(){
   try{
-    const track=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0];
-    if(!joined||!camera.checked){track.stop();return}
+    const raw=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0];
+    if(!joined||!camera.checked){raw.stop();return}
+    const effect=await NovaBackground.process(raw);
+    if(!joined||!camera.checked){effect.stop();raw.stop();return}
+    cam=raw;camEffect=effect;const track=effect.track;
     if(!stream)stream=new MediaStream();
     stream.addTrack(track);
     const mine=document.querySelector('#peer-local video');
@@ -300,6 +312,28 @@ async function addCamera(){
     await session?.publish(new MediaStream([track]));
   }catch(e){camera.checked=false;setPref('camera',false);status.textContent='Could not turn on your camera: '+e.message}
 }
+// A new camera, or blur turned on/off: the sent track is replaced first, then the old processing
+// stops, so the video doesn't blank in between.
+async function swapCamera(newCam){
+  const old=stream?.getVideoTracks()[0],oldCam=cam,previous=camEffect;
+  const effect=await NovaBackground.process(newCam);
+  if(!joined){effect.stop();if(newCam!==oldCam)newCam.stop();return}
+  if(effect.error)status.textContent='Background blur isn\u2019t available in this browser; your camera is shown as it is.';
+  cam=newCam;camEffect=effect;
+  effect.track.enabled=newCam.enabled=old?old.enabled:true;
+  await session?.replaceTrack('video',effect.track);
+  if(old)stream.removeTrack(old);stream.addTrack(effect.track);
+  previous?.stop();if(old&&old!==effect.track&&old!==newCam)old.stop();if(oldCam&&oldCam!==newCam)oldCam.stop();
+  const mine=document.querySelector('#peer-local video');if(mine)mine.srcObject=new MediaStream(stream.getTracks());
+}
+const bgSelect=document.getElementById('meetBackgroundSelect');
+document.getElementById('meetBackgroundRow').hidden=!NovaBackground.available;
+bgSelect.value=NovaBackground.mode();
+bgSelect.onchange=()=>{
+  NovaBackground.setMode(bgSelect.value);
+  if(joined&&cam)swapCamera(cam).catch(e=>{status.textContent='Could not change the background: '+e.message});
+  else if(preview){stopPreview();showPreview()}
+};
 exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();showPreview();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
 window.addEventListener('pagehide',leaveMeeting);
 

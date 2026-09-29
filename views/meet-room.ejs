@@ -35,6 +35,7 @@
         <label>Microphone <select id="meetMicSelect"></select></label>
         <label>Camera <select id="meetCameraSelect"></select></label>
         <label>Speaker <select id="meetSpeakerSelect"></select></label>
+        <label id="meetBackgroundRow">Background <select id="meetBackgroundSelect"><option value="none">None</option><option value="blur">Blur</option></select></label>
       </div>
       <p class="meet-device-note">Remembered on this device. You can change these during the meeting too.</p>
     </details>
@@ -88,9 +89,10 @@
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
 <script src="/js/sfu-client.js?v=6"></script>
 <script src="/js/devices.js?v=2"></script>
+<script src="/js/background-effects.js?v=1"></script>
 <script src="/js/call-extras.js?v=6"></script>
 <script src="/js/whiteboard.js?v=2"></script>
-<script src="/js/meet-room.js?v=22"></script>
+<script src="/js/meet-room.js?v=23"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

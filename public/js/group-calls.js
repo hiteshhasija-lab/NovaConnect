@@ -199,6 +199,7 @@
       c.pendingDisplay?.getTracks().forEach(t => t.stop()); c.pendingDisplay = null;
       c.session?.close();
       c.stream?.getTracks().forEach(t => t.stop());
+      c.effect?.stop(); c.camera?.stop(); c.effect = c.camera = null;
       if (current !== c) return;
       current = null;
       changed(c.key);
@@ -227,6 +228,11 @@
         const stream = await navigator.mediaDevices.getUserMedia({ audio: NovaDevices.audio(), video: c.mode === 'video' ? NovaDevices.video() : false });
         devicePicker.refresh(); // device names are only readable once access is granted
         if (current !== c) { stream.getTracks().forEach(t => t.stop()); return; }
+        const cam = stream.getVideoTracks()[0];
+        if (cam) { // background blur: show and send the processed camera
+          const { track } = await applyBackground(c, cam);
+          if (track !== cam) { stream.removeTrack(cam); stream.addTrack(track); }
+        }
         c.stream = stream;
         status('Connecting…');
         if (!c.id) {
@@ -362,12 +368,48 @@
       const fresh = (await navigator.mediaDevices.getUserMedia({ [short]: wanted }))[short === 'audio' ? 'getAudioTracks' : 'getVideoTracks']()[0];
       if (current !== c) { fresh.stop(); return; }
       fresh.enabled = old.enabled; // stay muted / camera-off if you were
+      if (short === 'video') { await swapCamera(c, fresh); return; }
       await c.session?.replaceTrack(short, fresh);
       c.stream.removeTrack(old); old.stop(); c.stream.addTrack(fresh);
+      showOwnVideo(c);
+      extras.micChanged(); // captions follow the new microphone
+    }
+    const showOwnVideo = c => {
       const mine = allTiles().find(t => t.dataset.peerId === 'local')?.querySelector('video');
       if (mine) mine.srcObject = new MediaStream(c.stream.getTracks());
-      if (short === 'audio') extras.micChanged(); // captions follow the new microphone
+    };
+
+    // Background blur (background-effects.js): the camera is processed on this device before it is
+    // shown and sent. c.camera is the camera itself, c.effect the processing (its track is what's in
+    // c.stream and sent). Swapping (new camera, blur on/off) replaces the sent track first, then stops
+    // the old processing, so the video doesn't blank in between.
+    async function applyBackground(c, camera) {
+      const effect = await NovaBackground.process(camera);
+      if (effect.error) notify(new Error('Background blur isn\u2019t available in this browser; your camera is shown as it is.'));
+      const previous = c.effect; c.effect = effect; c.camera = camera;
+      return { track: effect.track, previous };
     }
+    async function swapCamera(c, camera) {
+      const old = c.stream.getVideoTracks()[0], oldCamera = c.camera;
+      const { track, previous } = await applyBackground(c, camera);
+      if (current !== c) { track.stop(); return; }
+      track.enabled = camera.enabled = old ? old.enabled : true;
+      await c.session?.replaceTrack('video', track);
+      if (old) c.stream.removeTrack(old);
+      c.stream.addTrack(track);
+      previous?.stop();
+      if (old && old !== track && old !== camera) old.stop();
+      if (oldCamera && oldCamera !== camera) oldCamera.stop();
+      showOwnVideo(c);
+    }
+    const bgSelect = $('callBackgroundSelect');
+    $('callBackgroundRow').hidden = !NovaBackground.available;
+    bgSelect.value = NovaBackground.mode();
+    bgSelect.addEventListener('change', () => {
+      NovaBackground.setMode(bgSelect.value);
+      const c = current;
+      if (c?.joined && c.camera) swapCamera(c, c.camera).catch(e => notify(e));
+    });
 
     socket.on('gcall:incoming', data => {
       if (current) return;
@@ -425,6 +467,7 @@
       if (!tracks.length) return;
       const enabled = !tracks[0].enabled;
       tracks.forEach(t => { t.enabled = enabled; });
+      if (kind === 'video' && c.camera) c.camera.enabled = enabled; // the camera behind a blurred track
       if (kind === 'audio') setCallToggle($('callMute'), !enabled, enabled ? 'Mute' : 'Unmute');
       else setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
       setTileState('local', kind, !enabled);
