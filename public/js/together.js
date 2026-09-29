@@ -39,7 +39,7 @@
       for (let r = 0; r < rows; r++) {
         const count = Math.min(perRow, n - placed); if (count <= 0) break;
         const depth = rows === 1 ? 1 : 0.62 + 0.38 * (r / (rows - 1));          // back 0.62 → front 1
-        const seatW = Math.min(300, 1500 / Math.max(perRow, 3)) * depth, seatH = seatW * 1.05;
+        const seatW = Math.min(380, 1500 / Math.max(perRow, 3)) * depth, seatH = seatW * 1.05;
         const deskY = SCENE_H * (rows === 1 ? 0.86 : 0.5 + 0.36 * (r / (rows - 1)));
         const span = count * seatW * 0.92, x0 = (SCENE_W - span) / 2;
         for (let i = 0; i < count; i++) out.push({ x: x0 + i * seatW * 0.92 + seatW * 0.04, y: deskY - seatH * 0.82, w: seatW * 0.84, h: seatH, deskY, row: r, rowCount: count, x0, span, depth });
@@ -59,7 +59,8 @@
     }
     function drawDesk(seats, row, k) {
       const s = seats.find(x => x.row === row); if (!s) return;
-      const pad = 30 * s.depth, x = (s.x0 - pad) * k, w = (s.span + pad * 2) * k, y = s.deskY * k, h = 34 * s.depth * k;
+      // Tall enough to hide where each person's picture ends (seats reach 0.18 of their height below).
+      const pad = 30 * s.depth, x = (s.x0 - pad) * k, w = (s.span + pad * 2) * k, y = s.deskY * k, h = (s.h * 0.22 + 6) * k;
       const wood = g.createLinearGradient(0, y, 0, y + h);
       wood.addColorStop(0, '#2d4a74'); wood.addColorStop(1, '#1a2f4f');
       g.fillStyle = wood;
@@ -107,11 +108,11 @@
       g.drawImage(sc.c, seat.x * k, seat.y * k);
     }
     function drawName(src, seat, k) {
-      const size = Math.max(10, Math.round(15 * seat.depth * k));
+      const size = Math.max(11, Math.round(20 * seat.depth * k));
       g.font = '600 ' + size + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = '#e5f1ff';
       const label = src.name.length > 22 ? src.name.slice(0, 21) + '…' : src.name;
-      g.fillText(label, (seat.x + seat.w / 2) * k, (seat.deskY + 17 * seat.depth) * k);
+      g.fillText(label, (seat.x + seat.w / 2) * k, (seat.deskY + seat.h * 0.11 + 3) * k);
     }
 
     function draw(now) {
