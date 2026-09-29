@@ -324,7 +324,61 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       // is dropped once that person has left.
       const room = getRoom(roomId);
       const spotlight = participants.some(p => p.peerId === room?.spotlight) ? room.spotlight : null;
-      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u), captions: captionsWanted(roomId) };
+      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u), captions: captionsWanted(roomId), board: !!room?.board?.open };
+    });
+    // ---- Whiteboard (whiteboard.js) ----
+    // One board per call room, kept on the SFU room object for the life of the call (so late
+    // joiners and reopening see the drawing; gone when the call ends — people can download it).
+    // Anyone in the call opens/closes it for everyone; clearing it follows the spotlight rule
+    // (meeting owner in meetings, anyone in calls). Points are 0–1 board coordinates.
+    const boardOf = roomId => { const room = getRoom(roomId); if (!room) throw Error('This call has ended.'); return (room.board ??= { open: false, strokes: new Map(), points: 0 }); };
+    handle('sfu:wb-open', async ({ roomId, open }, u) => {
+      admitted(roomId);
+      const board = boardOf(roomId);
+      board.open = open === true;
+      io.to(`sfu:${roomId}`).emit('sfu:wb-state', { roomId, open: board.open, byName: u.full_name });
+      return {};
+    });
+    handle('sfu:wb-get', async ({ roomId }, u) => {
+      admitted(roomId);
+      const board = boardOf(roomId);
+      return { open: board.open, strokes: [...board.strokes.values()], canClear: await maySpotlight(roomId, u) };
+    });
+    handle('sfu:wb-clear', async ({ roomId }, u) => {
+      admitted(roomId);
+      if (!await maySpotlight(roomId, u)) throw Error('Only the meeting owner can clear the whiteboard.');
+      const board = boardOf(roomId);
+      board.strokes.clear(); board.points = 0;
+      io.to(`sfu:${roomId}`).emit('sfu:wb-clear', { roomId, byName: u.full_name });
+      return {};
+    });
+    // Strokes stream in while someone draws (a batch every ~50 ms), so no per-event session reload;
+    // being in the room is checked, and sizes are capped (per batch, per stroke, per board).
+    const validPoint = p => Array.isArray(p) && p.length === 2 && p.every(n => typeof n === 'number' && n >= 0 && n <= 1);
+    socket.on('sfu:wb-stroke', ({ roomId, id, color, width, points } = {}) => {
+      const m = roomUserMap.get(socket.id);
+      if (!m || m.roomId !== roomId || m.inLobby || typeof id !== 'string' || id.length > 40) return;
+      const room = getRoom(roomId); if (!room) return;
+      const board = (room.board ??= { open: false, strokes: new Map(), points: 0 });
+      if (!Array.isArray(points) || points.length > 500 || !points.every(validPoint)) return;
+      const key = m.peerId + ':' + id;
+      let s = board.strokes.get(key);
+      if (!s) {
+        if (!/^#[0-9a-f]{6}$/i.test(String(color)) || !(Number(width) >= 1 && Number(width) <= 40)) return;
+        s = { id: key, peerId: m.peerId, color: String(color), width: Number(width), points: [] };
+        board.strokes.set(key, s);
+      }
+      if (s.points.length + points.length > 5000 || board.points + points.length > 200000) return;
+      s.points.push(...points); board.points += points.length;
+      socket.to(`sfu:${roomId}`).emit('sfu:wb-stroke', { roomId, id: key, peerId: m.peerId, color: s.color, width: s.width, points });
+    });
+    socket.on('sfu:wb-erase', ({ roomId, ids } = {}) => {
+      const m = roomUserMap.get(socket.id);
+      if (!m || m.roomId !== roomId || m.inLobby || !Array.isArray(ids) || ids.length > 500) return;
+      const board = getRoom(roomId)?.board; if (!board) return;
+      const gone = ids.filter(id => typeof id === 'string' && board.strokes.has(id));
+      gone.forEach(id => { board.points -= board.strokes.get(id).points.length; board.strokes.delete(id); });
+      if (gone.length) socket.to(`sfu:${roomId}`).emit('sfu:wb-erase', { roomId, ids: gone });
     });
     // Live captions (Teams-style, roadmap 2.8): speech is turned into text in each speaker's own
     // browser (call-extras.js) and relayed here only to the people in the room who turned captions

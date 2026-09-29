@@ -11,6 +11,7 @@ let display=null;              // our own screen while we share
 let ownPeerId=null,ownUserId=null; // our ids in the meeting room (to tell our own tile / messages apart)
 const screens=new Map();       // peerId -> { name, stream } for screens others share
 const focusStage=document.getElementById('meetFocusStage');
+const boardStage=document.getElementById('meetBoardStage'),boardBtn=document.getElementById('meetBoardBtn');
 let focusPeer=null;            // pinned or spotlighted person (call-extras.js onFocus), shown large
 const allTiles=()=>[...videos.children,...focusStage.children];
 // Before joining (Teams-style): microphone and camera start as you left them last time — off the
@@ -66,7 +67,7 @@ function updateSelfView(){videos.classList.toggle('has-remote',allTiles().some(e
 // (meet.css .focus), like a shared screen — which wins while there is one.
 function arrangeFocus(){
   const id=focusPeer?(focusPeer===ownPeerId?'local':focusPeer):null;
-  const focused=shareStage.hidden&&id?document.getElementById('peer-'+id):null;
+  const focused=shareStage.hidden&&boardStage.hidden&&id?document.getElementById('peer-'+id):null;
   const move=(t,box)=>{if(t.parentNode===box)return;box.append(t);const v=t.querySelector('video');if(v?.paused)v.play().catch(()=>{})};
   [...focusStage.children].forEach(t=>{if(t!==focused)move(t,videos)});
   if(focused)move(focused,focusStage);
@@ -85,14 +86,18 @@ function removePeer(peerId){
 // participant tiles shrink to a strip (meet.css .presenting). Your own share isn't shown back to you.
 function renderShare(){
   const latest=[...screens.values()].pop();
+  const boardShown=!latest&&!!board?.isOpen; // the whiteboard takes the stage when nobody shares
   shareStage.hidden=!latest;
-  document.querySelector('.meet-room').classList.toggle('presenting',!!latest);
+  boardStage.hidden=!boardShown;if(boardShown)requestAnimationFrame(()=>board.fit());
+  boardBtn.setAttribute('aria-pressed',String(!!board?.isOpen));boardBtn.classList.toggle('active',!!board?.isOpen);
+  document.querySelector('.meet-room').classList.toggle('presenting',!!latest||boardShown);
   if(shareVideo.srcObject!==(latest?.stream||null)){shareVideo.srcObject=latest?.stream||null;if(latest)shareVideo.play().catch(()=>{})}
   shareLabel.textContent=latest?latest.name+' is sharing their screen':'';
   arrangeFocus();
 }
 function setShareButton(){
   shareBtn.hidden=!joined||!navigator.mediaDevices?.getDisplayMedia;
+  boardBtn.hidden=!joined;
   shareBtn.querySelector('span').textContent=display?'Stop sharing':'Share screen';
   shareBtn.classList.toggle('btn-warning',!!display);shareBtn.classList.toggle('btn-outline-secondary',!display);
 }
@@ -147,7 +152,7 @@ const extras=createCallExtras({
   socket,request,notify:e=>{status.textContent=e.message},
   tiles:allTiles,
   tileFor:peerId=>document.getElementById('peer-'+(peerId===ownPeerId?'local':peerId)),
-  reactionHost:()=>shareStage.hidden?null:shareStage,
+  reactionHost:()=>!shareStage.hidden?shareStage:!boardStage.hidden?boardStage:null,
   fallbackHost:videos,
   onFocus:peerId=>{focusPeer=peerId;arrangeFocus()},
   els:{
@@ -161,10 +166,15 @@ const extras=createCallExtras({
   micTrack:()=>joined?stream?.getAudioTracks()[0]||null:null,
 });
 
+// Shared whiteboard (whiteboard.js): opens for everyone on the stage, like a shared screen.
+const board=createWhiteboard({socket,request,notify:e=>{status.textContent=e.message},host:boardStage,
+  onOpenChange:(open,byName)=>{renderShare();if(byName)status.textContent=byName+(open?' opened the whiteboard.':' closed the whiteboard.')}});
+boardBtn.onclick=()=>{if(joined)board.toggle()};
+
 function cleanup(){
   joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
   display?.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null;
-  screens.clear();renderShare();extras.stop();ownPeerId=null;
+  screens.clear();board.stop();renderShare();extras.stop();ownPeerId=null;
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
@@ -200,6 +210,7 @@ async function enterMeeting(){
     try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
     setShareButton();
     extras.start({roomId,peerId:ownPeerId,userId:ownUserId});
+    board.start({roomId,peerId:ownPeerId});
     syncRecording();
   }catch(e){leaveMeeting();status.textContent=e.message}
 }

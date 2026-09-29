@@ -389,3 +389,26 @@
 .nc-caption-line { background: rgba(0, 0, 0, .75); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
 .nc-caption-line b { color: #ffd76a; font-weight: 600; }
 .nc-caption-unavailable { font-style: italic; opacity: .8; }
+
+/* Shared whiteboard (whiteboard.js): toolbar above a white 16:9 board that fits the stage. The call
+   panel's stage leaves room for the floating header/controls and the side strip of tiles. */
+.nc-board { display: flex; flex-direction: column; background: #e9edf3; color: #1b1f3a; }
+.nc-board[hidden] { display: none; }
+.nc-board-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; background: #fff; border-bottom: 1px solid #d6e3f0; }
+.nc-board-btn { min-width: 32px; height: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #1b1f3a; font: inherit; font-size: .85rem; cursor: pointer; }
+.nc-board-btn:hover { background: #f1f4f9; }
+.nc-board-btn[aria-pressed="true"] { border-color: #0755d9; background: #e6f3fc; }
+.nc-board-btn:disabled { opacity: .4; cursor: default; }
+.nc-board-btn:focus-visible { outline: 2px solid #0755d9; outline-offset: 1px; }
+.nc-board-swatch { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px #0002; }
+.nc-board-width { display: block; width: 18px; border-radius: 3px; background: #1b1f3a; }
+.nc-board-sep { width: 1px; height: 20px; margin: 0 4px; background: #d6e3f0; }
+.nc-board-close { margin-left: auto; }
+.nc-board-surface { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.nc-board canvas { background: #fff; border-radius: 4px; box-shadow: 0 1px 4px #0003; touch-action: none; }
+.nc-call .nc-board-stage { position: relative; height: min(56vh, 420px); }
+.nc-call-video .nc-board-stage { margin-top: 58px; margin-bottom: 86px; }
+.nc-call-max .nc-board-stage, .nc-call:fullscreen .nc-board-stage { flex: 1; height: auto; min-height: 0; }
+.nc-call-presenting:has(#callGrid .nc-video-tile:not(.nc-tile-hidden)) .nc-board-stage { margin-right: 170px; }
+.nc-call-max.nc-call-presenting:has(#callGrid .nc-video-tile:not(.nc-tile-hidden)) .nc-board-stage,
+.nc-call.nc-call-presenting:fullscreen:has(#callGrid .nc-video-tile:not(.nc-tile-hidden)) .nc-board-stage { margin-right: calc(clamp(160px, 15vw, 240px) + 20px); }

@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/css/calls.css?v=21">
+<link rel="stylesheet" href="/css/calls.css?v=22">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
@@ -30,6 +30,8 @@
     </div>
     <!-- A pinned or spotlighted person's tile fills this stage; the others become a side strip. -->
     <div class="nc-focus-stage" id="callFocusStage" hidden></div>
+    <!-- The shared whiteboard (whiteboard.js) takes the stage here while it's open. -->
+    <div class="nc-board-stage" id="callBoardStage" hidden></div>
     <!-- Everyone's tiles (group-calls.js); your own floats in callSelfTile while others are here. -->
     <div class="nc-call-grid" id="callGrid" hidden></div>
   </div>
@@ -70,6 +72,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="nc-badge" id="callChatCount" hidden>0</span>
         </button>
+        <button type="button" class="nc-btn-icon" id="callWhiteboard" hidden aria-pressed="false" aria-label="Whiteboard" title="Whiteboard"><i class="bi bi-easel" aria-hidden="true"></i></button>
         <button type="button" class="nc-btn-icon nc-captions-btn" id="callCaptions" hidden aria-pressed="false" aria-label="Turn on live captions" title="Turn on live captions"><span class="nc-cc" aria-hidden="true">CC</span></button>
         <button type="button" class="nc-btn-icon" id="callSettings" hidden aria-label="Devices" aria-expanded="false" aria-controls="callSettingsPanel" title="Devices: microphone, camera, speaker">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 1 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 1 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1 1.51H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1 1.51"/></svg>

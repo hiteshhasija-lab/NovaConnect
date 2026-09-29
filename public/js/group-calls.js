@@ -46,6 +46,7 @@
       $('callScreenShare').hidden = !(c.joined && navigator.mediaDevices?.getDisplayMedia) || !!c.display;
       $('callStopSharing').hidden = !c.display; $('callPlayback').hidden = true;
       $('callRecord').hidden = !c.joined;
+      $('callWhiteboard').hidden = !c.joined;
       (ringing ? $('callAccept') : $('callHangup')).focus();
     }
     function kindLabel(c) {
@@ -60,11 +61,17 @@
     // Teams-style presentation: a screen someone else shares fills the stage and the gallery
     // becomes a strip down the side (calls.css .nc-call-presenting). The latest share wins.
     // Your own share isn't shown back to you — you keep the gallery, like Teams' presenter view.
+    // The whiteboard (whiteboard.js) takes the same stage when it's open and nobody is sharing.
     function renderShare(c) {
       if (current !== c) return;
       const latest = [...c.screens.values()].pop();
-      panel.classList.toggle('nc-call-presenting', !!latest);
+      const boardShown = !latest && board.isOpen;
+      panel.classList.toggle('nc-call-presenting', !!latest || boardShown);
       $('callShareStage').hidden = !latest;
+      $('callBoardStage').hidden = !boardShown;
+      if (boardShown) requestAnimationFrame(() => board.fit());
+      $('callWhiteboard').setAttribute('aria-pressed', String(board.isOpen));
+      $('callWhiteboard').classList.toggle('nc-active', board.isOpen);
       if ($('callShareVideo').srcObject !== (latest?.stream || null)) {
         $('callShareVideo').srcObject = latest?.stream || null;
         if (latest) $('callShareVideo').play().catch(() => {});
@@ -198,9 +205,9 @@
       allTiles().forEach(t => t.remove());
       panel.classList.remove('nc-call-video', 'nc-call-presenting', 'nc-call-compact', 'nc-call-focus');
       $('callFocusStage').hidden = true; focusPeer = null;
-      extras.stop();
+      extras.stop(); board.stop();
       clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
-      $('callShareStage').hidden = true; $('callShareVideo').srcObject = null;
+      $('callShareStage').hidden = true; $('callShareVideo').srcObject = null; $('callBoardStage').hidden = true; $('callWhiteboard').hidden = true;
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -250,6 +257,7 @@
         await c.session.publish(stream);
         if (current !== c) return;
         extras.start({ roomId: c.roomId, peerId: c.peerId, userId: window.__NC__?.currentUser?.id ?? null });
+        board.start({ roomId: c.roomId, peerId: c.peerId });
         request('meet:recording-status', { roomId: c.roomId }).then(({ recording }) => { if (recording && current === c) setRecording(c, recording.recordingId, recording.startTime); }).catch(() => {});
         if (c.pendingDisplay) { const d = c.pendingDisplay; c.pendingDisplay = null; shareScreen(c, d); }
         let started = Date.now();
@@ -268,7 +276,7 @@
     const tileFor = peerId => allTiles().find(t => t.dataset.peerId === (peerId === current?.peerId ? 'local' : peerId));
     const extras = createCallExtras({
       socket, request, notify, tiles: allTiles, tileFor, fallbackHost: $('callMedia'),
-      reactionHost: () => panel.classList.contains('nc-call-presenting') ? $('callShareStage') : null,
+      reactionHost: () => !$('callShareStage').hidden ? $('callShareStage') : !$('callBoardStage').hidden ? $('callBoardStage') : null,
       els: {
         participantsBtn: $('callParticipants'), participantsBadge: $('callParticipantCount'), participantsPanel: $('callParticipantsPanel'),
         participantCount: $('participantCount'), participantList: $('participantList'), handBtn: $('callHand'),
@@ -281,6 +289,16 @@
       micTrack: () => (current?.joined ? current.stream?.getAudioTracks()[0] || null : null),
       onFocus: peerId => { focusPeer = peerId; if (current) arrangeTiles(); },
     });
+
+    // Shared whiteboard (whiteboard.js): opens for everyone on the stage, like a shared screen.
+    const board = createWhiteboard({
+      socket, request, notify, host: $('callBoardStage'),
+      onOpenChange: (open, byName) => {
+        if (current?.joined) renderShare(current);
+        if (byName) extras.notice(byName + (open ? ' opened the whiteboard' : ' closed the whiteboard'));
+      },
+    });
+    $('callWhiteboard').addEventListener('click', () => { if (current?.joined) board.toggle(); });
 
     // Recording (anyone in the call, as in Teams). Everyone sees the banner; when it stops, the video
     // is composed on the server and posted into this chat/channel as a file (meet:recording-ready).

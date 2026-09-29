@@ -171,3 +171,7 @@
 .meet-captions { position: fixed; left: 24px; right: 272px; bottom: 24px; max-width: 760px; margin: 0 auto; z-index: 1085; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
 @media (max-width: 600px) { .meet-captions { left: 12px; right: 164px; bottom: 12px; } }
 .meet-captions[hidden] { display: none; }
+/* Whiteboard on the meeting page (board styles in calls.css). */
+.meet-board-stage { margin: 0 0 12px; height: min(72vh, 640px); border-radius: 10px; overflow: hidden; }
+.meet-board-stage[hidden] { display: none; }
+#meetBoardBtn.active { background: #e6f3fc; border-color: var(--brand, #0755d9); }
