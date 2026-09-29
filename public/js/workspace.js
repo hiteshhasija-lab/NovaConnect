@@ -273,6 +273,11 @@
   }
   socket.on('membership:changed', () => api('/api/teams').then(async teams => { state.teams = await Promise.all(teams.filter(t=>t.is_member).map(async t=>{const data=await api('/api/teams/'+t.id);return {...data.team,channels:data.channels};}));renderSidebar(); }).catch(showToastError));
   socket.on('dm:created', () => api('/api/dm').then(list => { state.conversations = list; renderSidebar(); }).catch(showToastError));
+  // Owners: the number of join requests waiting for a team changed (sidebar badge).
+  socket.on('team:join-requests', ({ teamId, count }) => {
+    const team = state.teams.find(t => Number(t.id) === Number(teamId));
+    if (team) { team.pending_requests = count; renderSidebar(); }
+  });
   socket.on('dm:preferences', p => { applyChatPreferences(p.id, p); if (p.is_hidden) removeChatFromView(p.id); });
   // Your level for a channel changed (maybe in another tab or device).
   socket.on('channel:notify-level', ({ id, level }) => {
@@ -670,13 +675,15 @@
               '<i class="bi bi-chevron-right"></i>' +
               '<span class="team-icon"><i class="bi ' + escapeHtml(team.icon || 'bi-people-fill') + '"></i></span>' +
               '<span class="flex-grow-1 text-truncate">' + escapeHtml(team.name) + '</span>' +
+              // Owners: join requests waiting for an answer (opens them in the members dialog).
+              (Number(team.pending_requests) > 0 ? '<button type="button" class="team-requests-badge" title="' + team.pending_requests + ' join request' + (team.pending_requests > 1 ? 's' : '') + ' waiting" aria-label="' + team.pending_requests + ' join request' + (team.pending_requests > 1 ? 's' : '') + ' waiting">' + team.pending_requests + '</button>' : '') +
               '<button type="button" class="team-members-btn scope-delete-btn" title="Manage team members" aria-label="Manage team members"><i class="bi bi-people"></i></button>' +
             '</div>' +
             '<div class="team-channels"></div>' +
           '</div>'
         );
         group.querySelector('.team-group-header').addEventListener('click', (e) => {
-          if (e.target.closest('.team-members-btn')) { e.stopPropagation(); openMembersModal(team.id); return; }
+          if (e.target.closest('.team-members-btn, .team-requests-badge')) { e.stopPropagation(); openMembersModal(team.id); return; }
           group.classList.toggle('open');
           if (group.classList.contains('open')) state.openTeams.add(team.id); else state.openTeams.delete(team.id);
         });
@@ -752,20 +759,35 @@
       }
       notifications.forEach(n => {
         const isTeamJoinOutcome = n.type === 'team_join_approved' || n.type === 'team_join_rejected';
+        const isJoinRequest = n.type === 'team_join_request';
         const titleLine = isTeamJoinOutcome
           ? escapeHtml(n.body || '')
           : '<strong>' + escapeHtml(n.actor_name || 'Someone') + '</strong>' +
-            (n.type === 'meeting' ? ' invited you to a meeting' : n.type === 'team_join_request' ? ' asked to join a team' : ' mentioned you') +
+            (n.type === 'meeting' ? ' invited you to a meeting' : isJoinRequest ? ' asked to join ' + (n.team_name ? '<strong>' + escapeHtml(n.team_name) + '</strong>' : 'a team') : ' mentioned you') +
             (n.channel_name ? ' in #' + escapeHtml(n.channel_name) : '');
         const item = el(
           '<div class="activity-item ' + (n.is_read ? '' : 'unread') + '">' +
             avatarHtml({ id: n.actor_id, full_name: n.actor_name || '?' }) +
             '<div class="flex-grow-1">' +
               '<div>' + titleLine + '</div>' +
-              (isTeamJoinOutcome ? '' : '<div class="text-muted text-truncate">' + escapeHtml(n.body || '') + '</div>') +
+              (isTeamJoinOutcome || isJoinRequest ? '' : '<div class="text-muted text-truncate">' + escapeHtml(n.body || '') + '</div>') +
+              // A join request still waiting: answer it right here (Teams-style).
+              (isJoinRequest ? (n.request_pending
+                ? '<div class="activity-actions"><button type="button" class="btn btn-sm btn-primary" data-answer="approve">Approve</button><button type="button" class="btn btn-sm btn-outline-secondary" data-answer="reject">Decline</button></div>'
+                : '<div class="text-muted small">Already answered</div>') : '') +
             '</div>' +
           '</div>'
         );
+        item.querySelectorAll('[data-answer]').forEach(btn => btn.addEventListener('click', async e => {
+          e.stopPropagation();
+          const box = btn.parentElement, approve = btn.dataset.answer === 'approve';
+          box.querySelectorAll('button').forEach(b => { b.disabled = true; });
+          try {
+            await api('/api/teams/' + n.team_id + '/join-requests/' + n.actor_id + '/' + btn.dataset.answer, { method: 'POST' });
+            box.innerHTML = '<span class="text-muted small">' + (approve ? 'Approved: ' + escapeHtml(n.actor_name || '') + ' is now a member.' : 'Declined.') + '</span>';
+            api('/api/notifications/' + n.id + '/read', { method: 'POST' }).then(() => api('/api/notifications')).then(d => updateActivityBadge(d.unread_count)).catch(() => {});
+          } catch (err) { box.querySelectorAll('button').forEach(b => { b.disabled = false; }); showToastError(err); }
+        }));
         item.addEventListener('click', () => {
           api('/api/notifications/' + n.id + '/read', { method: 'POST' }).then(loadActivity);
           if (n.type === 'team_join_request' && n.team_id) { document.getElementById('railTeams').click(); openMembersModal(n.team_id); }

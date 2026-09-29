@@ -87,10 +87,12 @@ router.get('/api/users/:id/profile', async (req, res) => {
 
 router.get('/api/notifications', async (req, res) => {
   const rows = await db.prepare(`
-    SELECT n.*, u.full_name AS actor_name, c.name AS channel_name
+    SELECT n.*, u.full_name AS actor_name, c.name AS channel_name, t.name AS team_name,
+      (n.type = 'team_join_request' AND EXISTS (SELECT 1 FROM team_join_requests jr WHERE jr.team_id = n.team_id AND jr.user_id = n.actor_id)) AS request_pending
     FROM notifications n
     LEFT JOIN users u ON u.id = n.actor_id
     LEFT JOIN channels c ON c.id = n.channel_id
+    LEFT JOIN teams t ON t.id = n.team_id
     WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30
   `).all(req.session.user.id);
   const unread = await db.prepare('SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0').get(req.session.user.id);

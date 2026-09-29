@@ -622,3 +622,9 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 .nc-toast-out { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
 @keyframes nc-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .nc-toast { animation: none; } .nc-toast-out { transition: none; } }
+
+/* Team join requests (owners): a count badge on the team's row, and Approve / Decline in Activity. */
+.team-requests-badge { min-width: 20px; height: 20px; padding: 0 6px; margin-right: 4px; border: 0; border-radius: 999px; background: #c4314b; color: #fff; font-size: .72rem; font-weight: 700; line-height: 20px; cursor: pointer; }
+.team-requests-badge:hover { filter: brightness(1.1); }
+.team-requests-badge:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.activity-actions { display: flex; gap: 8px; margin-top: 6px; }

@@ -6,6 +6,13 @@ const { resyncUserRooms, emitToUser } = require('../realtime');
 const router = createAsyncRouter();
 router.use(requireAuth);
 
+// Tells a team's owners how many join requests are waiting (sidebar badge), after any change.
+async function tellOwnersPending(teamId) {
+  const { c } = await db.prepare('SELECT COUNT(*) AS c FROM team_join_requests WHERE team_id = ?').get(teamId);
+  const owners = await db.prepare(`SELECT user_id FROM team_members WHERE team_id = ? AND role IN ('owner','admin')`).all(teamId);
+  for (const o of owners) emitToUser(o.user_id, 'team:join-requests', { teamId: Number(teamId), count: Number(c) });
+}
+
 async function isTeamOwner(teamId, userId) {
   const row = await db.prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, userId);
   return !!row && (row.role === 'owner' || row.role === 'admin');
@@ -61,6 +68,7 @@ router.post('/api/teams/:id/join', async (req, res) => {
       `).run(o.user_id, userId, requester.full_name + ' asked to join ' + team.name + '.', teamId);
       emitToUser(o.user_id, 'notification:new', {});
     }
+    await tellOwnersPending(teamId);
     return res.json({ ok: true, requested: true });
   }
 
@@ -74,7 +82,7 @@ router.get('/api/teams/:id/join-requests', async (req, res) => {
   const teamId = req.params.id;
   if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only a team owner can view join requests.' });
   const rows = await db.prepare(`
-    SELECT jr.user_id, jr.created_at, u.full_name, u.username FROM team_join_requests jr JOIN users u ON u.id = jr.user_id
+    SELECT u.id, jr.user_id, jr.created_at, u.full_name, u.username FROM team_join_requests jr JOIN users u ON u.id = jr.user_id
     WHERE jr.team_id = ? ORDER BY jr.created_at
   `).all(teamId);
   res.json(rows);
@@ -92,6 +100,7 @@ router.post('/api/teams/:id/join-requests/:userId/approve', async (req, res) => 
   await resyncUserRooms(targetId);
   emitToUser(targetId, 'membership:changed', { teamId });
   emitToUser(targetId, 'notification:new', {});
+  await tellOwnersPending(teamId);
   res.json({ ok: true });
 });
 
@@ -103,6 +112,7 @@ router.post('/api/teams/:id/join-requests/:userId/reject', async (req, res) => {
   const team = await db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId);
   await db.prepare(`INSERT INTO notifications (user_id, type, body, team_id) VALUES (?, 'team_join_rejected', ?, ?)`).run(targetId, 'Your request to join ' + team.name + ' was declined.', teamId);
   emitToUser(targetId, 'notification:new', {});
+  await tellOwnersPending(teamId);
   res.json({ ok: true });
 });
 
@@ -144,6 +154,7 @@ router.get('/api/teams/:id', async (req, res) => {
 
   const membership = await db.prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, userId);
   team.my_role = membership.role;
+  if (['owner', 'admin'].includes(membership.role)) team.pending_requests = Number((await db.prepare('SELECT COUNT(*) AS c FROM team_join_requests WHERE team_id = ?').get(teamId)).c);
   res.json({ team, channels });
 });
 

@@ -8,7 +8,9 @@ router.use(requireAuth);
 
 async function myTeamsWithChannels(userId) {
   const teams = await db.prepare(`
-    SELECT t.*, tm.role AS my_role FROM teams t
+    SELECT t.*, tm.role AS my_role,
+      CASE WHEN tm.role IN ('owner','admin') THEN (SELECT COUNT(*) FROM team_join_requests jr WHERE jr.team_id = t.id) ELSE 0 END AS pending_requests
+    FROM teams t
     JOIN team_members tm ON tm.team_id = t.id WHERE tm.user_id = ? ORDER BY t.name
   `).all(userId);
   for (const team of teams) {
