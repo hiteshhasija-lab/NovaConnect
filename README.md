@@ -66,6 +66,13 @@ their audio and video through the **mediasoup SFU** on the server, not browser t
   and is announced in the channel. Camera/screen can be shared (the screen is a separate stream, so
   the camera keeps going); camera-off and mute are shown to everyone; in-call chat from a chat or
   channel is saved there. The same person may join the same call from two devices.
+- **Capacity (measured 2026-09-29, 1.0.124, NOVAAPP01: 2 cores):** a 10-person group call, everyone
+  receiving everyone at 720p, used ~15% of a core in the mediasoup worker and ~20% in rootless
+  Podman's user-space networking (`pasta`, which carries every RTP packet), with the VM ~80% idle;
+  42 Mbit/s out with synthetic video (real cameras send ~1–1.5 Mbit/s each at 720p, so expect
+  roughly double). With small tiles, simulcast cut outgoing traffic by 65% (6 people: 14.3 → 5.0
+  Mbit/s). One mediasoup worker (one core) serves all rooms; beyond ~15–20 active video users,
+  add workers and/or move the pod off `pasta` networking.
 - **Call state is in memory** (one Node process). A restart ends running calls; stale "Started a
   meeting" posts are rewritten to "Meeting ended" on startup.
 - **Network:** browsers need **HTTPS** for camera, microphone and screen sharing. Media flows over

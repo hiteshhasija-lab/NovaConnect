@@ -179,7 +179,7 @@ async function enterMeeting(){
   lobby.hidden=true;enter.hidden=true;exit.hidden=false;
   mic.disabled=!stream?.getAudioTracks().length;camera.disabled=!navigator.mediaDevices?.getUserMedia;prejoin.hidden=true;
   if(recordingControls)recordingControls.hidden=!isOwner;
-  if(stream)tile('local','You',stream,true);
+  if(stream){tile('local','You',stream,true);setTileState('local','audio',!mic.checked)} // joined muted: show it
   status.textContent='Connected.';
   try{
     if(isOwner){
