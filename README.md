@@ -69,10 +69,10 @@ their audio and video through the **mediasoup SFU** on the server, not browser t
 - **Call state is in memory** (one Node process). A restart ends running calls; stale "Started a
   meeting" posts are rewritten to "Meeting ended" on startup.
 - **Network:** browsers need **HTTPS** for camera, microphone and screen sharing. Media flows over
-  UDP 40000–49999 to `MEDIASOUP_ANNOUNCED_IP` (the address clients can reach). `public/js/calls.js`
-  and `src/calls.js` are the older browser-to-browser calls, kept only for pages that haven't
-  reloaded since 1.0.105 (plus the call panel's Maximize/Full screen controls); `WEBRTC_ICE_SERVERS`
-  applies only to those.
+  UDP 40000–49999 to `MEDIASOUP_ANNOUNCED_IP` (the address clients can reach). The older
+  browser-to-browser 1:1 calls (`src/calls.js`, `WEBRTC_ICE_SERVERS`) and the `sfu-signaling.js`
+  prototype were removed in 1.0.118; `public/js/calls.js` now only holds the call panel's
+  Maximize/Full screen controls and `setCallToggle`.
 
 ## Releasing
 
@@ -115,4 +115,4 @@ Validation: `node --test test/*.test.js`. An isolated PostgreSQL database and Ch
 New controls use the compact three-dot menu as their reference. Shared sizing and spacing tokens live in `public/css/ui-density.css`; implementation guidance is in `AGENTS.md`. Single-line controls use a 36px minimum height, with content-driven growth for multi-line rows.
 
 ### Meet hub
-The Meet sidebar opens reusable meeting links, standalone scheduling, join by ID/link, and upcoming invitations. Signed-in active users with a link may enter a room. Rooms support up to six participants using peer-to-peer WebRTC; microphone and camera access begins only after joining. The same `WEBRTC_ICE_SERVERS` configuration used by calls supplies TURN/STUN for rooms. Without TURN, connections across some networks may fail. Anonymous guests, recording, and large conferences are not supported.
+The Meet sidebar opens reusable meeting links, standalone scheduling, join by ID/link, and upcoming invitations. Signed-in active users with a link may enter a room. Everyone first waits in a lobby until the meeting owner admits them; audio and video go through the SFU like calls (see Calls and meetings). Microphone and camera access begins only after joining. The owner can record; the meeting chat is kept after the meeting and readable from the Meet page by the owner and anyone who was let in. Anonymous guests are not supported.

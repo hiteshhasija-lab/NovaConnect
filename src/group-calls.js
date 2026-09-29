@@ -13,8 +13,9 @@ const { redis } = require('./redis');
 //     button in the channel header) and anyone who can see the channel can join.
 // A call ends when the last person leaves. Media goes through the mediasoup SFU; this module only
 // manages who is in which call. The transport/produce/consume events themselves (and the in-call
-// extras) are served by meet-signaling.js, for any socket whose roomUserMap entry names the room.
-function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = () => false } = {}) {
+// extras) are served by meet-signaling.js, for any socket whose roomUserMap entry names the room
+// (roomUserMap: socket.id -> { roomId, peerId, userId, ... }, shared with meet-signaling.js).
+function createGroupCalls(io, db, roomUserMap, { ringMs = 30000 } = {}) {
   const calls = new Map();   // callId -> call
   const byScope = new Map(); // 'dm:<conversationId>' | 'ch:<channelId>' -> callId
   const emitUser = (id, event, payload) => io.to(`user:${id}`).emit(event, payload);
@@ -115,7 +116,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     clearTimeout(call.ringTimer);
     // Anyone still connected (the other person in a 1:1 call) is taken out of the room first.
     for (const [sid, m] of call.members) {
-      if (sfuInstance.roomUserMap.get(sid)?.roomId === call.roomId) sfuInstance.roomUserMap.delete(sid);
+      if (roomUserMap.get(sid)?.roomId === call.roomId) roomUserMap.delete(sid);
       io.in(sid).socketsLeave('sfu:' + call.roomId);
       closePeerTransports(call.roomId, m.peerId);
     }
@@ -137,7 +138,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
     const m = call.members.get(socket.id);
     if (!m) return;
     call.members.delete(socket.id);
-    if (sfuInstance.roomUserMap.get(socket.id)?.roomId === call.roomId) sfuInstance.roomUserMap.delete(socket.id);
+    if (roomUserMap.get(socket.id)?.roomId === call.roomId) roomUserMap.delete(socket.id);
     closePeerTransports(call.roomId, m.peerId);
     socket.leave('sfu:' + call.roomId);
     io.to('sfu:' + call.roomId).emit('sfu:peer-left', { peerId: m.peerId, userId: m.userId, fullName: m.fullName });
@@ -165,13 +166,13 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       const place = await access(scope, user.id);
       const running = calls.get(byScope.get(scope.key));
       if (running) return { id: running.id, mode: running.mode, title: running.title };
-      if (inDirectCall(user.id) || inGroupCall(user.id)) throw new Error('Finish your current call first.');
+      if (inGroupCall(user.id)) throw new Error('Finish your current call first.');
 
       const others = (place.members || []).filter(m => m.id !== user.id);
       if (place.direct) {
         const other = others[0];
         if (!(await io.in(`user:${other.id}`).fetchSockets()).length) throw new Error(other.full_name + ' is offline.');
-        if (inDirectCall(other.id) || inGroupCall(other.id)) throw new Error(other.full_name + ' is in another call.');
+        if (inGroupCall(other.id)) throw new Error(other.full_name + ' is in another call.');
       }
       const call = {
         id: randomUUID(), scope, mode: data.mode, startedBy: user.id, direct: place.direct, connected: false,
@@ -218,8 +219,8 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       await access(call.scope, user.id);
       if (call.members.has(socket.id)) throw new Error('You are already in this call.');
       // Joining the same call from a second device or tab is fine (as in Teams); another call isn't.
-      if (inDirectCall(user.id) || inGroupCall(user.id, call.id)) throw new Error('Finish your current call first.');
-      if (sfuInstance.roomUserMap.has(socket.id)) throw new Error('Leave your meeting first.');
+      if (inGroupCall(user.id, call.id)) throw new Error('Finish your current call first.');
+      if (roomUserMap.has(socket.id)) throw new Error('Leave your meeting first.');
 
       const room = await createRoom(call.roomId);
       if (!calls.has(call.id)) throw new Error('This call has ended.');
@@ -229,7 +230,7 @@ function createGroupCalls(io, db, sfuInstance, { ringMs = 30000, inDirectCall = 
       // Connected = two different people have been in it (a call's length is counted from then).
       if (!call.connectedAt && distinctUsers(call) >= 2) { call.connectedAt = Date.now(); persist(call); }
       if (call.direct && distinctUsers(call) >= 2) { call.connected = true; clearTimeout(call.ringTimer); }
-      sfuInstance.roomUserMap.set(socket.id, { roomId: call.roomId, peerId, userId: user.id, fullName: user.full_name, inLobby: false });
+      roomUserMap.set(socket.id, { roomId: call.roomId, peerId, userId: user.id, fullName: user.full_name, inLobby: false });
       socket.join('sfu:' + call.roomId);
       socket.to('sfu:' + call.roomId).emit('sfu:peer-joined', { peerId, userId: user.id, fullName: user.full_name });
       emitUser(user.id, 'gcall:answered', { id: call.id, socketId: socket.id });

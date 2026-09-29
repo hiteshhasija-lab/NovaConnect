@@ -1,11 +1,10 @@
-// SFU-based meeting signaling with lobby support. Media goes through mediasoup SFU.
-// sfuInstance is the createSfuSignaling(io, db) instance from realtime.js — only its
-// roomUserMap is used (shared peer-mapping state); every actual media/room operation
-// below comes straight from ./sfu, since sfu-signaling.js's own copies are just
-// unchanged re-exports of the same functions.
+// SFU-based meeting signaling with lobby support. Media goes through mediasoup SFU (./sfu).
+// roomUserMap (socket.id -> { roomId, peerId, userId, ... }) is shared with group-calls.js: it
+// says which call or meeting room each socket is in, and the sfu:* media events below are served
+// for whatever room it names.
 // scopeForRoom(roomId) → the chat/channel a call room belongs to (group-calls.js), so its in-call
 // chat can be saved there; meeting rooms have none.
-function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } = {}) {
+function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } = {}) {
   const {
     createRoom, getRoom, deleteRoom, createTransport, connectTransport,
     produce, consume, resumeConsumer, listProducers, closeProducer, setProducerPaused, setActiveSpeakerHandler, closePeerTransports,
@@ -43,7 +42,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       result.failed ? 'failed' : 'completed', result.driver || null, result.key || null, downloadUrl, result.duration, nowStr());
     // Tell whoever is still there. A meeting's download link goes only to its owner's connections.
     const ready = { roomId, recordingId: result.recordingId, failed: !!result.failed, duration: result.duration };
-    for (const [sid, m] of sfuInstance.roomUserMap.entries()) {
+    for (const [sid, m] of roomUserMap.entries()) {
       if (m.roomId !== roomId || m.inLobby) continue;
       const mayDownload = scope ? true : m.userId === meta.startedBy;
       io.to(sid).emit('meet:recording-ready', { ...ready, downloadUrl: mayDownload ? downloadUrl : null });
@@ -78,7 +77,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
 
   // Lobby notices go only to the owner's connections that are inside this meeting.
   function notifyOwners(roomId, ownerId, event, payload) {
-    for (const [sid, m] of sfuInstance.roomUserMap.entries()) {
+    for (const [sid, m] of roomUserMap.entries()) {
       if (m.roomId === roomId && m.userId === ownerId && !m.inLobby) io.to(sid).emit(event, payload);
     }
   }
@@ -91,9 +90,9 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
 
     function leave() {
       if (!roomCode) return;
-      const mapping = sfuInstance.roomUserMap?.get(socket.id);
+      const mapping = roomUserMap.get(socket.id);
       if (mapping) {
-        sfuInstance.roomUserMap.delete(socket.id);
+        roomUserMap.delete(socket.id);
         if (mapping.inLobby) {
           // Left while waiting — take them off the owner's lobby list.
           notifyOwners(roomCode, mapping.ownerId, 'meet:lobby-left', { peerId: mapping.peerId });
@@ -132,7 +131,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
     }
 
     function findInLobby(roomId, peerId) {
-      for (const [sid, m] of sfuInstance.roomUserMap.entries()) {
+      for (const [sid, m] of roomUserMap.entries()) {
         if (m.roomId === roomId && m.peerId === peerId && m.inLobby) return [sid, m];
       }
       return [null, null];
@@ -178,7 +177,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       inLobby = true;
       isAdmitted = false;
 
-      sfuInstance.roomUserMap.set(socket.id, {
+      roomUserMap.set(socket.id, {
         roomId, peerId, userId: u.id, fullName: u.full_name, ownerId: link.created_by, inLobby: true, waiting: false,
       });
       socket.join(roomId);
@@ -196,7 +195,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
     // Ask to enter: the meeting owner goes straight in; anyone else waits for the owner.
     handle('meet:request-join', async ({ roomId }, u) => {
       if (roomId !== 'meet:' + meetingId) throw Error('Not in meeting room');
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
+      const mapping = roomUserMap.get(socket.id);
       if (!mapping) throw Error('Not in lobby');
       if (!mapping.inLobby) return { admitted: true };
 
@@ -234,7 +233,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       const [sid, target] = findInLobby(roomId, peerId);
       if (!target || !target.waiting) throw Error('That person is no longer waiting');
 
-      sfuInstance.roomUserMap.delete(sid);
+      roomUserMap.delete(sid);
       io.in(sid).socketsLeave(roomId);
       io.to(sid).emit('meet:denied', { roomId });
       notifyOwners(roomId, u.id, 'meet:lobby-left', { peerId });
@@ -247,7 +246,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
       if ((await meetingOwnerId(meetingId)) !== u.id) throw Error('Only the meeting owner can view the lobby');
 
       const waiting = [];
-      for (const m of sfuInstance.roomUserMap.values()) {
+      for (const m of roomUserMap.values()) {
         if (m.roomId === roomId && m.inLobby && m.waiting) waiting.push({ peerId: m.peerId, userId: m.userId, fullName: m.fullName });
       }
       return { waiting };
@@ -257,7 +256,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
     // any SFU room this socket has been admitted to — a meeting (meet:join) or a group call in
     // chat (group-calls.js) — as recorded in its roomUserMap entry.
     function admitted(roomId) {
-      const mapping = sfuInstance.roomUserMap.get(socket.id);
+      const mapping = roomUserMap.get(socket.id);
       if (!mapping || mapping.roomId !== roomId || mapping.inLobby) throw Error('Not admitted to this call');
       return mapping;
     }
@@ -303,7 +302,7 @@ function createMeetSignaling(io, db, sfuInstance, { scopeForRoom = () => null } 
     handle('sfu:participants', async ({ roomId }) => {
       admitted(roomId);
       const participants = [];
-      for (const m of sfuInstance.roomUserMap.values()) {
+      for (const m of roomUserMap.values()) {
         if (m.roomId === roomId && !m.inLobby) participants.push({ peerId: m.peerId, userId: m.userId, fullName: m.fullName, hand: !!m.hand, micOff: !!m.micOff, camOff: !!m.camOff });
       }
       // Who is talking right now: speaker changes are only announced as they happen.

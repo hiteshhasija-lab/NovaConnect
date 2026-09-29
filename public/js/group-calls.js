@@ -1,9 +1,9 @@
 (function () {
   'use strict';
-  // Calls in group chats. Everyone's audio and video goes through the SFU (sfu-client.js);
-  // the server side is src/group-calls.js. Uses the same call panel as 1:1 calls (calls.js),
-  // in its grid layout — each button handler here acts only while a group call is current.
-  window.createNovaGroupCalls = function (socket, notify, { otherCallActive = () => false } = {}) {
+  // All calls: 1:1 chats, group chats and channel "Meet now". Everyone's audio and video goes
+  // through the SFU (sfu-client.js); the server side is src/group-calls.js. The call panel's
+  // maximize/full-screen controls and setCallToggle are in calls.js.
+  window.createNovaGroupCalls = function (socket, notify) {
     const panel = document.getElementById('callPanel');
     const $ = id => document.getElementById(id);
     const grid = $('callGrid');
@@ -30,7 +30,6 @@
     function show(c, text) {
       if (panel.hidden) lastFocus = document.activeElement;
       panel.hidden = false;
-      $('callMedia1to1').hidden = true;
       grid.hidden = !c.joined;
       panel.classList.toggle('nc-call-video', !!c.joined);
       fitShareLayout();
@@ -334,7 +333,7 @@
     }
 
     socket.on('gcall:incoming', data => {
-      if (current || otherCallActive()) return;
+      if (current) return;
       const c = current = { id: data.id, key: 'dm:' + Number(data.conversationId), mode: data.mode, title: data.title || 'Group call', direct: !!data.direct, incoming: true };
       show(c, data.direct ? 'Incoming ' + (data.mode === 'video' ? 'video' : 'audio') + ' call' : data.caller.name + ' is calling the group');
     });
@@ -419,7 +418,7 @@
       // Starts a call there, or joins the one already running there.
       start(target, mode, title, { display = null } = {}) {
         const key = keyOf(target);
-        if (current || otherCallActive()) {
+        if (current) {
           display?.getTracks().forEach(t => t.stop());
           return notify(new Error(current?.key === key && current.joined ? 'You are already in this call.' : 'Finish your current call first.'));
         }
@@ -432,7 +431,7 @@
       async share(target, title) {
         const key = keyOf(target);
         if (current?.joined && current.key === key) return shareScreen(current);
-        if (current || otherCallActive()) return notify(new Error('Finish your current call first.'));
+        if (current) return notify(new Error('Finish your current call first.'));
         if (!navigator.mediaDevices?.getDisplayMedia) return notify(new Error('Screen sharing requires a supported browser over HTTPS.'));
         let display;
         try { display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false }); }

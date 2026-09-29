@@ -1,10 +1,9 @@
-<link rel="stylesheet" href="/css/calls.css?v=18">
+<link rel="stylesheet" href="/css/calls.css?v=19">
 <section id="callPanel" class="nc-call" role="region" aria-label="Call controls" hidden>
   <div class="nc-call-header">
     <div class="nc-call-kind" id="callKind"></div>
     <h2 id="callName"></h2>
     <p class="nc-call-status" id="callStatus" role="status" aria-live="polite"></p>
-    <button type="button" class="nc-call-close" id="callClose" aria-label="Close call panel" hidden>×</button>
     <div class="nc-call-view">
       <button type="button" class="nc-call-view-btn" id="callMaximize" aria-pressed="false" aria-label="Maximize call" title="Maximize">
         <svg class="icon-max" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
@@ -16,54 +15,19 @@
     </div>
   </div>
 
-  <!-- The other person's sound in 1:1 calls. Kept apart from the video element, which is hidden
-       in audio calls: a hidden (display:none) video element is never played. -->
-  <audio id="callRemoteAudio" autoplay></audio>
   <div class="nc-call-media" id="callMedia">
-    <!-- Group calls: your own tile floats here while others are in the call (group-calls.js). -->
+    <!-- Your own tile floats here while others are in the call (group-calls.js). -->
     <div class="nc-call-self" id="callSelfTile"></div>
     <!-- Short in-call notices: "Name raised their hand", chat previews while the chat is closed. -->
     <div class="nc-call-notices" id="callNotices" aria-live="polite"></div>
     <!-- Shown to everyone in the call while it's being recorded. -->
     <div class="nc-call-rec" id="callRecBanner" role="status" hidden><span class="nc-rec-dot" aria-hidden="true"></span> Recording <span id="callRecTimer">0:00</span></div>
-    <!-- Group calls: a screen someone shares fills this stage; the gallery becomes a side strip. -->
+    <!-- A screen someone shares fills this stage; the gallery becomes a side strip. -->
     <div class="nc-share-stage" id="callShareStage" hidden>
       <video id="callShareVideo" autoplay playsinline muted aria-label="Shared screen"></video>
     </div>
-    <!-- Group call: grid layout -->
-    <div class="nc-call-grid" id="callGrid" hidden>
-      <template id="videoTileTemplate">
-        <section class="nc-video-tile" data-peer-id="">
-          <video autoplay playsinline aria-label="Participant video"></video>
-          <div class="nc-video-overlay">
-            <p class="nc-video-name"></p>
-            <div class="nc-video-controls" hidden>
-              <button type="button" class="nc-btn-icon nc-pin" aria-label="Pin" aria-pressed="false" title="Pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 12l3 3 3-3"/></svg></button>
-              <button type="button" class="nc-btn-icon nc-spotlight" aria-label="Spotlight" aria-pressed="false" title="Spotlight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg></button>
-            </div>
-            <div class="nc-video-indicators">
-              <span class="nc-speaking-indicator" hidden>🔊</span>
-              <span class="nc-pinned-badge" hidden>📌</span>
-              <span class="nc-hand-raised" hidden>✋</span>
-              <span class="nc-muted-badge" hidden>🔇</span>
-            </div>
-          </section>
-        </template>
-      </div>
-
-      <!-- 1:1 call, laid out like Teams: one video fills the stage (the other person, or a shared
-           screen), the rest float as small tiles in the corner. calls.js arrange() moves the videos
-           between the stage, the tiles and the park (rendered but invisible, so they keep decoding). -->
-      <div class="nc-call-stage" id="callMedia1to1" hidden>
-        <div class="nc-stage-main" id="callStageMain"></div>
-        <div class="nc-stage-tiles" id="callTiles"></div>
-        <div class="nc-stage-park" id="callPark" aria-hidden="true">
-          <video id="callRemote" autoplay playsinline muted aria-label="Other participant"></video>
-          <video id="callRemoteScreen" class="nc-screen-video" autoplay playsinline muted aria-label="Shared screen"></video>
-          <video id="callLocal" class="nc-self-video" autoplay playsinline muted aria-label="Your camera"></video>
-          <video id="callLocalScreen" class="nc-screen-video" autoplay playsinline muted aria-label="Your shared screen"></video>
-        </div>
-      </div>
+    <!-- Everyone's tiles (group-calls.js); your own floats in callSelfTile while others are here. -->
+    <div class="nc-call-grid" id="callGrid" hidden></div>
   </div>
 
   <div class="nc-call-footer">

@@ -17,12 +17,6 @@
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 12px; margin-bottom: 16px;
 }
-.nc-call-close {
-  background: none; border: none; color: inherit;
-  font-size: 1.5rem; line-height: 1; cursor: pointer;
-  padding: 4px 8px; border-radius: 8px;
-}
-.nc-call-close:hover { background: rgba(255,255,255,.1); }
 
 /* Media layouts */
 .nc-call-media { position: relative; }
@@ -50,12 +44,6 @@
   background: linear-gradient(transparent, rgba(0,0,0,.85));
 }
 .nc-video-name { margin: 0; font-size: .9rem; font-weight: 500; }
-.nc-video-controls {
-  position: absolute; top: 8px; right: 8px;
-  display: flex; gap: 4px; opacity: 0;
-  transition: opacity .15s ease;
-}
-.nc-video-tile:hover .nc-video-controls { opacity: 1; }
 .nc-btn-icon {
   width: 32px; height: 32px; border-radius: 50%;
   background: rgba(0,0,0,.6); color: #fff;
@@ -63,14 +51,6 @@
   display: flex; align-items: center; justify-content: center;
 }
 .nc-btn-icon:hover { background: rgba(255,255,255,.2); }
-.nc-video-indicators {
-  position: absolute; top: 8px; left: 8px;
-  display: flex; gap: 4px; font-size: 1rem;
-}
-.nc-speaking-indicator { animation: pulse 1s infinite; }
-.nc-pinned-badge { font-size: .8rem; }
-.nc-hand-raised { animation: bounce 1s infinite; }
-.nc-muted-badge { font-size: .9rem; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
 @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 
@@ -180,16 +160,6 @@
 /* Badges */
 .nc-badge { font-size: .65rem; padding: 2px 6px; border-radius: 999px; font-weight: 600; }
 
-/* Video tile badges */
-.nc-pinned-badge { background: #4285f4; color: #fff; padding: 2px 6px; border-radius: 999px; font-size: .65rem; }
-.nc-hand-raised { animation: bounce 1s infinite; }
-.nc-muted-badge { color: #ea4335; }
-.nc-speaking-indicator { animation: pulse 1s infinite; }
-.nc-pinned-badge { font-size: .7rem; }
-.nc-hand-raised { animation: bounce 1s infinite; }
-.nc-muted-badge { font-size: .9rem; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
-@keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 
 /* Panel positioning */
 .nc-call-panel {
@@ -254,39 +224,9 @@
 .nc-call-max .nc-call-grid .nc-video-tile video, .nc-call:fullscreen .nc-call-grid .nc-video-tile video { height: 100%; max-height: none; aspect-ratio: auto; }
 .nc-call video { cursor: zoom-in; }
 
-/* 1:1 call stage, laid out like Teams (calls.js arrange()): the main video fills the stage, the
-   others float as small tiles in the bottom-right corner. */
-.nc-call-stage { position: relative; }
-.nc-stage-main video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 45vh; object-fit: cover; }
-.nc-stage-main video.nc-screen-video { object-fit: contain; }
-.nc-stage-tiles {
-  position: absolute; right: 10px; bottom: 10px; z-index: 1;
-  display: flex; gap: 8px; align-items: flex-end;
-}
-.nc-stage-tiles video {
-  display: block; width: 132px; aspect-ratio: 16 / 9; height: auto; max-height: none; object-fit: cover;
-  border: 1px solid #8990b8; border-radius: 8px; box-shadow: 0 4px 16px #0008;
-}
-.nc-stage-tiles video.nc-screen-video { object-fit: contain; }
-/* Nothing on the stage (e.g. an audio call where only you share): tiles sit in normal flow. */
-.nc-stage-main:empty { display: none; }
-.nc-stage-main:empty + .nc-stage-tiles { position: static; justify-content: flex-end; }
-.nc-stage-tiles:empty { display: none; }
-/* Your camera is mirrored like a mirror; a screen never is. */
-.nc-call video.nc-self-video { transform: scaleX(-1); }
-/* Parked videos keep decoding (so arrange() can tell when a picture arrives) but take no space.
-   Not display:none — Chromium doesn't decode video for an element that isn't rendered. */
-.nc-stage-park { position: absolute; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
-.nc-stage-park video { width: 2px; height: 2px; }
-/* Maximized / full screen: the stage fills the panel. */
-.nc-call-max .nc-call-stage, .nc-call:fullscreen .nc-call-stage { flex: 1; min-height: 0; }
-.nc-call-max .nc-stage-main, .nc-call:fullscreen .nc-stage-main { height: 100%; }
-.nc-call-max .nc-stage-main video, .nc-call:fullscreen .nc-stage-main video { height: 100%; max-height: none; aspect-ratio: auto; }
-.nc-call-max .nc-stage-tiles video, .nc-call:fullscreen .nc-stage-tiles video { width: clamp(160px, 18vw, 280px); }
-@media (max-width: 600px) { .nc-stage-tiles video { width: 96px; } }
 
-/* Video layout, Teams-style (panel class nc-call-video, set by calls.js / group-calls.js while
-   there is video to show): the video runs edge to edge and the header and controls float over it. */
+/* Video layout, Teams-style (panel class nc-call-video, set by group-calls.js while
+   in a call): the video runs edge to edge and the header and controls float over it. */
 .nc-call.nc-call-video { padding: 0; overflow: hidden; }
 .nc-call-video .nc-call-header {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3; margin: 0; padding: 14px 18px 30px;
@@ -302,9 +242,6 @@
   background: rgba(23, 29, 50, .9); border-color: rgba(137, 144, 184, .5);
 }
 .nc-call-video .nc-toolbar-group.nc-toolbar-participants { margin-left: 0; }
-.nc-call-video .nc-stage-main video { border-radius: 0; max-height: none; min-height: 240px; }
-.nc-call-video .nc-stage-tiles { right: 14px; bottom: 86px; }
-.nc-call-video .nc-stage-main:empty + .nc-stage-tiles { padding: 76px 14px 86px; }
 .nc-call-video .nc-call-grid { gap: 3px; min-height: 240px; }
 .nc-call-video .nc-call-grid .nc-video-tile { border-radius: 0; border: 0; }
 /* Maximized / full screen: the video covers the whole window, chrome floats over it. */

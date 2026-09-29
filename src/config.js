@@ -56,8 +56,6 @@ const EnvSchema = z.object({
   TLS_KEY_PATH: z.string().optional(),
   TLS_CERT_PATH: z.string().optional(),
 
-  // WebRTC/ICE (optional)
-  WEBRTC_ICE_SERVERS: z.string().optional(),
   // Publicly-reachable IP for mediasoup's WebRTC transports to advertise in ICE candidates.
   // Required whenever the server sits behind NAT/port-mapping (containers, cloud LBs) — without
   // it, mediasoup advertises the container's own internal interface address, which browsers

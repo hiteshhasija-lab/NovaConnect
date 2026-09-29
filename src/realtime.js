@@ -2,9 +2,7 @@ const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const { redis } = require('./redis');
 const { db, nowStr } = require('./db');
-const { createCalls } = require('./calls');
 const { createGroupCalls } = require('./group-calls');
-const { createSfuSignaling } = require('./sfu-signaling');
 
 let io = null;
 let endAllCalls = async () => {}; // set in attach(): ends running calls cleanly on shutdown
@@ -66,19 +64,14 @@ function attach(server, sessionMiddleware) {
   // socket.io does not catch a rejected promise returned from an async listener — it becomes
   // an unhandled rejection that crashes the whole process (taking every connected user down
   // with it) the moment the database hiccups. Every listener body below is guarded accordingly.
-  // 1:1 calls and group-chat calls each refuse someone who is already in the other kind.
-  const calls = createCalls(io, db, { inGroupCall: id => groupCalls.isBusy(id) });
-  const sfu = createSfuSignaling(io, db);
-  sfu.setIo(io);
-  const groupCalls = createGroupCalls(io, db, sfu, { inDirectCall: id => calls.isBusy(id) });
+  // All calls (1:1 chats, group chats, channel "Meet now") and meetings go through the SFU.
+  // group-calls.js decides who is in which call; meet-signaling.js runs meetings and serves the
+  // media (sfu:*) events for both. roomUserMap (socket.id -> the room it's in) is how they share it.
+  const roomUserMap = new Map();
+  const groupCalls = createGroupCalls(io, db, roomUserMap);
   endAllCalls = reason => groupCalls.endAll(reason);
-  // meet-signaling.js owns all lobby/SFU-transport socket events (sfu:create-transport,
-  // sfu:produce, etc.) once a peer has gone through meet:join — it needs sfu-signaling's
-  // roomUserMap instance (passed in here) but NOT its .attach(), since attaching both would
-  // register two competing handlers for the same event names and race each other.
-  const meet = require('./meet-signaling').createMeetSignaling(io, db, sfu, { scopeForRoom: roomId => groupCalls.scopeForRoom(roomId) });
+  const meet = require('./meet-signaling').createMeetSignaling(io, db, roomUserMap, { scopeForRoom: roomId => groupCalls.scopeForRoom(roomId) });
   io.on('connection', (socket) => {
-    calls.attach(socket);
     meet.attach(socket);
     groupCalls.attach(socket);
     const userId = socket.user.id;
