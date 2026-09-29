@@ -397,11 +397,13 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       const code = mainOf(roomId);
       const state = breakoutState(code);
       if ((await meetingOwnerId(code)) !== u.id) return { state, isOwner: false };
-      const b = breakouts.get(code);
+      const b = breakouts.get(code), me = roomUserMap.get(socket.id)?.peerId;
       return {
         state, isOwner: true,
         assign: b ? Object.fromEntries(b.assign) : {},
-        people: inMeeting(code).map(([, m]) => ({ peerId: m.peerId, fullName: m.fullName, owner: m.userId === u.id, room: roomIndexOf(m) })),
+        // "owner" is this connection (the one running the panel); the owner's other devices can be
+        // assigned like anyone else.
+        people: inMeeting(code).map(([, m]) => ({ peerId: m.peerId, fullName: m.fullName, owner: m.peerId === me, room: roomIndexOf(m) })),
       };
     });
     // Set up (or redo) the rooms while they're closed: how many, and who goes where — given, or spread
@@ -415,7 +417,8 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       if (assign && typeof assign === 'object') {
         for (const [peerId, idx] of Object.entries(assign)) if (Number.isInteger(idx) && idx >= 0 && idx < n) map.set(peerId, idx);
       } else {
-        const people = inMeeting(code).map(([, m]) => m).filter(m => m.userId !== u.id).sort(() => Math.random() - 0.5);
+        const me = roomUserMap.get(socket.id)?.peerId; // everyone but the connection setting it up
+        const people = inMeeting(code).map(([, m]) => m).filter(m => m.peerId !== me).sort(() => Math.random() - 0.5);
         people.forEach((m, i) => map.set(m.peerId, i % n));
       }
       breakouts.set(code, { rooms, assign: map, open: false, endsAt: null, timer: null });
