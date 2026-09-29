@@ -47,6 +47,7 @@
       $('callStopSharing').hidden = !c.display; $('callPlayback').hidden = true;
       $('callRecord').hidden = !c.joined;
       $('callWhiteboard').hidden = !c.joined;
+      $('callTogether').hidden = !c.joined || !together.canToggle;
       (ringing ? $('callAccept') : $('callHangup')).focus();
     }
     function kindLabel(c) {
@@ -66,10 +67,16 @@
       if (current !== c) return;
       const latest = [...c.screens.values()].pop();
       const boardShown = !latest && board.isOpen;
+      const togetherShown = !latest && !boardShown && together.isOn; // share > whiteboard > Together mode
       panel.classList.toggle('nc-call-presenting', !!latest || boardShown);
+      panel.classList.toggle('nc-call-together', togetherShown);
       $('callShareStage').hidden = !latest;
       $('callBoardStage').hidden = !boardShown;
+      $('callTogetherStage').hidden = !togetherShown;
       if (boardShown) requestAnimationFrame(() => board.fit());
+      if (togetherShown) requestAnimationFrame(() => together.fit());
+      $('callTogether').setAttribute('aria-pressed', String(together.isOn));
+      $('callTogether').classList.toggle('nc-active', together.isOn);
       $('callWhiteboard').setAttribute('aria-pressed', String(board.isOpen));
       $('callWhiteboard').classList.toggle('nc-active', board.isOpen);
       if ($('callShareVideo').srcObject !== (latest?.stream || null)) {
@@ -206,9 +213,10 @@
       allTiles().forEach(t => t.remove());
       panel.classList.remove('nc-call-video', 'nc-call-presenting', 'nc-call-compact', 'nc-call-focus');
       $('callFocusStage').hidden = true; focusPeer = null;
-      extras.stop(); board.stop();
+      extras.stop(); board.stop(); together.stop();
       clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
       $('callShareStage').hidden = true; $('callShareVideo').srcObject = null; $('callBoardStage').hidden = true; $('callWhiteboard').hidden = true;
+      $('callTogetherStage').hidden = true; $('callTogether').hidden = true; panel.classList.remove('nc-call-together');
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -264,6 +272,7 @@
         if (current !== c) return;
         extras.start({ roomId: c.roomId, peerId: c.peerId, userId: window.__NC__?.currentUser?.id ?? null });
         board.start({ roomId: c.roomId, peerId: c.peerId });
+        together.start({ roomId: c.roomId });
         request('meet:recording-status', { roomId: c.roomId }).then(({ recording }) => { if (recording && current === c) setRecording(c, recording.recordingId, recording.startTime); }).catch(() => {});
         if (c.pendingDisplay) { const d = c.pendingDisplay; c.pendingDisplay = null; shareScreen(c, d); }
         let started = Date.now();
@@ -293,6 +302,10 @@
       },
       extraPanels: [[$('callSettings'), $('callSettingsPanel')]],
       micTrack: () => (current?.joined ? current.stream?.getAudioTracks()[0] || null : null),
+      onRoomState: state => {
+        together.sync({ on: state.together, canToggle: state.canSpotlight });
+        if (current?.joined) $('callTogether').hidden = !together.canToggle;
+      },
       onFocus: peerId => { focusPeer = peerId; if (current) arrangeTiles(); },
     });
 
@@ -305,6 +318,22 @@
       },
     });
     $('callWhiteboard').addEventListener('click', () => { if (current?.joined) board.toggle(); });
+
+    // Together mode (together.js): everyone seated in one scene. Its people are the call's tiles
+    // (kept playing off-screen, at simulcast's small size, while the scene is shown).
+    const together = createTogether({
+      socket, request, notify, host: $('callTogetherStage'),
+      sources: () => allTiles().map(t => ({
+        id: t.dataset.peerId, name: t.dataset.peerId === 'local' ? 'You' : (t.querySelector('.nc-video-name')?.textContent || ''),
+        video: t.querySelector('video'), camOff: t.classList.contains('nc-camera-off') || !t.classList.contains('nc-has-video'),
+      })),
+      onChange: (on, byName) => {
+        const c = current;
+        if (c?.joined) { renderShare(c); if (c.camera) swapCamera(c, c.camera).catch(e => notify(e)); }
+        if (byName) extras.notice(byName + (on ? ' turned on Together mode' : ' turned off Together mode'));
+      },
+    });
+    $('callTogether').addEventListener('click', () => { if (current?.joined) together.toggle(); });
 
     // Recording (anyone in the call, as in Teams). Everyone sees the banner; when it stops, the video
     // is composed on the server and posted into this chat/channel as a file (meet:recording-ready).
@@ -383,8 +412,9 @@
     // shown and sent. c.camera is the camera itself, c.effect the processing (its track is what's in
     // c.stream and sent). Swapping (new camera, blur on/off) replaces the sent track first, then stops
     // the old processing, so the video doesn't blank in between.
-    async function applyBackground(c, camera) {
-      const effect = await NovaBackground.process(camera);
+    // While Together mode is on, the camera goes out cut out on green instead (together.js).
+    async function applyBackground(c, camera, mode = together.isOn ? 'cutout' : NovaBackground.mode()) {
+      const effect = await NovaBackground.process(camera, mode);
       if (effect.error) notify(new Error('Background blur isn\u2019t available in this browser; your camera is shown as it is.'));
       const previous = c.effect; c.effect = effect; c.camera = camera;
       return { track: effect.track, previous };

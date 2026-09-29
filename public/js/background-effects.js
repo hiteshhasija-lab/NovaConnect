@@ -6,8 +6,9 @@
   // is blurred before the video is sent — the server and other people only ever get the result.
   //
   //   NovaBackground.mode() / setMode('none' | 'blur')  your choice, remembered on this device
-  //   await NovaBackground.process(cameraTrack)          -> { track, stop() }: the track to show and
+  //   await NovaBackground.process(cameraTrack[, mode])  -> { track, stop() }: the track to show and
   //                                                        send (the camera itself when blur is off)
+  //   mode 'cutout' (Together mode, together.js): you on pure green, for viewers to key out.
   //
   // Frames are processed with the browser's "breakout box" (MediaStreamTrackProcessor/Generator:
   // Chrome, Edge, the desktop apps), which keeps running while the tab is in the background; other
@@ -40,7 +41,8 @@
 
   // Draws one blurred-background frame of `source` (a video element or VideoFrame) into `out`:
   // the frame blurred, then the frame at full sharpness wherever the segmenter sees a person.
-  function makeCompositor() {
+  const KEY_GREEN = '#00ff00';
+  function makeCompositor(mode) {
     const small = canvasOf(WORK_W, WORK_H), sg = small.getContext('2d');
     const mask = canvasOf(WORK_W, WORK_H), mg = mask.getContext('2d');
     const tiny = canvasOf(48, 27), tg = tiny.getContext('2d'); // blur without ctx.filter: shrink, enlarge
@@ -62,9 +64,11 @@
         }
         result.confidenceMasks?.forEach(x => x.close());
       });
-      // Background: the frame, blurred (never shown unblurred, even before the first mask).
+      // Background: the frame, blurred (never shown unblurred, even before the first mask) — or, for
+      // Together mode, pure green.
       og.save();
-      if (filterWorks) { og.filter = 'blur(' + Math.max(8, Math.round(W / 90)) + 'px)'; og.drawImage(small, -16, -16, W + 32, H + 32); }
+      if (mode === 'cutout') { og.fillStyle = KEY_GREEN; og.fillRect(0, 0, W, H); }
+      else if (filterWorks) { og.filter = 'blur(' + Math.max(8, Math.round(W / 90)) + 'px)'; og.drawImage(small, -16, -16, W + 32, H + 32); }
       else { tg.drawImage(small, 0, 0, tiny.width, tiny.height); og.imageSmoothingQuality = 'high'; og.drawImage(tiny, 0, 0, W, H); }
       og.restore();
       if (!haveMask) return;
@@ -76,11 +80,11 @@
     };
   }
 
-  async function blurTrack(camera) {
+  async function blurTrack(camera, mode = 'blur') {
     await loadSegmenter(); // fail here (not per frame) if the model can't load
     const settings = camera.getSettings();
     const W = settings.width || 1280, H = settings.height || 720;
-    const compose = makeCompositor();
+    const compose = makeCompositor(mode);
     let stopped = false;
 
     // Chrome / Edge / Electron: frame by frame, also while the tab is in the background.
@@ -129,8 +133,8 @@
     setMode(mode) { try { localStorage.setItem(KEY, mode === 'blur' ? 'blur' : 'none'); } catch { /* not remembered */ } },
     // The track to show and send for this camera: blurred when blur is chosen (and works here).
     async process(camera, mode = read()) {
-      if (!camera || camera.kind !== 'video' || mode !== 'blur' || !this.available) return { track: camera, stop() {}, mode: 'none' };
-      try { const r = await blurTrack(camera); return { ...r, mode: 'blur' }; }
+      if (!camera || camera.kind !== 'video' || !['blur', 'cutout'].includes(mode) || !this.available) return { track: camera, stop() {}, mode: 'none' };
+      try { const r = await blurTrack(camera, mode); return { ...r, mode }; }
       catch (e) { console.warn('Background blur unavailable:', e?.message || e); return { track: camera, stop() {}, mode: 'none', error: e }; }
     },
   };

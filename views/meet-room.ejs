@@ -1,8 +1,8 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=18">
-<link rel="stylesheet" href="/css/calls.css?v=23">
+<link rel="stylesheet" href="/css/meet.css?v=19">
+<link rel="stylesheet" href="/css/calls.css?v=24">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
     <h1><%= link.title %></h1>
@@ -28,6 +28,7 @@
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetChatBtn" hidden aria-expanded="false" aria-controls="meetChatPanel"><i class="bi bi-chat-dots" aria-hidden="true"></i> Chat <span class="nc-badge" id="meetChatBadge" hidden>0</span></button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn nc-captions-btn" id="meetCaptionsBtn" hidden aria-pressed="false" aria-label="Turn on live captions" title="Turn on live captions"><span class="nc-cc" aria-hidden="true">CC</span> Captions</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetBoardBtn" hidden aria-pressed="false"><i class="bi bi-easel" aria-hidden="true"></i> Whiteboard</button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetTogetherBtn" hidden aria-pressed="false"><i class="bi bi-people-fill" aria-hidden="true"></i> Together mode</button>
     </div>
     <details class="meet-devices">
       <summary><i class="bi bi-gear" aria-hidden="true"></i> Devices</summary>
@@ -62,6 +63,8 @@
   </section>
   <!-- The shared whiteboard (whiteboard.js) takes the stage while it's open and nobody is sharing. -->
   <section class="meet-board-stage" id="meetBoardStage" hidden aria-label="Whiteboard"></section>
+  <!-- Together mode (together.js): everyone seated in one scene while it's on. -->
+  <section class="meet-together-stage" id="meetTogetherStage" hidden aria-label="Together mode"></section>
   <!-- A pinned or spotlighted person's tile moves here, shown large; the others shrink to a strip. -->
   <section class="meet-focus-stage" id="meetFocusStage" hidden aria-label="Pinned participant"></section>
   <div class="meet-videos" id="meetVideos"></div>
@@ -89,10 +92,11 @@
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
 <script src="/js/sfu-client.js?v=6"></script>
 <script src="/js/devices.js?v=2"></script>
-<script src="/js/background-effects.js?v=1"></script>
-<script src="/js/call-extras.js?v=6"></script>
+<script src="/js/background-effects.js?v=2"></script>
+<script src="/js/call-extras.js?v=7"></script>
 <script src="/js/whiteboard.js?v=2"></script>
-<script src="/js/meet-room.js?v=23"></script>
+<script src="/js/together.js?v=1"></script>
+<script src="/js/meet-room.js?v=24"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

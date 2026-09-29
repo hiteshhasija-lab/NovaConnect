@@ -12,6 +12,7 @@ let ownPeerId=null,ownUserId=null; // our ids in the meeting room (to tell our o
 const screens=new Map();       // peerId -> { name, stream } for screens others share
 const focusStage=document.getElementById('meetFocusStage');
 const boardStage=document.getElementById('meetBoardStage'),boardBtn=document.getElementById('meetBoardBtn');
+const togetherStage=document.getElementById('meetTogetherStage'),togetherBtn=document.getElementById('meetTogetherBtn');
 let focusPeer=null;            // pinned or spotlighted person (call-extras.js onFocus), shown large
 const allTiles=()=>[...videos.children,...focusStage.children];
 // Before joining (Teams-style): microphone and camera start as you left them last time — off the
@@ -73,7 +74,7 @@ function updateSelfView(){videos.classList.toggle('has-remote',allTiles().some(e
 // (meet.css .focus), like a shared screen — which wins while there is one.
 function arrangeFocus(){
   const id=focusPeer?(focusPeer===ownPeerId?'local':focusPeer):null;
-  const focused=shareStage.hidden&&boardStage.hidden&&id?document.getElementById('peer-'+id):null;
+  const focused=shareStage.hidden&&boardStage.hidden&&togetherStage.hidden&&id?document.getElementById('peer-'+id):null;
   const move=(t,box)=>{if(t.parentNode===box)return;box.append(t);const v=t.querySelector('video');if(v?.paused)v.play().catch(()=>{})};
   [...focusStage.children].forEach(t=>{if(t!==focused)move(t,videos)});
   if(focused)move(focused,focusStage);
@@ -93,8 +94,12 @@ function removePeer(peerId){
 function renderShare(){
   const latest=[...screens.values()].pop();
   const boardShown=!latest&&!!board?.isOpen; // the whiteboard takes the stage when nobody shares
+  const togetherShown=!latest&&!boardShown&&!!together?.isOn; // share > whiteboard > Together mode
   shareStage.hidden=!latest;
   boardStage.hidden=!boardShown;if(boardShown)requestAnimationFrame(()=>board.fit());
+  togetherStage.hidden=!togetherShown;if(togetherShown)requestAnimationFrame(()=>together.fit());
+  document.querySelector('.meet-room').classList.toggle('together',togetherShown);
+  togetherBtn.setAttribute('aria-pressed',String(!!together?.isOn));togetherBtn.classList.toggle('nc-on',!!together?.isOn);
   boardBtn.setAttribute('aria-pressed',String(!!board?.isOpen));boardBtn.classList.toggle('nc-on',!!board?.isOpen); // not Bootstrap's .active (white text)
   document.querySelector('.meet-room').classList.toggle('presenting',!!latest||boardShown);
   if(shareVideo.srcObject!==(latest?.stream||null)){shareVideo.srcObject=latest?.stream||null;if(latest)shareVideo.play().catch(()=>{})}
@@ -104,6 +109,7 @@ function renderShare(){
 function setShareButton(){
   shareBtn.hidden=!joined||!navigator.mediaDevices?.getDisplayMedia;
   boardBtn.hidden=!joined;
+  togetherBtn.hidden=!joined||!together?.canToggle;
   shareBtn.querySelector('span').textContent=display?'Stop sharing':'Share screen';
   shareBtn.classList.toggle('btn-warning',!!display);shareBtn.classList.toggle('btn-outline-secondary',!display);
 }
@@ -171,6 +177,7 @@ const extras=createCallExtras({
     captionsBtn:$('meetCaptionsBtn'),captionsBox:$('meetCaptions'),
   },
   micTrack:()=>joined?stream?.getAudioTracks()[0]||null:null,
+  onRoomState:state=>{together.sync({on:state.together,canToggle:state.canSpotlight});setShareButton()},
 });
 
 // Shared whiteboard (whiteboard.js): opens for everyone on the stage, like a shared screen.
@@ -178,10 +185,20 @@ const board=createWhiteboard({socket,request,notify:e=>{status.textContent=e.mes
   onOpenChange:(open,byName)=>{renderShare();if(byName)status.textContent=byName+(open?' opened the whiteboard.':' closed the whiteboard.')}});
 boardBtn.onclick=()=>{if(joined)board.toggle()};
 
+// Together mode (together.js): everyone seated in one scene. Its people are the meeting's tiles
+// (kept playing, out of sight, while the scene is shown); your camera goes out cut out on green.
+const cameraMode=()=>together?.isOn?'cutout':NovaBackground.mode();
+const together=createTogether({socket,request,notify:e=>{status.textContent=e.message},host:togetherStage,
+  sources:()=>allTiles().map(t=>({id:t.dataset.peerId,name:t.dataset.peerId==='local'?'You':(t.querySelector('p')?.textContent||''),
+    video:t.querySelector('video'),camOff:t.classList.contains('camera-off')||!t.classList.contains('has-video')})),
+  onChange:(on,byName)=>{renderShare();if(joined&&cam)swapCamera(cam).catch(e=>{status.textContent=e.message});
+    if(byName)status.textContent=byName+(on?' turned on Together mode.':' turned off Together mode.')}});
+togetherBtn.onclick=()=>{if(joined)together.toggle()};
+
 function cleanup(){
   joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
   display?.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null;
-  screens.clear();board.stop();renderShare();extras.stop();ownPeerId=null;
+  screens.clear();board.stop();together.stop();renderShare();extras.stop();ownPeerId=null;
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;
@@ -219,6 +236,7 @@ async function enterMeeting(){
     setShareButton();
     extras.start({roomId,peerId:ownPeerId,userId:ownUserId});
     board.start({roomId,peerId:ownPeerId});
+    together.start({roomId});
     syncRecording();
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
@@ -271,7 +289,7 @@ enter.onclick=async()=>{
       try{audio=(await navigator.mediaDevices.getUserMedia({audio:NovaDevices.audio()})).getAudioTracks()[0]}catch{if(mic.checked)status.textContent='Your microphone is not available; joining without it.'}
       if(camera.checked&&!video)try{video=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0]}catch{camera.checked=false}
       if(audio)audio.enabled=mic.checked;else mic.checked=false;
-      if(video){cam=video;camEffect=await NovaBackground.process(video);video=camEffect.track} // blur, if chosen
+      if(video){cam=video;camEffect=await NovaBackground.process(video,cameraMode());video=camEffect.track} // blur, if chosen
       const tracks=[audio,video].filter(Boolean);
       if(tracks.length)stream=new MediaStream(tracks);
       devicePicker.refresh(); // device names are only readable once access is granted
@@ -301,7 +319,7 @@ async function addCamera(){
   try{
     const raw=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0];
     if(!joined||!camera.checked){raw.stop();return}
-    const effect=await NovaBackground.process(raw);
+    const effect=await NovaBackground.process(raw,cameraMode());
     if(!joined||!camera.checked){effect.stop();raw.stop();return}
     cam=raw;camEffect=effect;const track=effect.track;
     if(!stream)stream=new MediaStream();
@@ -316,7 +334,7 @@ async function addCamera(){
 // stops, so the video doesn't blank in between.
 async function swapCamera(newCam){
   const old=stream?.getVideoTracks()[0],oldCam=cam,previous=camEffect;
-  const effect=await NovaBackground.process(newCam);
+  const effect=await NovaBackground.process(newCam,cameraMode());
   if(!joined){effect.stop();if(newCam!==oldCam)newCam.stop();return}
   if(effect.error)status.textContent='Background blur isn\u2019t available in this browser; your camera is shown as it is.';
   cam=newCam;camEffect=effect;

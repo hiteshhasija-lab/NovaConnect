@@ -17,7 +17,9 @@
   // Live captions: els.captionsBtn turns them on for you, els.captionsBox shows them; micTrack()
   // is your microphone track (null when not in a call), and the page calls micChanged() when you
   // mute, unmute or switch microphone.
-  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [], onFocus = () => {}, micTrack = () => null }) {
+  // onRoomState(state): the room's current sfu:participants answer (e.g. Together mode, who may
+  // switch it), after each refresh.
+  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [], onFocus = () => {}, micTrack = () => null, onRoomState = () => {} }) {
     const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
     const panels = [[els.participantsBtn, els.participantsPanel], [els.reactionsBtn, els.reactionsPanel], [els.chatBtn, els.chatPanel], ...extraPanels];
     const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn, els.captionsBtn, ...extraPanels.map(([btn]) => btn)].filter(Boolean);
@@ -158,9 +160,10 @@
       const mine = ctx;
       refreshTimer = setTimeout(async () => {
         if (!mine || ctx !== mine) return;
-        let list, speaker, spot, may, captions;
-        try { ({ participants: list, speaker, spotlight: spot, canSpotlight: may, captions } = await request('sfu:participants', { roomId: mine.roomId })); } catch { return; }
+        let list, speaker, spot, may, captions, state;
+        try { state = await request('sfu:participants', { roomId: mine.roomId }); ({ participants: list, speaker, spotlight: spot, canSpotlight: may, captions } = state); } catch { return; }
         if (ctx !== mine) return;
+        onRoomState(state);
         if (!!captions !== captionsWanted) { captionsWanted = !!captions; updateTranscriber(); }
         spotlight = spot || null; canSpotlight = !!may;
         if (pinned && !list.some(p => p.peerId === pinned)) pinned = null;

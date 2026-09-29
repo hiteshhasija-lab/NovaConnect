@@ -324,7 +324,20 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       // is dropped once that person has left.
       const room = getRoom(roomId);
       const spotlight = participants.some(p => p.peerId === room?.spotlight) ? room.spotlight : null;
-      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u), captions: captionsWanted(roomId), board: !!room?.board?.open };
+      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u), captions: captionsWanted(roomId), board: !!room?.board?.open, together: !!room?.together };
+    });
+    // ---- Together mode (together.js) ----
+    // Everyone shown cut out of their video and seated in one shared scene. A room-wide switch, like
+    // spotlight: meeting owner in meetings, anyone in calls. While it's on, each browser sends its
+    // camera cut out on green (background-effects.js) and draws the scene itself.
+    handle('sfu:together', async ({ roomId, on }, u) => {
+      admitted(roomId);
+      if (!await maySpotlight(roomId, u)) throw Error('Only the meeting owner can turn on Together mode.');
+      const room = getRoom(roomId);
+      if (!room) throw Error('This call has ended.');
+      room.together = on === true;
+      io.to(`sfu:${roomId}`).emit('sfu:together-state', { roomId, on: room.together, byName: u.full_name });
+      return { on: room.together };
     });
     // ---- Whiteboard (whiteboard.js) ----
     // One board per call room, kept on the SFU room object for the life of the call (so late
