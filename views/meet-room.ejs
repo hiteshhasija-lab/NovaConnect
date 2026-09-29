@@ -1,7 +1,7 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=12">
+<link rel="stylesheet" href="/css/meet.css?v=13">
 <link rel="stylesheet" href="/css/calls.css?v=20">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
@@ -10,9 +10,14 @@
   </header>
   <div class="meet-room-preview">
     <p>Meeting ID: <%= link.code %> · Group call</p>
+    <!-- Before joining: your camera as others will see it, while it's on (meet-room.js). -->
+    <div class="meet-prejoin" id="meetPrejoin">
+      <video id="meetPreviewVideo" autoplay playsinline muted aria-label="Your camera preview"></video>
+      <div class="meet-prejoin-off"><i class="bi bi-camera-video-off" aria-hidden="true"></i> Your camera is off</div>
+    </div>
     <div class="meet-room-controls">
-      <label><input id="meetMic" type="checkbox" checked> Microphone</label>
-      <label><input id="meetCamera" type="checkbox" checked> Camera</label>
+      <label><input id="meetMic" type="checkbox"> Microphone</label>
+      <label><input id="meetCamera" type="checkbox"> Camera</label>
       <button class="btn btn-primary" id="meetEnter">Join meeting</button>
       <button class="btn btn-danger" id="meetLeave" hidden>Leave meeting</button>
       <button type="button" class="btn btn-outline-secondary" id="meetShare" hidden><i class="bi bi-display" aria-hidden="true"></i> <span>Share screen</span></button>
@@ -78,7 +83,7 @@
 <script src="/js/sfu-client.js?v=6"></script>
 <script src="/js/devices.js?v=2"></script>
 <script src="/js/call-extras.js?v=5"></script>
-<script src="/js/meet-room.js?v=17"></script>
+<script src="/js/meet-room.js?v=18"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

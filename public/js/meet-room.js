@@ -13,6 +13,26 @@ const screens=new Map();       // peerId -> { name, stream } for screens others 
 const focusStage=document.getElementById('meetFocusStage');
 let focusPeer=null;            // pinned or spotlighted person (call-extras.js onFocus), shown large
 const allTiles=()=>[...videos.children,...focusStage.children];
+// Before joining (Teams-style): microphone and camera start as you left them last time — off the
+// first time — and a live preview shows your camera while it's on. The preview's camera is the one
+// you join with, so it doesn't restart.
+const prejoin=document.getElementById('meetPrejoin'),previewVideo=document.getElementById('meetPreviewVideo');
+const PREFS={mic:'nc.meet.mic',camera:'nc.meet.camera'};
+const prefOn=k=>{try{return localStorage.getItem(PREFS[k])==='1'}catch{return false}};
+const setPref=(k,on)=>{try{localStorage.setItem(PREFS[k],on?'1':'0')}catch{}};
+let preview=null;              // camera stream shown before joining
+mic.checked=prefOn('mic');camera.checked=prefOn('camera');
+async function showPreview(){
+  if(joined||joining||waiting)return;
+  if(!camera.checked||!navigator.mediaDevices?.getUserMedia){stopPreview();return}
+  if(preview?.getVideoTracks()[0]?.readyState==='live')return;
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()});
+    if(!camera.checked||joined||joining||waiting){s.getTracks().forEach(t=>t.stop());return}
+    stopPreview();preview=s;previewVideo.srcObject=s;prejoin.classList.add('on');devicePicker.refresh();
+  }catch(e){camera.checked=false;setPref('camera',false);stopPreview();status.textContent='Your camera is not available: '+e.message}
+}
+function stopPreview(keepTrack=false){if(!keepTrack)preview?.getTracks().forEach(t=>t.stop());preview=null;previewVideo.srcObject=null;prejoin.classList.remove('on')}
 const waitingPeople=new Map(); // owner only: peerId -> fullName
 
 function request(event,data){return new Promise((resolve,reject)=>socket.timeout(15000).emit(event,data,(err,r)=>err?reject(Error('Connection timed out.')):r?.ok?resolve(r):reject(Error(r?.error||'Unable to connect.'))))}
@@ -105,7 +125,8 @@ const devicePicker=NovaDevices.bind(
   (kind,id)=>switchDevice(kind,id).catch(e=>{status.textContent='Could not switch device: '+e.message}));
 async function switchDevice(kind,id){
   if(kind==='audiooutput'){allTiles().forEach(t=>{if(t.id!=='peer-local')NovaDevices.applySpeaker(t.querySelector('video'))});return}
-  if(!joined||!stream)return; // used when you join
+  if(!joined){if(kind==='videoinput'&&preview){stopPreview();showPreview()}return} // otherwise used when you join
+  if(!stream)return;
   const short=kind==='audioinput'?'audio':'video';
   const old=short==='audio'?stream.getAudioTracks()[0]:stream.getVideoTracks()[0];
   if(!old)return;
@@ -147,7 +168,7 @@ function cleanup(){
   videos.replaceChildren();focusStage.replaceChildren();focusStage.hidden=true;focusPeer=null;document.querySelector('.meet-room').classList.remove('focus');updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
   hideRecordingIndicator();currentRecordingId=null;
-  enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;
+  enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;prejoin.hidden=false;
   setShareButton();
 }
 
@@ -156,7 +177,7 @@ async function enterMeeting(){
   if(joined||!roomId)return;
   joined=true;joining=false;waiting=false;
   lobby.hidden=true;enter.hidden=true;exit.hidden=false;
-  mic.disabled=!stream?.getAudioTracks().length;camera.disabled=!stream?.getVideoTracks().length;
+  mic.disabled=!stream?.getAudioTracks().length;camera.disabled=!navigator.mediaDevices?.getUserMedia;prejoin.hidden=true;
   if(recordingControls)recordingControls.hidden=!isOwner;
   if(stream)tile('local','You',stream,true);
   status.textContent='Connected.';
@@ -209,7 +230,7 @@ socket.on('disconnect',()=>{if(joined||waiting||joining){cleanup();status.textCo
 
 // Lobby events
 socket.on('meet:admitted',()=>{if(waiting||joining)enterMeeting()});
-socket.on('meet:denied',()=>{cleanup();status.textContent='The meeting owner declined your request to join.'});
+socket.on('meet:denied',()=>{cleanup();showPreview();status.textContent='The meeting owner declined your request to join.'});
 socket.on('meet:lobby-waiting',({peerId,fullName})=>{if(!joined||!isOwner)return;waitingPeople.set(peerId,fullName);renderLobbyQueue();status.textContent=`${fullName} is waiting to join.`});
 socket.on('meet:lobby-left',({peerId})=>{if(waitingPeople.delete(peerId))renderLobbyQueue()});
 
@@ -220,8 +241,16 @@ enter.onclick=async()=>{
     // Browsers only offer camera/microphone on https (or localhost); on plain http, join to watch and listen.
     const noDevices=(mic.checked||camera.checked)&&!navigator.mediaDevices?.getUserMedia;
     if(noDevices){mic.checked=false;camera.checked=false}
-    if(mic.checked||camera.checked){
-      stream=await navigator.mediaDevices.getUserMedia({audio:mic.checked&&NovaDevices.audio(),video:camera.checked&&NovaDevices.video()});
+    if(navigator.mediaDevices?.getUserMedia){
+      // The microphone is always opened — muted if it's off, so unmuting later just works. The
+      // camera only while it's on: the preview's, else a fresh one (turning it on later adds it).
+      let audio=null,video=camera.checked?preview?.getVideoTracks()[0]||null:null;
+      stopPreview(!!video);
+      try{audio=(await navigator.mediaDevices.getUserMedia({audio:NovaDevices.audio()})).getAudioTracks()[0]}catch{if(mic.checked)status.textContent='Your microphone is not available; joining without it.'}
+      if(camera.checked&&!video)try{video=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0]}catch{camera.checked=false}
+      if(audio)audio.enabled=mic.checked;else mic.checked=false;
+      const tracks=[audio,video].filter(Boolean);
+      if(tracks.length)stream=new MediaStream(tracks);
       devicePicker.refresh(); // device names are only readable once access is granted
     }
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
@@ -236,9 +265,28 @@ enter.onclick=async()=>{
 };
 
 // In the meeting these also pause the stream at the server, so everyone else is told.
-mic.onchange=()=>{stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);if(joined){setTileState('local','audio',!mic.checked);session?.setPaused('audio',!mic.checked)}};
-camera.onchange=()=>{stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);if(joined){setTileState('local','video',!camera.checked);session?.setPaused('video',!camera.checked)}};
-exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
+// Your choice is remembered for next time. Before joining, the camera switch starts/stops the preview.
+mic.onchange=()=>{setPref('mic',mic.checked);stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);if(joined){setTileState('local','audio',!mic.checked);session?.setPaused('audio',!mic.checked)}};
+camera.onchange=()=>{
+  setPref('camera',camera.checked);
+  if(!joined){showPreview();return}
+  if(camera.checked&&!stream?.getVideoTracks().length){addCamera();return}
+  stream?.getVideoTracks().forEach(t=>t.enabled=camera.checked);setTileState('local','video',!camera.checked);session?.setPaused('video',!camera.checked);
+};
+// Joined with the camera off: turning it on opens it now and sends it as a new stream.
+async function addCamera(){
+  try{
+    const track=(await navigator.mediaDevices.getUserMedia({video:NovaDevices.video()})).getVideoTracks()[0];
+    if(!joined||!camera.checked){track.stop();return}
+    if(!stream)stream=new MediaStream();
+    stream.addTrack(track);
+    const mine=document.querySelector('#peer-local video');
+    if(mine)mine.srcObject=new MediaStream(stream.getTracks());else tile('local','You',stream,true);
+    setTileState('local','video',false);
+    await session?.publish(new MediaStream([track]));
+  }catch(e){camera.checked=false;setPref('camera',false);status.textContent='Could not turn on your camera: '+e.message}
+}
+exit.onclick=()=>{const wasWaiting=waiting;leaveMeeting();showPreview();status.textContent=wasWaiting?'You left the lobby.':'You left the meeting.'};
 window.addEventListener('pagehide',leaveMeeting);
 
 // Recording (controls are shown to the meeting owner only; everyone sees the REC banner).
@@ -322,4 +370,5 @@ async function stopRecording(){
 
 if(recordBtn)recordBtn.onclick=startRecording;
 if(stopRecordBtn)stopRecordBtn.onclick=stopRecording;
+showPreview();
 })();
