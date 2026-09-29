@@ -47,6 +47,7 @@
       $('callStopSharing').hidden = !c.display; $('callPlayback').hidden = true;
       $('callRecord').hidden = !c.joined;
       $('callWhiteboard').hidden = !c.joined;
+      $('callView').hidden = !c.joined;
       $('callTogether').hidden = !c.joined || !together.canToggle;
       (ringing ? $('callAccept') : $('callHangup')).focus();
     }
@@ -140,6 +141,7 @@
         moveTile(mine, others && !presenting && !focused ? $('callSelfTile') : grid);
       }
       fitShareLayout();
+      gallery.refresh();
     }
     // While a screen is shared, as in Teams, only people whose camera is on get a tile: no black
     // boxes with initials next to the shared screen (for the viewer, who then sees the screen
@@ -217,6 +219,7 @@
       clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
       $('callShareStage').hidden = true; $('callShareVideo').srcObject = null; $('callBoardStage').hidden = true; $('callWhiteboard').hidden = true;
       $('callTogetherStage').hidden = true; $('callTogether').hidden = true; panel.classList.remove('nc-call-together');
+      $('callView').hidden = true; gallery.clear();
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -334,6 +337,24 @@
       },
     });
     $('callTogether').addEventListener('click', () => { if (current?.joined) together.toggle(); });
+
+    // Gallery / Large gallery (gallery.js): lays out the call's tiles while nothing else has the stage.
+    // Your own tile floats in the corner (callSelfTile) and isn't part of it.
+    const gallery = createGallery({
+      grid,
+      tiles: () => [...grid.querySelectorAll(':scope > .nc-video-tile')],
+      active: () => !!current?.joined && !['nc-call-presenting', 'nc-call-focus', 'nc-call-together', 'nc-call-compact'].some(k => panel.classList.contains(k)),
+      fixedHeight: () => panel.classList.contains('nc-call-max') || document.fullscreenElement === panel,
+      onViewChange: paintView,
+    });
+    function paintView(view = gallery.view) {
+      const next = view === 'large' ? 'Gallery' : 'Large gallery';
+      $('callView').title = 'Switch to ' + next + (next === 'Large gallery' ? ' (up to 49 people)' : ' (up to 9 people)');
+      $('callView').setAttribute('aria-label', 'Switch to ' + next);
+      $('callView').querySelector('i').className = 'bi ' + (view === 'large' ? 'bi-grid' : 'bi-grid-3x3-gap');
+    }
+    paintView();
+    $('callView').addEventListener('click', () => { if (current?.joined) gallery.toggle(); });
 
     // Recording (anyone in the call, as in Teams). Everyone sees the banner; when it stops, the video
     // is composed on the server and posted into this chat/channel as a file (meet:recording-ready).

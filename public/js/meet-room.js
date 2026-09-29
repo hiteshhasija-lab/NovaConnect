@@ -81,6 +81,7 @@ function arrangeFocus(){
   focusStage.hidden=!focused;
   document.querySelector('.meet-room').classList.toggle('focus',!!focused);
   updateSelfView();
+  gallery?.refresh();
 }
 
 function removePeer(peerId){
@@ -109,6 +110,7 @@ function renderShare(){
 function setShareButton(){
   shareBtn.hidden=!joined||!navigator.mediaDevices?.getDisplayMedia;
   boardBtn.hidden=!joined;
+  document.getElementById('meetViewBtn').hidden=!joined;
   togetherBtn.hidden=!joined||!together?.canToggle;
   shareBtn.querySelector('span').textContent=display?'Stop sharing':'Share screen';
   shareBtn.classList.toggle('btn-warning',!!display);shareBtn.classList.toggle('btn-outline-secondary',!display);
@@ -195,10 +197,21 @@ const together=createTogether({socket,request,notify:e=>{status.textContent=e.me
     if(byName)status.textContent=byName+(on?' turned on Together mode.':' turned off Together mode.')}});
 togetherBtn.onclick=()=>{if(joined)together.toggle()};
 
+// Gallery / Large gallery (gallery.js): lays out the tiles while nothing else has the stage. Your own
+// tile floats in the corner once others are here (meet.css) and isn't part of it.
+const viewBtn=document.getElementById('meetViewBtn');
+const gallery=createGallery({grid:videos,minTile:180,
+  tiles:()=>[...videos.children].filter(t=>t.classList.contains('meet-video')&&!(t.id==='peer-local'&&videos.classList.contains('has-remote'))),
+  active:()=>joined&&!['presenting','focus','together'].some(k=>document.querySelector('.meet-room').classList.contains(k)),
+  onViewChange:v=>paintView(v)});
+function paintView(v=gallery.view){viewBtn.querySelector('span').textContent=v==='large'?'Gallery':'Large gallery';viewBtn.title=v==='large'?'Show up to 9 people':'Show up to 49 people';viewBtn.querySelector('i').className='bi '+(v==='large'?'bi-grid':'bi-grid-3x3-gap')}
+paintView();
+viewBtn.onclick=()=>{if(joined)gallery.toggle()};
+
 function cleanup(){
   joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
   display?.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null;
-  screens.clear();board.stop();together.stop();renderShare();extras.stop();ownPeerId=null;
+  screens.clear();board.stop();together.stop();renderShare();gallery.clear();extras.stop();ownPeerId=null;
   session?.close();session=null;
   waitingPeople.clear();renderLobbyQueue();
   stream?.getTracks().forEach(t=>t.stop());stream=null;

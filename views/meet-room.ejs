@@ -2,7 +2,7 @@
 <%- include('partials/head') %>
 <% } %>
 <link rel="stylesheet" href="/css/meet.css?v=19">
-<link rel="stylesheet" href="/css/calls.css?v=24">
+<link rel="stylesheet" href="/css/calls.css?v=25">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
     <h1><%= link.title %></h1>
@@ -29,6 +29,7 @@
       <button type="button" class="btn btn-outline-secondary meet-extra-btn nc-captions-btn" id="meetCaptionsBtn" hidden aria-pressed="false" aria-label="Turn on live captions" title="Turn on live captions"><span class="nc-cc" aria-hidden="true">CC</span> Captions</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetBoardBtn" hidden aria-pressed="false"><i class="bi bi-easel" aria-hidden="true"></i> Whiteboard</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetTogetherBtn" hidden aria-pressed="false"><i class="bi bi-people-fill" aria-hidden="true"></i> Together mode</button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetViewBtn" hidden><i class="bi bi-grid-3x3-gap" aria-hidden="true"></i> <span>Large gallery</span></button>
     </div>
     <details class="meet-devices">
       <summary><i class="bi bi-gear" aria-hidden="true"></i> Devices</summary>
@@ -96,7 +97,8 @@
 <script src="/js/call-extras.js?v=7"></script>
 <script src="/js/whiteboard.js?v=2"></script>
 <script src="/js/together.js?v=2"></script>
-<script src="/js/meet-room.js?v=24"></script>
+<script src="/js/gallery.js?v=1"></script>
+<script src="/js/meet-room.js?v=25"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

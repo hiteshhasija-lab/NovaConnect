@@ -424,3 +424,16 @@
 .nc-call-together .nc-call-grid, .nc-call-together .nc-call-self {
   position: absolute !important; left: 0; top: 0; width: 160px !important; opacity: 0; pointer-events: none; z-index: -1;
 }
+
+/* Gallery / Large gallery (gallery.js): tiles past the limit are hidden but keep playing (their sound;
+   a hidden media element keeps playing), and a "+N" tile stands in for them. */
+.nc-call .nc-video-tile.nc-tile-overflow, .meet-video.nc-tile-overflow { display: none; }
+.nc-gallery-more {
+  display: grid; place-items: center; min-height: 80px; aspect-ratio: 16 / 9; border: 1px solid #41618b; border-radius: 12px;
+  background: #0c1729; color: #e5f1ff; font: 600 1.6rem/1 system-ui, sans-serif; cursor: pointer;
+}
+.nc-gallery-more:hover { background: #14243b; }
+.nc-gallery-more:focus-visible { outline: 2px solid #50d5ff; outline-offset: 2px; }
+.nc-call-video .nc-call-grid .nc-gallery-more { border-radius: 0; }
+.meet-videos .nc-gallery-more { border-radius: 10px; }
+#meetViewBtn { white-space: nowrap; }
