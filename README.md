@@ -71,8 +71,11 @@ their audio and video through the **mediasoup SFU** on the server, not browser t
   Podman's user-space networking (`pasta`, which carries every RTP packet), with the VM ~80% idle;
   42 Mbit/s out with synthetic video (real cameras send ~1–1.5 Mbit/s each at 720p, so expect
   roughly double). With small tiles, simulcast cut outgoing traffic by 65% (6 people: 14.3 → 5.0
-  Mbit/s). One mediasoup worker (one core) serves all rooms; beyond ~15–20 active video users,
-  add workers and/or move the pod off `pasta` networking.
+  Mbit/s). Since 1.0.126 there is one mediasoup worker per core (`MEDIASOUP_WORKERS` overrides),
+  each on its own slice of the UDP range, and each new room goes to the least busy one (two
+  5-person meetings: one per worker, ~8% of a core each). A single call stays on one worker.
+  `pasta` is left in place for now (decided 2026-09-29): at ~20% of a core per 10 people it
+  becomes the limit around 40–50 people; host networking for the pod is the fix then.
 - **Call state is in memory** (one Node process). A restart ends running calls; stale "Started a
   meeting" posts are rewritten to "Meeting ended" on startup.
 - **Network:** browsers need **HTTPS** for camera, microphone and screen sharing. Media flows over
