@@ -194,7 +194,7 @@
     api, escapeHtml, avatarHtml, presence: id => state.presence[id],
     onMessage: (userId) => api('/api/dm', { method: 'POST', body: { user_ids: [userId] } }).then(({ id }) => navigateToDm(id)).catch(showToastError)
   });
-  const channelTools = createChannelTools({ api, escapeHtml, presence:id=>state.presence[id], notify:showToastError, navigate:navigateToChannel, openProfile: profileCard.open, events:teamId=>{
+  const channelTools = createChannelTools({ api, escapeHtml, presence:id=>state.presence[id], notify:showToastError, navigate:navigateToChannel, openProfile: profileCard.open, onNotifyLevel:(id,level)=>setChannelLevel(id,level), events:teamId=>{
     state.calendarHiddenTeams = new Set(state.teams.filter(t=>t.id!==teamId).map(t=>t.id));
     document.getElementById('railCalendar').click();
   }});
@@ -229,6 +229,20 @@
     id = Number(id);
     return state.conversations.find(c => c.id === id);
   }
+  // Notification level of the chat or channel a message is in: 'all' | 'mentions' | 'off'
+  // (set per chat in its menu, per channel with the bell in its header; notify-settings.js).
+  function notifyLevelFor(msg) {
+    if (msg.channel_id) return findChannel(msg.channel_id)?.channel.notify_level || 'all';
+    const c = findConversation(msg.conversation_id);
+    return c?.notify_level || (c?.is_muted ? 'off' : 'all');
+  }
+  const mentionsMe = msg => typeof msg.body === 'string' && msg.body.includes('@' + NC.currentUser.full_name);
+  function setChannelLevel(id, level) {
+    const found = findChannel(id); if (found) found.channel.notify_level = level;
+    if (state.active.type === 'channel' && Number(state.active.channel.id) === Number(id)) state.active.channel.notify_level = level;
+    if (level === 'off') state.unreadChannel.delete(Number(id));
+    renderSidebar();
+  }
   function convoTitle(c) {
     if (c.name) return c.name;
     const names = (c.participants || []).map(p => p.full_name);
@@ -259,6 +273,12 @@
   socket.on('membership:changed', () => api('/api/teams').then(async teams => { state.teams = await Promise.all(teams.filter(t=>t.is_member).map(async t=>{const data=await api('/api/teams/'+t.id);return {...data.team,channels:data.channels};}));renderSidebar(); }).catch(showToastError));
   socket.on('dm:created', () => api('/api/dm').then(list => { state.conversations = list; renderSidebar(); }).catch(showToastError));
   socket.on('dm:preferences', p => { applyChatPreferences(p.id, p); if (p.is_hidden) removeChatFromView(p.id); });
+  // Your level for a channel changed (maybe in another tab or device).
+  socket.on('channel:notify-level', ({ id, level }) => {
+    setChannelLevel(id, level);
+    const bell = state.active.type === 'channel' && Number(state.active.channel.id) === Number(id) && document.querySelector('.channel-header-actions [data-action=notify]');
+    if (bell) { bell.innerHTML = '<i class="bi bi-' + NovaNotify.icon(level) + '" aria-hidden="true"></i>'; bell.title = 'Channel notifications: ' + NovaNotify.label(level); bell.setAttribute('aria-label', bell.title); }
+  });
   document.addEventListener('keydown', e => {
     if (state.active.type !== 'dm' || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); window.open('/app/dm/' + state.active.conversation.id, '_blank', 'noopener,noreferrer,width=1150,height=850'); }
@@ -282,15 +302,20 @@
       saveChatPreferences(msg.conversation_id, { is_unread:false }).catch(showToastError);
       markDmRead(msg.conversation_id, msg.id);
     } else {
-      if (msg.channel_id) state.unreadChannel.add(msg.channel_id);
-      if (msg.conversation_id && !findConversation(msg.conversation_id)?.is_muted) state.unreadDm.add(msg.conversation_id);
+      // "Off" chats and channels get no unread dot; "Mentions only" still do (quietly).
+      if (notifyLevelFor(msg) !== 'off') {
+        if (msg.channel_id) state.unreadChannel.add(msg.channel_id);
+        if (msg.conversation_id) state.unreadDm.add(msg.conversation_id);
+      }
       renderSidebar();
     }
     bumpConversationPreview(msg);
 
     // Triggered after the sidebar re-render above (not before) so the row this looks for
     // actually exists in the DOM by the time it queries for it.
-    if (msg.author && msg.author.id !== NC.currentUser.id) {
+    // Alerts (sound, desktop notification, blink) follow the chat's/channel's notification level.
+    const level = notifyLevelFor(msg);
+    if (msg.author && msg.author.id !== NC.currentUser.id && (level === 'all' || (level === 'mentions' && mentionsMe(msg)))) {
       if (notifPrefEnabled('novaconnect-notif-sound', true)) playNotificationSound();
       showDesktopNotification(msg);
       blinkChatEntry(msg, isActiveChat);
@@ -663,6 +688,7 @@
             '<div class="channel-item ' + (active ? 'active' : '') + '" data-channel-id="' + ch.id + '">' +
               '<i class="bi ' + (ch.is_private ? 'bi-lock-fill' : 'bi-hash') + '"></i>' +
               '<span class="text-truncate">' + escapeHtml(ch.name) + '</span>' +
+              (ch.notify_level === 'off' || ch.notify_level === 'mentions' ? '<i class="bi bi-' + NovaNotify.icon(ch.notify_level) + ' channel-notify-icon" title="Notifications: ' + NovaNotify.label(ch.notify_level) + '" aria-label="Notifications: ' + NovaNotify.label(ch.notify_level) + '"></i>' : '') +
               (unread ? '<span class="dm-unread-badge">•</span>' : '') +
             '</div>'
           );

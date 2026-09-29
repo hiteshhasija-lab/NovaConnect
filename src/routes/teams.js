@@ -137,10 +137,10 @@ router.get('/api/teams/:id', async (req, res) => {
   if (!team) return res.status(404).json({ error: 'Team not found.' });
 
   const channels = await db.prepare(`
-    SELECT c.* FROM channels c
+    SELECT c.*, COALESCE((SELECT s.level FROM channel_notification_settings s WHERE s.channel_id = c.id AND s.user_id = ?), 'all') AS notify_level FROM channels c
     WHERE c.team_id = ? AND (c.is_private = 0 OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?))
     ORDER BY c.name
-  `).all(teamId, userId);
+  `).all(userId, teamId, userId);
 
   const membership = await db.prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, userId);
   team.my_role = membership.role;
@@ -218,6 +218,7 @@ router.get('/api/channels/:id', async (req, res) => {
     const inChannel = await db.prepare('SELECT 1 FROM channel_members WHERE channel_id = ? AND user_id = ?').get(channel.id, userId);
     if (!inChannel) return res.status(403).json({ error: 'This is a private channel.' });
   }
+  channel.notify_level = (await db.prepare('SELECT level FROM channel_notification_settings WHERE user_id = ? AND channel_id = ?').get(userId, channel.id))?.level || 'all';
   const members = channel.is_private
     ? await db.prepare(`
         SELECT u.id, u.full_name, u.username FROM channel_members cm JOIN users u ON u.id = cm.user_id
@@ -243,6 +244,21 @@ router.delete('/api/teams/:id', async (req, res) => {
     await resyncUserRooms(member.user_id).catch(console.error);
   }
   res.json({ ok: true });
+});
+
+// Your notification level for a channel: 'all' | 'mentions' | 'off' (see the migration
+// notification-levels). 'all' is the default, stored as no row. Other tabs/devices are told.
+router.put('/api/channels/:id/notifications', async (req, res) => {
+  const channelId = Number(req.params.id), userId = req.session.user.id, level = req.body?.level;
+  if (!Number.isSafeInteger(channelId) || !['all', 'mentions', 'off'].includes(level)) return res.status(400).json({ error: 'Invalid notification setting.' });
+  const visible = await db.prepare(`SELECT 1 FROM channels c JOIN team_members tm ON tm.team_id = c.team_id AND tm.user_id = ?
+    WHERE c.id = ? AND (c.is_private = 0 OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?))`).get(userId, channelId, userId);
+  if (!visible) return res.status(404).json({ error: 'Channel not found.' });
+  if (level === 'all') await db.prepare('DELETE FROM channel_notification_settings WHERE user_id = ? AND channel_id = ?').run(userId, channelId);
+  else await db.prepare(`INSERT INTO channel_notification_settings (user_id, channel_id, level) VALUES (?, ?, ?)
+    ON CONFLICT (user_id, channel_id) DO UPDATE SET level = EXCLUDED.level`).run(userId, channelId, level);
+  emitToUser(userId, 'channel:notify-level', { id: channelId, level });
+  res.json({ id: channelId, level });
 });
 
 router.delete('/api/channels/:id', async (req, res) => {

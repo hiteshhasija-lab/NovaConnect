@@ -29,4 +29,13 @@
 .pending-requests { margin-bottom:14px; }.pending-requests h3 { font-size:0.85rem;font-weight:600;color:var(--text-muted);margin:0 0 6px; }
 .pending-row button { padding:5px 12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:inherit;margin-left:6px; }
 .pending-row .approve-btn { border-color:var(--brand);color:var(--brand); }
+/* Notification level chooser (notify-settings.js; beats the generic .channel-dialog label/input
+   rules above) and the sidebar mark for Mentions only / Off. */
+.notify-dialog fieldset { border:0;margin:0 0 12px;padding:0;display:grid;gap:8px; }
+.notify-dialog .notify-option { display:flex;gap:10px;align-items:flex-start;margin:0;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer; }
+.notify-dialog .notify-option:has(input:checked) { border-color:var(--brand);background:rgba(var(--brand-rgb),.08); }
+.notify-dialog .notify-option input { display:inline-block;width:auto;margin-top:4px;accent-color:var(--brand); }
+.notify-option span { display:grid;gap:2px; }.notify-option small { color:var(--text-muted); }
+.notify-error { color:#c4314b;min-height:1em;margin:0 0 8px;font-size:.85rem; }
+.channel-notify-icon { margin-left:auto;font-size:.8rem;opacity:.7; }.channel-notify-icon + .dm-unread-badge { margin-left:6px; }
 @media(max-width:900px) { #mainHeader:has(.channel-heading) { flex-wrap:wrap;gap:8px;height:auto; }.channel-header-actions{margin-left:0}.channel-tabs{margin-left:0}.channel-heading{font-size:1.2rem;} }

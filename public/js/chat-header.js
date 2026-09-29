@@ -165,6 +165,9 @@
       add('envelope', 'Mark as unread', () => preferences(c.id, { is_unread: true }));
       add(c.is_favorite ? 'heart-fill' : 'heart', c.is_favorite ? 'Remove from favorites' : 'Favorite', () => preferences(c.id, { is_favorite: !c.is_favorite }));
       add(c.is_muted ? 'bell' : 'bell-slash', c.is_muted ? 'Unmute' : 'Mute', () => preferences(c.id, { is_muted: !c.is_muted }));
+      // All / Mentions only / Off (notify-settings.js); Mute above is the quick way to Off.
+      const level = c.notify_level || (c.is_muted ? 'off' : 'all');
+      add(NovaNotify.icon(level), 'Notifications: ' + NovaNotify.label(level) + '…', () => NovaNotify.open({ title: 'Notifications for this chat', level, onSave: value => preferences(c.id, { notify_level: value }) }));
       line();
       add('exclamation-triangle', 'Report a concern', () => report(b, active));
       if (!c.is_group && active.participants.length === 2) {

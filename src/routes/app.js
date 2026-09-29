@@ -13,17 +13,17 @@ async function myTeamsWithChannels(userId) {
   `).all(userId);
   for (const team of teams) {
     team.channels = await db.prepare(`
-      SELECT c.* FROM channels c
+      SELECT c.*, COALESCE((SELECT s.level FROM channel_notification_settings s WHERE s.channel_id = c.id AND s.user_id = ?), 'all') AS notify_level FROM channels c
       WHERE c.team_id = ? AND (c.is_private = 0 OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = c.id AND cm.user_id = ?))
       ORDER BY c.name
-    `).all(team.id, userId);
+    `).all(userId, team.id, userId);
   }
   return teams;
 }
 
 async function myConversations(userId) {
   const convos = await db.prepare(`
-    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc
+    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, dp.notify_level, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc
     JOIN dm_participants dp ON dp.conversation_id = dc.id AND dp.user_id = ?
     ORDER BY dc.id DESC
   `).all(userId);
@@ -75,6 +75,7 @@ router.get('/channel/:id', async (req, res) => {
     const inChannel = await db.prepare('SELECT 1 FROM channel_members WHERE channel_id = ? AND user_id = ?').get(channel.id, userId);
     if (!inChannel) return res.status(403).render('error', { title: 'Access Denied', message: 'This is a private channel.' });
   }
+  channel.notify_level = (await db.prepare('SELECT level FROM channel_notification_settings WHERE user_id = ? AND channel_id = ?').get(userId, channel.id))?.level || 'all';
 
   const rows = await db.prepare(`
     SELECT * FROM messages WHERE channel_id = ? AND parent_message_id IS NULL ORDER BY id DESC LIMIT 50

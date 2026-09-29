@@ -15,7 +15,7 @@ router.use(requireAuth);
 router.get('/api/dm', async (req, res) => {
   const userId = req.session.user.id;
   const convos = await db.prepare(`
-    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc
+    SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, dp.notify_level, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc
     JOIN dm_participants dp ON dp.conversation_id = dc.id AND dp.user_id = ?
     ORDER BY dc.id DESC
   `).all(userId);
@@ -79,17 +79,23 @@ router.post('/api/dm', async (req, res) => {
 async function loadConversationForUser(conversationId, userId) {
   const inConvo = await db.prepare('SELECT 1 FROM dm_participants WHERE conversation_id = ? AND user_id = ?').get(conversationId, userId);
   if (!inConvo) return null;
-  return db.prepare('SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc JOIN dm_participants dp ON dp.conversation_id = dc.id WHERE dc.id = ? AND dp.user_id = ?').get(conversationId, userId);
+  return db.prepare('SELECT dc.*, dp.is_favorite, dp.is_muted, dp.is_unread, dp.is_hidden, dp.notify_level, EXISTS (SELECT 1 FROM meetings m WHERE m.conversation_id=dc.id) AS is_meeting_chat FROM dm_conversations dc JOIN dm_participants dp ON dp.conversation_id = dc.id WHERE dc.id = ? AND dp.user_id = ?').get(conversationId, userId);
 }
 
 router.patch('/api/dm/:id/preferences', async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
-  const allowed = ['is_favorite', 'is_muted', 'is_unread', 'is_hidden'];
-  const keys = Object.keys(req.body || {});
-  if (!keys.length || keys.some(k => !allowed.includes(k) || typeof req.body[k] !== 'boolean')) return res.status(400).json({ error: 'Invalid chat preference.' });
-  const row = await db.prepare(`UPDATE dm_participants SET ${keys.map(k => k + ' = ?').join(', ')} WHERE conversation_id = ? AND user_id = ? RETURNING is_favorite, is_muted, is_unread, is_hidden`)
-    .get(...keys.map(k => req.body[k] ? 1 : 0), convo.id, req.session.user.id);
+  const allowed = ['is_favorite', 'is_muted', 'is_unread', 'is_hidden', 'notify_level'];
+  const LEVELS = ['all', 'mentions', 'off'];
+  const values = { ...(req.body || {}) };
+  const keys = Object.keys(values);
+  if (!keys.length || keys.some(k => !allowed.includes(k) || (k === 'notify_level' ? !LEVELS.includes(values[k]) : typeof values[k] !== 'boolean'))) return res.status(400).json({ error: 'Invalid chat preference.' });
+  // Mute is the "off" notification level: setting either keeps the other in step.
+  if ('notify_level' in values) values.is_muted = values.notify_level === 'off';
+  else if ('is_muted' in values) values.notify_level = values.is_muted ? 'off' : 'all';
+  const cols = Object.keys(values);
+  const row = await db.prepare(`UPDATE dm_participants SET ${cols.map(k => k + ' = ?').join(', ')} WHERE conversation_id = ? AND user_id = ? RETURNING is_favorite, is_muted, is_unread, is_hidden, notify_level`)
+    .get(...cols.map(k => k === 'notify_level' ? values[k] : (values[k] ? 1 : 0)), convo.id, req.session.user.id);
   emitToUser(req.session.user.id, 'dm:preferences', { id: convo.id, ...row });
   res.json(row);
 });
