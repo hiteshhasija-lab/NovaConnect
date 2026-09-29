@@ -345,6 +345,14 @@
 .nc-call-max .nc-share-stage video, .nc-call:fullscreen .nc-share-stage video { height: 100%; aspect-ratio: auto; }
 .nc-call.nc-call-max.nc-call-presenting .nc-call-grid, .nc-call.nc-call-presenting:fullscreen .nc-call-grid { width: clamp(160px, 15vw, 240px); }
 
+/* During a screen share only people with their camera on get a tile (group-calls.js
+   fitShareLayout); the presenter's panel shrinks to a bar while nobody has video (nc-call-compact),
+   with the recording badge and notices in the flow instead of floating over a video. */
+.nc-call .nc-video-tile.nc-tile-hidden { display: none; }
+.nc-call-compact .nc-call-grid { display: none; }
+.nc-call-compact .nc-call-rec { position: static; width: fit-content; margin-top: 10px; }
+.nc-call-compact .nc-call-notices { position: static; transform: none; margin: 8px auto 0; }
+
 /* Camera off (producer paused, sfu-client onPeerState) → initials; muted → icon before the name. */
 .nc-video-tile.nc-camera-off .nc-avatar { display: grid; }
 .nc-video-tile.nc-camera-off video { opacity: 0; }

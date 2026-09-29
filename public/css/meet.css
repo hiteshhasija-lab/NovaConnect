@@ -111,6 +111,8 @@
 .meet-room.presenting .meet-videos { grid-template-columns: repeat(auto-fill, minmax(150px, 190px)); gap: 8px; }
 .meet-room.presenting .meet-video { padding: 6px; }
 .meet-room.presenting .meet-video p { font-size: .8rem; }
+/* As in Teams and in calls: while a screen is shared, only people with their camera on keep a tile. */
+.meet-room.presenting .meet-video:not(.has-video), .meet-room.presenting .meet-video.camera-off { display: none; }
 
 /* Initials when there is no picture or the camera is off; muted icon before the name. */
 .meet-video { position: relative; }

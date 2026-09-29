@@ -33,6 +33,7 @@
       $('callMedia1to1').hidden = true;
       grid.hidden = !c.joined;
       panel.classList.toggle('nc-call-video', !!c.joined);
+      fitShareLayout();
       $('callName').textContent = c.title;
       $('callKind').textContent = kindLabel(c);
       status(text);
@@ -84,6 +85,7 @@
         await c.session.shareScreen(track);
         $('callScreenShare').hidden = true; $('callStopSharing').hidden = false;
         $('callKind').textContent = kindLabel(c);
+        fitShareLayout();
       } catch (e) {
         display?.getTracks().forEach(t => t.stop());
         if (c.display === display) c.display = null;
@@ -99,6 +101,7 @@
       if (current !== c) return;
       $('callStopSharing').hidden = true; $('callScreenShare').hidden = !navigator.mediaDevices?.getDisplayMedia;
       $('callKind').textContent = kindLabel(c);
+      fitShareLayout();
     }
 
     const allTiles = () => [...grid.querySelectorAll('.nc-video-tile'), ...$('callSelfTile').querySelectorAll('.nc-video-tile')];
@@ -112,6 +115,32 @@
       // While someone presents, everyone (you included) sits in the side strip.
       const box = others && !panel.classList.contains('nc-call-presenting') ? $('callSelfTile') : grid;
       if (mine.parentNode !== box) { box.appendChild(mine); const v = mine.querySelector('video'); if (v.paused) v.play().catch(() => {}); }
+      fitShareLayout();
+    }
+    // While a screen is shared, as in Teams, only people whose camera is on get a tile: no black
+    // boxes with initials next to the shared screen (for the viewer, who then sees the screen
+    // alone when nobody has video) or in the presenter's call window. The presenter's window
+    // shrinks to a small bar (name, timer, controls) while nobody has video, and comes back —
+    // maximized again if it was — when the share ends.
+    const liveVideo = t => t.classList.contains('nc-has-video') && !t.classList.contains('nc-camera-off');
+    function fitShareLayout() {
+      const c = current;
+      if (!c) return;
+      const viewing = panel.classList.contains('nc-call-presenting');
+      const presenting = !!c.display && !viewing;
+      allTiles().forEach(t => t.classList.toggle('nc-tile-hidden', (viewing || presenting) && !liveVideo(t)));
+      const compact = presenting && !allTiles().some(liveVideo);
+      if (compact && !c.compact) {
+        c.restoreMax = panel.classList.contains('nc-call-max');
+        if (c.restoreMax) $('callMaximize').click();
+        if (document.fullscreenElement && panel.contains(document.fullscreenElement)) document.exitFullscreen().catch(() => {});
+      } else if (!compact && c.compact && c.restoreMax) {
+        c.restoreMax = false;
+        if (!panel.classList.contains('nc-call-max')) $('callMaximize').click();
+      }
+      c.compact = compact;
+      panel.classList.toggle('nc-call-compact', compact);
+      panel.classList.toggle('nc-call-video', !!c.joined && !compact);
     }
     function tile(id, name, media, local = false) {
       let t = allTiles().find(el => el.dataset.peerId === id);
@@ -122,7 +151,7 @@
         // Initials until a picture arrives (audio-only participants never have one).
         const avatar = document.createElement('div'); avatar.className = 'nc-avatar';
         const letters = document.createElement('span'); letters.textContent = initials(name); avatar.append(letters);
-        v.addEventListener('resize', () => t.classList.toggle('nc-has-video', v.videoWidth > 0));
+        v.addEventListener('resize', () => { t.classList.toggle('nc-has-video', v.videoWidth > 0); fitShareLayout(); });
         const overlay = document.createElement('div'); overlay.className = 'nc-video-overlay';
         const label = document.createElement('p'); label.className = 'nc-video-name'; label.textContent = name;
         const mic = document.createElement('i'); mic.className = 'bi bi-mic-mute-fill nc-tile-mic'; mic.setAttribute('role', 'img'); mic.setAttribute('aria-label', 'Muted');
@@ -141,6 +170,7 @@
     function setTileState(id, kind, paused) {
       const t = allTiles().find(el => el.dataset.peerId === id);
       if (t) t.classList.toggle(kind === 'audio' ? 'nc-mic-off' : 'nc-camera-off', paused);
+      fitShareLayout();
     }
     function removeTile(id) { allTiles().find(el => el.dataset.peerId === id)?.remove(); arrangeTiles(); }
 
@@ -154,7 +184,7 @@
       current = null;
       changed(c.key);
       allTiles().forEach(t => t.remove());
-      panel.classList.remove('nc-call-video', 'nc-call-presenting');
+      panel.classList.remove('nc-call-video', 'nc-call-presenting', 'nc-call-compact');
       extras.stop();
       clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
       $('callShareStage').hidden = true; $('callShareVideo').srcObject = null;
