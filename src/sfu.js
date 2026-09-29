@@ -9,9 +9,9 @@ const cfg = getConfig();
 const MEDIASOUP_WORKER_SETTINGS = {
   logLevel: cfg.NODE_ENV === 'production' ? 'warn' : 'debug',
   logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
-  rtcMinPort: 40000,
-  rtcMaxPort: 49999,
 };
+// The media UDP ports the pod publishes; each worker gets its own slice of them.
+const RTC_PORT_MIN = 40000, RTC_PORT_MAX = 49999;
 
 const MEDIASOUP_ROUTER_OPTIONS = {
   mediaCodecs: [
@@ -52,31 +52,44 @@ const MEDIASOUP_ROUTER_OPTIONS = {
   ],
 };
 
-let worker = null;
-let router = null;
-const rooms = new Map(); // roomId -> { peers: Map, router }
+const rooms = new Map(); // roomId -> { peers: Map, router, worker }
 
-async function createWorker() {
-  if (worker) return worker;
-
-  worker = await mediasoup.createWorker(MEDIASOUP_WORKER_SETTINGS);
-
-  worker.on('died', () => {
-    logger.error('mediasoup worker died, exiting in 2 seconds...');
-    setTimeout(() => process.exit(1), 2000);
-  });
-
-  logger.info('mediasoup worker created');
-  return worker;
+// Media runs in mediasoup workers — separate processes, one core each — so there is one per core
+// (MEDIASOUP_WORKERS overrides; at most 8). Each has one router; a new room goes to the worker
+// with the fewest people in calls right now, so calls spread over every core (one call stays on
+// one worker). If a worker dies the process exits and systemd restarts it (calls end cleanly
+// as on any restart).
+let workersReady = null;
+const workers = []; // { worker, router, index }
+function createWorkers() {
+  workersReady ??= (async () => {
+    const count = Math.max(1, Math.min(8, cfg.MEDIASOUP_WORKERS || require('os').availableParallelism?.() || require('os').cpus().length || 1));
+    const span = Math.floor((RTC_PORT_MAX - RTC_PORT_MIN + 1) / count);
+    for (let index = 0; index < count; index++) {
+      const rtcMinPort = RTC_PORT_MIN + index * span;
+      const rtcMaxPort = index === count - 1 ? RTC_PORT_MAX : rtcMinPort + span - 1;
+      const worker = await mediasoup.createWorker({ ...MEDIASOUP_WORKER_SETTINGS, rtcMinPort, rtcMaxPort });
+      worker.on('died', () => {
+        logger.error({ index, pid: worker.pid }, 'mediasoup worker died, exiting in 2 seconds...');
+        setTimeout(() => process.exit(1), 2000);
+      });
+      const router = await worker.createRouter({ mediaCodecs: MEDIASOUP_ROUTER_OPTIONS.mediaCodecs });
+      workers.push({ worker, router, index });
+      logger.info({ index, pid: worker.pid, rtcMinPort, rtcMaxPort }, 'mediasoup worker created');
+    }
+    return workers;
+  })();
+  return workersReady;
 }
-
-async function getRouter() {
-  if (router) return router;
-
-  const w = await createWorker();
-  router = await w.createRouter({ mediaCodecs: MEDIASOUP_ROUTER_OPTIONS.mediaCodecs });
-  logger.info('mediasoup router created');
-  return router;
+// How busy each worker is: people in its rooms, and rooms.
+function workerLoad() {
+  return workers.map(w => { let peers = 0, count = 0; for (const r of rooms.values()) if (r.worker === w) { peers += r.peers.size; count++; } return { index: w.index, pid: w.worker.pid, rooms: count, peers }; });
+}
+// A new room goes to the worker with the fewest people in calls (ties: fewest rooms, then the first).
+async function pickWorker() {
+  const list = await createWorkers();
+  const load = workerLoad();
+  return list[load.sort((a, b) => a.peers - b.peers || a.rooms - b.rooms || a.index - b.index)[0].index];
 }
 
 // Active speaker: each room's loudest microphone, reported (on change only) to the handler that
@@ -92,11 +105,13 @@ function announceSpeaker(room, peerId) {
 async function createRoom(roomId) {
   if (rooms.has(roomId)) return rooms.get(roomId);
 
-  const r = await getRouter();
+  const w = await pickWorker();
   if (rooms.has(roomId)) return rooms.get(roomId);
+  const r = w.router;
   const room = {
     id: roomId,
     router: r,
+    worker: w,
     peers: new Map(), // peerId -> { transports, producers, consumers, rtpCapabilities }
     audioObserver: null,
     speaker: null,
@@ -109,7 +124,7 @@ async function createRoom(roomId) {
   } catch (e) {
     logger.warn({ roomId, err: e.message }, 'Active-speaker detection unavailable');
   }
-  logger.info({ roomId }, 'SFU room created');
+  logger.info({ roomId, worker: w.index }, 'SFU room created');
   return room;
 }
 
@@ -616,8 +631,8 @@ function recordingInRoom(roomId) {
 }
 
 module.exports = {
-  createWorker,
-  getRouter,
+  createWorkers,
+  workerLoad,
   createRoom,
   getRoom,
   deleteRoom,

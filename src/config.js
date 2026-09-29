@@ -62,6 +62,8 @@ const EnvSchema = z.object({
   // outside that network can never actually reach, so real media never flows even though
   // signaling (join, produce registration) appears to succeed.
   MEDIASOUP_ANNOUNCED_IP: z.string().optional(),
+  // How many mediasoup worker processes (one core each) to run; default: one per CPU core (sfu.js).
+  MEDIASOUP_WORKERS: z.coerce.number().int().min(1).max(8).optional(),
 }).passthrough();
 
 let validatedConfig = null;

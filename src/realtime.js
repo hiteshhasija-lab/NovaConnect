@@ -105,7 +105,9 @@ function attach(server, sessionMiddleware) {
   // media (sfu:*) events for both. roomUserMap (socket.id -> the room it's in) is how they share it.
   const roomUserMap = new CallRoomMap();
   const groupCalls = createGroupCalls(io, db, roomUserMap);
-  const { getRoom } = require('./sfu');
+  const { getRoom, createWorkers } = require('./sfu');
+  // Start the media workers now (one per core) rather than on the first call.
+  createWorkers().catch(err => console.error('mediasoup workers failed to start:', err.message));
   callActivity = userId => {
     let kind = null;
     for (const m of roomUserMap.values()) {
