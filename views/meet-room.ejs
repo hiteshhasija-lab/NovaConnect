@@ -1,7 +1,7 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=19">
+<link rel="stylesheet" href="/css/meet.css?v=20">
 <link rel="stylesheet" href="/css/calls.css?v=25">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
@@ -30,6 +30,7 @@
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetBoardBtn" hidden aria-pressed="false"><i class="bi bi-easel" aria-hidden="true"></i> Whiteboard</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetTogetherBtn" hidden aria-pressed="false"><i class="bi bi-people-fill" aria-hidden="true"></i> Together mode</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetViewBtn" hidden><i class="bi bi-grid-3x3-gap" aria-hidden="true"></i> <span>Large gallery</span></button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetBreakoutBtn" hidden><i class="bi bi-door-open" aria-hidden="true"></i> Breakout rooms</button>
     </div>
     <details class="meet-devices">
       <summary><i class="bi bi-gear" aria-hidden="true"></i> Devices</summary>
@@ -58,6 +59,8 @@
     <ul id="meetLobbyList"></ul>
   </aside>
   <!-- A screen someone shares fills this stage; the participant tiles shrink to a strip below. -->
+  <!-- While you're in a breakout room (meet-room.js): which one, time left, and the way back. -->
+  <div class="meet-breakout-bar" id="meetBreakoutBar" role="status" hidden><i class="bi bi-door-open" aria-hidden="true"></i> <span></span> <button type="button" class="btn btn-sm btn-light">Return to main meeting</button></div>
   <section class="meet-share-stage" id="meetShareStage" hidden aria-label="Shared screen">
     <video id="meetShareVideo" autoplay playsinline muted></video>
     <p id="meetShareLabel"></p>
@@ -91,14 +94,15 @@
 </aside>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
-<script src="/js/sfu-client.js?v=6"></script>
+<script src="/js/sfu-client.js?v=7"></script>
 <script src="/js/devices.js?v=2"></script>
 <script src="/js/background-effects.js?v=2"></script>
 <script src="/js/call-extras.js?v=7"></script>
 <script src="/js/whiteboard.js?v=2"></script>
 <script src="/js/together.js?v=2"></script>
 <script src="/js/gallery.js?v=1"></script>
-<script src="/js/meet-room.js?v=25"></script>
+<script src="/js/breakout.js?v=1"></script>
+<script src="/js/meet-room.js?v=26"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

@@ -182,3 +182,34 @@
   position: absolute; left: 0; top: 0; width: 160px; opacity: 0; pointer-events: none; z-index: -1; overflow: hidden;
 }
 #meetTogetherBtn.nc-on { background: #e6f3fc; border-color: var(--brand, #0755d9); color: var(--brand, #0755d9); }
+
+/* Breakout rooms (breakout.js, meet-room.js): the bar shown while you're in a breakout room, and the
+   owner's panel (a dialog of its own; the meeting page doesn't load channel-tools.css). */
+.meet-breakout-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: #073b94; color: #fff; font-weight: 600; }
+.meet-breakout-bar[hidden] { display: none; }
+.meet-breakout-bar button { margin-left: auto; }
+.breakout-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85dvh; padding: 0; border: 1px solid var(--border, #d6e3f0); border-radius: 12px; background: var(--surface, #fff); color: var(--text, #182c48); }
+.breakout-dialog::backdrop { background: #0006; }
+.breakout-dialog header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border, #d6e3f0); }
+.breakout-dialog h2 { margin: 0; font-size: 1.2rem; }
+.breakout-dialog header button { border: 0; background: none; color: inherit; font-size: 24px; }
+.breakout-dialog .channel-dialog-body { padding: 16px 20px; }
+.breakout-dialog label { display: block; margin-bottom: 10px; }
+.breakout-dialog input[type=number] { width: 80px; margin-left: 6px; }
+.breakout-dialog input, .breakout-dialog select { padding: 5px 8px; border: 1px solid var(--border, #d6e3f0); border-radius: 6px; background: var(--bg, #f3f7fc); color: inherit; }
+.breakout-dialog button { padding: 6px 12px; border: 1px solid var(--border, #d6e3f0); border-radius: 6px; background: var(--surface, #fff); color: inherit; cursor: pointer; }
+.breakout-dialog .bo-primary { background: var(--brand, #0755d9); border-color: var(--brand, #0755d9); color: #fff; }
+.breakout-dialog .bo-danger { border-color: #c4314b; color: #c4314b; }
+.bo-choice { border: 0; padding: 0; margin: 0 0 12px; }
+.bo-choice legend { font-size: .95rem; font-weight: 600; margin-bottom: 4px; }
+.bo-choice label { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.bo-status { margin: 0 0 10px; }
+.bo-people { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.bo-people th, .bo-people td { padding: 6px 4px; border-bottom: 1px solid var(--border, #d6e3f0); text-align: left; }
+.bo-rooms { display: grid; gap: 6px; margin-bottom: 12px; }
+.bo-room { display: flex; align-items: center; gap: 8px; }
+.bo-room button { margin-left: auto; }
+.bo-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.bo-inline input[name=text] { flex: 1; min-width: 180px; }
+.bo-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.bo-error { color: #c4314b; min-height: 1em; margin: 6px 0 0; }

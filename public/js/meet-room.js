@@ -6,6 +6,8 @@ const socket=io(),code=document.querySelector('[data-code]').dataset.code,status
 const lobby=document.getElementById('meetLobby'),lobbyQueue=document.getElementById('meetLobbyQueue'),lobbyList=document.getElementById('meetLobbyList');
 const recordingControls=document.getElementById('recordingControls'),recordBtn=document.getElementById('recordBtn'),stopRecordBtn=document.getElementById('stopRecordBtn');
 let stream=null,joined=false,joining=false,waiting=false,isOwner=false,roomId=null,routerRtpCapabilities=null,session=null,currentRecordingId=null;
+// roomId is the room you're in now; mainRoomId the meeting's main room (they differ in a breakout room).
+let mainRoomId=null,breakoutName=null,breakoutEndsAt=null;
 const shareBtn=document.getElementById('meetShare'),shareStage=document.getElementById('meetShareStage'),shareVideo=document.getElementById('meetShareVideo'),shareLabel=document.getElementById('meetShareLabel');
 let display=null;              // our own screen while we share
 let ownPeerId=null,ownUserId=null; // our ids in the meeting room (to tell our own tile / messages apart)
@@ -110,6 +112,7 @@ function renderShare(){
 function setShareButton(){
   shareBtn.hidden=!joined||!navigator.mediaDevices?.getDisplayMedia;
   boardBtn.hidden=!joined;
+  document.getElementById('meetBreakoutBtn').hidden=!joined||!isOwner;
   document.getElementById('meetViewBtn').hidden=!joined;
   togetherBtn.hidden=!joined||!together?.canToggle;
   shareBtn.querySelector('span').textContent=display?'Stop sharing':'Share screen';
@@ -208,6 +211,10 @@ function paintView(v=gallery.view){viewBtn.querySelector('span').textContent=v==
 paintView();
 viewBtn.onclick=()=>{if(joined)gallery.toggle()};
 
+// The owner's breakout rooms panel (breakout.js).
+const breakoutPanel=createBreakoutPanel({socket,request,notify:e=>{status.textContent=e.message},roomId:()=>roomId});
+document.getElementById('meetBreakoutBtn').onclick=()=>{if(joined&&isOwner)breakoutPanel.open()};
+
 function cleanup(){
   joined=false;joining=false;waiting=false;isOwner=false;roomId=null;routerRtpCapabilities=null;
   display?.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null;
@@ -218,6 +225,7 @@ function cleanup(){
   camEffect?.stop();cam?.stop();cam=camEffect=null;
   videos.replaceChildren();focusStage.replaceChildren();focusStage.hidden=true;focusPeer=null;document.querySelector('.meet-room').classList.remove('focus');updateSelfView();lobby.hidden=true;
   if(recordingControls)recordingControls.hidden=true;
+  mainRoomId=null;breakoutName=null;breakoutEndsAt=null;paintBreakoutBar();breakoutPanel.close();
   hideRecordingIndicator();currentRecordingId=null;
   enter.hidden=false;enter.disabled=false;exit.hidden=true;mic.disabled=false;camera.disabled=false;prejoin.hidden=false;
   setShareButton();
@@ -234,25 +242,57 @@ async function enterMeeting(){
   status.textContent='Connected.';
   try{
     if(isOwner){
-      const l=await request('meet:lobby-list',{roomId});
+      const l=await request('meet:lobby-list',{roomId:mainRoomId});
       for(const w of l.waiting)waitingPeople.set(w.peerId,w.fullName);
       renderLobbyQueue();
     }
-    session=window.createSfuSession({request,roomId,routerRtpCapabilities,
-      onPeerStream:(peerId,name,media)=>tile(peerId,name,media),
-      onPeerState:(peerId,kind,paused)=>setTileState(peerId,kind,paused),
-      onPeerScreen:(peerId,name,media)=>{screens.delete(peerId);if(media)screens.set(peerId,{name,stream:media});renderShare()},
-      onError:e=>{if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}});
-    const existing=await session.start();
+    const existing=await connectRoom();
     if(!existing&&!session.peerCount)status.textContent='You are the first participant. Share the meeting link to invite others.';
-    try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
-    setShareButton();
-    extras.start({roomId,peerId:ownPeerId,userId:ownUserId});
-    board.start({roomId,peerId:ownPeerId});
-    together.start({roomId});
-    syncRecording();
   }catch(e){leaveMeeting();status.textContent=e.message}
 }
+// Media for the room you're in (roomId): send your camera/microphone, receive everyone there, and
+// start the room's extras. Used on entering the meeting and after each breakout move.
+async function connectRoom(){
+  session=window.createSfuSession({request,roomId,routerRtpCapabilities,
+    onPeerStream:(peerId,name,media)=>tile(peerId,name,media),
+    onPeerState:(peerId,kind,paused)=>setTileState(peerId,kind,paused),
+    onPeerScreen:(peerId,name,media)=>{screens.delete(peerId);if(media)screens.set(peerId,{name,stream:media});renderShare()},
+    onError:e=>{if(joined)status.textContent='Could not receive a participant\'s media: '+e.message}});
+  const existing=await session.start();
+  try{await session.publish(stream)}catch(e){status.textContent='Your camera/microphone could not be published: '+e.message}
+  setShareButton();
+  extras.start({roomId,peerId:ownPeerId,userId:ownUserId});
+  board.start({roomId,peerId:ownPeerId});
+  together.start({roomId});
+  syncRecording();
+  return existing;
+}
+// Breakout rooms (breakout.js for the owner's panel; server: meet-signaling.js). The server has already
+// moved you (meet:breakout-move): drop this room's media and extras, keep your camera and microphone,
+// and connect to the new room — no lobby.
+async function moveRoom({roomId:target,name,main,routerRtpCapabilities:caps}){
+  if(display){display.getTracks().forEach(t=>{t.onended=null;t.stop()});display=null}
+  session?.close();session=null;
+  screens.clear();extras.stop();board.stop();together.stop();gallery.clear();
+  allTiles().forEach(t=>{if(t.id!=='peer-local')t.remove()});
+  renderShare();
+  roomId=target;routerRtpCapabilities=caps;breakoutName=main?null:name;
+  paintBreakoutBar();
+  await connectRoom();
+  status.textContent=main?'You are back in the main meeting.':'You are in breakout room: '+name+'.';
+}
+socket.on('meet:breakout-move',d=>{if(joined)moveRoom(d).catch(e=>{status.textContent='Could not move to the other room: '+e.message})});
+socket.on('meet:breakout-notice',({text})=>{if(!joined)return;status.textContent=text;extras.notice(text)});
+socket.on('meet:breakout-state',s=>{breakoutEndsAt=s.open?s.endsAt:null;paintBreakoutBar()});
+const breakoutBar=document.getElementById('meetBreakoutBar');
+function paintBreakoutBar(){
+  breakoutBar.hidden=!joined||!breakoutName;
+  if(breakoutBar.hidden)return;
+  const ms=(breakoutEndsAt||0)-Date.now(),s=Math.max(0,Math.ceil(ms/1000));
+  breakoutBar.querySelector('span').textContent='Breakout room: '+breakoutName+(ms>0?' · closes in '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0'):'');
+}
+setInterval(()=>{if(breakoutName&&breakoutEndsAt)paintBreakoutBar()},1000);
+breakoutBar.querySelector('button').onclick=()=>request('sfu:breakout-return',{roomId}).catch(e=>{status.textContent=e.message});
 
 // meet:leave, not sfu:leave — the server's request handlers ignore events sent without an ack.
 function leaveMeeting(){if(joined||waiting||joining)socket.emit('meet:leave');cleanup()}
@@ -266,7 +306,7 @@ function renderLobbyQueue(){
     const who=document.createElement('span');who.textContent=name;
     const admit=document.createElement('button');admit.type='button';admit.className='btn btn-primary btn-sm';admit.textContent='Admit';
     const deny=document.createElement('button');deny.type='button';deny.className='btn btn-outline-secondary btn-sm';deny.textContent='Deny';
-    const decide=async(event,btns)=>{btns.forEach(b=>b.disabled=true);try{await request(event,{roomId,peerId});waitingPeople.delete(peerId);renderLobbyQueue()}catch(e){status.textContent=e.message;waitingPeople.delete(peerId);renderLobbyQueue()}};
+    const decide=async(event,btns)=>{btns.forEach(b=>b.disabled=true);try{await request(event,{roomId:mainRoomId,peerId});waitingPeople.delete(peerId);renderLobbyQueue()}catch(e){status.textContent=e.message;waitingPeople.delete(peerId);renderLobbyQueue()}};
     admit.onclick=()=>decide('meet:admit',[admit,deny]);
     deny.onclick=()=>decide('meet:deny',[admit,deny]);
     li.append(who,admit,deny);lobbyList.append(li);
@@ -309,7 +349,7 @@ enter.onclick=async()=>{
     }
     if(!joining){stream?.getTracks().forEach(t=>t.stop());stream=null;return}
     const r=await request('meet:join',{code});
-    roomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;ownPeerId=r.peerId;ownUserId=r.userId;
+    roomId=mainRoomId=r.roomId;isOwner=r.isOwner;routerRtpCapabilities=r.routerRtpCapabilities;ownPeerId=r.peerId;ownUserId=r.userId;
     const a=await request('meet:request-join',{roomId});
     if(a.admitted){await enterMeeting();if(noDevices&&joined)status.textContent='Joined without camera and microphone: your browser only allows them on a secure (https) connection.';return}
     joining=false;waiting=true;

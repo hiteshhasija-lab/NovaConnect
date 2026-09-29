@@ -73,7 +73,11 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
 
   // A standalone meeting's chat is saved (meet_chat_messages) and shown again the next time the
   // meeting link is used, and on the Meet page afterwards to everyone who was let in.
-  const meetCode = roomId => (roomId.startsWith('meet:') ? roomId.slice(5) : null);
+  // Meeting rooms are 'meet:<code>'; its breakout rooms 'meet:<code>:br<n>' (roadmap 2.7, below).
+  // mainOf: the meeting a room belongs to. meetCode: the same, but only for the main room — breakout
+  // chat stays in memory rather than joining the meeting's saved chat.
+  const mainOf = roomId => (roomId.startsWith('meet:') ? roomId.slice(5).split(':br')[0] : null);
+  const meetCode = roomId => (roomId.startsWith('meet:') && !roomId.includes(':br') ? roomId.slice(5) : null);
   const utcIso = s => String(s).replace(' ', 'T') + 'Z';
   async function savedMeetingChat(code) {
     const rows = await db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.full_name FROM meet_chat_messages c
@@ -90,8 +94,57 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
   // Lobby notices go only to the owner's connections that are inside this meeting.
   function notifyOwners(roomId, ownerId, event, payload) {
     for (const [sid, m] of roomUserMap.entries()) {
-      if (m.roomId === roomId && m.userId === ownerId && !m.inLobby) io.to(sid).emit(event, payload);
+      if (mainOf(m.roomId) === mainOf(roomId) && m.userId === ownerId && !m.inLobby) io.to(sid).emit(event, payload);
     }
+  }
+
+  // ---- Breakout rooms (Teams-style, roadmap 2.7) ----
+  // The meeting owner splits a meeting into smaller rooms — each its own SFU room, 'meet:<code>:br<n>'
+  // — and moves people between them; closing them (or the timer) brings everyone back. Assignments are
+  // per connection (peerId), so one person's two devices can be placed separately. State lives here,
+  // per meeting code, while anyone is in the meeting.
+  const breakouts = new Map();   // code -> { rooms: [name], assign: Map(peerId -> index), open, endsAt, timer }
+  const setRoomOf = new Map();   // socket.id -> sets that connection's current room (in attach)
+  const breakoutRoomId = (code, i) => `meet:${code}:br${i + 1}`;
+  const inMeeting = code => [...roomUserMap.entries()].filter(([, m]) => !m.inLobby && mainOf(m.roomId) === code);
+  function breakoutState(code) {
+    const b = breakouts.get(code);
+    return b ? { rooms: b.rooms, open: b.open, endsAt: b.endsAt } : { rooms: [], open: false, endsAt: null };
+  }
+  const tellMeeting = (code, event, payload) => { for (const [sid] of inMeeting(code)) io.to(sid).emit(event, payload); };
+  // Moves one connection to another room of the same meeting: it leaves the old room's media (the
+  // others see it leave), joins the new one's socket rooms, and is told to reconnect its media there.
+  async function moveSocket(sid, target, name) {
+    const m = roomUserMap.get(sid);
+    if (!m || m.inLobby || m.roomId === target) return;
+    const from = m.roomId;
+    closePeerTransports(from, m.peerId);
+    io.to('sfu:' + from).except(sid).emit('sfu:peer-left', { peerId: m.peerId, userId: m.userId, fullName: m.fullName });
+    io.in(sid).socketsLeave(['sfu:' + from, from]);
+    const room = await createRoom(target);
+    Object.assign(m, { roomId: target, hand: false, micOff: false, camOff: false, captions: false });
+    roomUserMap.set(sid, m);               // (presence: still in a meeting)
+    setRoomOf.get(sid)?.(target);
+    io.in(sid).socketsJoin(['sfu:' + target, target]);
+    io.to('sfu:' + target).except(sid).emit('sfu:peer-joined', { peerId: m.peerId, userId: m.userId, fullName: m.fullName });
+    const old = getRoom(from);
+    if (old && old.peers.size === 0) deleteRoom(from);
+    announceCaptions(from);
+    io.to(sid).emit('meet:breakout-move', { roomId: target, name, main: !target.includes(':br'), routerRtpCapabilities: room.router.rtpCapabilities });
+  }
+  async function closeBreakouts(code, why) {
+    const b = breakouts.get(code);
+    if (!b) return;
+    clearTimeout(b.timer); b.timer = null; b.open = false; b.endsAt = null;
+    const main = 'meet:' + code;
+    for (const [sid, m] of inMeeting(code)) if (m.roomId !== main) await moveSocket(sid, main, 'Main meeting');
+    tellMeeting(code, 'meet:breakout-state', breakoutState(code));
+    if (why) tellMeeting(code, 'meet:breakout-notice', { text: why });
+  }
+  function endBreakoutsIfEmpty(code) {
+    if (!code || inMeeting(code).length) return;
+    const b = breakouts.get(code);
+    if (b) { clearTimeout(b.timer); breakouts.delete(code); }
   }
 
   function attach(socket) {
@@ -99,6 +152,8 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
     let meetingId = null;
     let inLobby = false;
     let isAdmitted = false;
+    setRoomOf.set(socket.id, room => { roomCode = room; });  // breakout moves (moveSocket)
+    socket.on('disconnect', () => setRoomOf.delete(socket.id));
 
     function leave() {
       if (!roomCode) return;
@@ -122,6 +177,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       if (roomAfter && roomAfter.peers.size === 0) deleteRoom(roomCode);
       socket.leave(roomCode);
       socket.leave('sfu:' + roomCode);
+      endBreakoutsIfEmpty(mainOf(roomCode));
       roomCode = null;
       meetingId = null;
       inLobby = false;
@@ -326,6 +382,99 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       const spotlight = participants.some(p => p.peerId === room?.spotlight) ? room.spotlight : null;
       return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u), captions: captionsWanted(roomId), board: !!room?.board?.open, together: !!room?.together };
     });
+    // ---- Breakout rooms: the owner's actions, and anyone's "return to the main meeting" ----
+    async function breakoutOwner(roomId, u) {
+      admitted(roomId);
+      const code = mainOf(roomId);
+      if (!code) throw Error('Breakout rooms are only for meetings.');
+      if ((await meetingOwnerId(code)) !== u.id) throw Error('Only the meeting owner can manage breakout rooms.');
+      return code;
+    }
+    const roomIndexOf = m => (m.roomId.includes(':br') ? Number(m.roomId.split(':br')[1]) - 1 : -1);
+    const sidOfPeer = (code, peerId) => inMeeting(code).find(([, m]) => m.peerId === peerId)?.[0];
+    handle('sfu:breakout-get', async ({ roomId }, u) => {
+      admitted(roomId);
+      const code = mainOf(roomId);
+      const state = breakoutState(code);
+      if ((await meetingOwnerId(code)) !== u.id) return { state, isOwner: false };
+      const b = breakouts.get(code);
+      return {
+        state, isOwner: true,
+        assign: b ? Object.fromEntries(b.assign) : {},
+        people: inMeeting(code).map(([, m]) => ({ peerId: m.peerId, fullName: m.fullName, owner: m.userId === u.id, room: roomIndexOf(m) })),
+      };
+    });
+    // Set up (or redo) the rooms while they're closed: how many, and who goes where — given, or spread
+    // evenly (everyone but the owner, in random order).
+    handle('sfu:breakout-setup', async ({ roomId, count, assign }, u) => {
+      const code = await breakoutOwner(roomId, u);
+      if (breakouts.get(code)?.open) throw Error('Close the breakout rooms first.');
+      const n = Math.max(1, Math.min(20, Number(count) || 0));
+      const rooms = Array.from({ length: n }, (_, i) => 'Room ' + (i + 1));
+      const map = new Map();
+      if (assign && typeof assign === 'object') {
+        for (const [peerId, idx] of Object.entries(assign)) if (Number.isInteger(idx) && idx >= 0 && idx < n) map.set(peerId, idx);
+      } else {
+        const people = inMeeting(code).map(([, m]) => m).filter(m => m.userId !== u.id).sort(() => Math.random() - 0.5);
+        people.forEach((m, i) => map.set(m.peerId, i % n));
+      }
+      breakouts.set(code, { rooms, assign: map, open: false, endsAt: null, timer: null });
+      tellMeeting(code, 'meet:breakout-state', breakoutState(code));
+      return {};
+    });
+    handle('sfu:breakout-assign', async ({ roomId, peerId, index }, u) => {
+      const code = await breakoutOwner(roomId, u);
+      const b = breakouts.get(code);
+      if (!b || typeof peerId !== 'string') throw Error('Set up breakout rooms first.');
+      const idx = Number.isInteger(index) && index >= 0 && index < b.rooms.length ? index : -1;
+      if (idx < 0) b.assign.delete(peerId); else b.assign.set(peerId, idx);
+      const sid = b.open && sidOfPeer(code, peerId);
+      if (sid) await moveSocket(sid, idx < 0 ? 'meet:' + code : breakoutRoomId(code, idx), idx < 0 ? 'Main meeting' : b.rooms[idx]);
+      return {};
+    });
+    handle('sfu:breakout-open', async ({ roomId, minutes }, u) => {
+      const code = await breakoutOwner(roomId, u);
+      const b = breakouts.get(code);
+      if (!b) throw Error('Set up breakout rooms first.');
+      if (b.open) return {};
+      const mins = Math.max(0, Math.min(240, Number(minutes) || 0));
+      b.open = true;
+      b.endsAt = mins ? Date.now() + mins * 60000 : null;
+      if (mins) b.timer = setTimeout(() => closeBreakouts(code, 'Time is up: everyone is back in the main meeting.').catch(() => {}), mins * 60000);
+      for (const [peerId, idx] of b.assign) {
+        const sid = sidOfPeer(code, peerId);
+        if (sid) await moveSocket(sid, breakoutRoomId(code, idx), b.rooms[idx]);
+      }
+      tellMeeting(code, 'meet:breakout-state', breakoutState(code));
+      tellMeeting(code, 'meet:breakout-notice', { text: 'Breakout rooms are open' + (mins ? ' for ' + mins + ' minute' + (mins === 1 ? '' : 's') : '') + '.' });
+      return {};
+    });
+    handle('sfu:breakout-close', async ({ roomId }, u) => {
+      const code = await breakoutOwner(roomId, u);
+      await closeBreakouts(code, 'The breakout rooms are closed: everyone is back in the main meeting.');
+      return {};
+    });
+    handle('sfu:breakout-message', async ({ roomId, text }, u) => {
+      const code = await breakoutOwner(roomId, u);
+      const body = String(text || '').trim().slice(0, 300);
+      if (!body) throw Error('Type a message first.');
+      tellMeeting(code, 'meet:breakout-notice', { text: u.full_name + ' (to all rooms): ' + body });
+      return {};
+    });
+    // The owner visits a room (index) or goes back to the main meeting (-1).
+    handle('sfu:breakout-join', async ({ roomId, index }, u) => {
+      const code = await breakoutOwner(roomId, u);
+      const b = breakouts.get(code);
+      const idx = b?.open && Number.isInteger(index) && index >= 0 && index < b.rooms.length ? index : -1;
+      await moveSocket(socket.id, idx < 0 ? 'meet:' + code : breakoutRoomId(code, idx), idx < 0 ? 'Main meeting' : b.rooms[idx]);
+      return {};
+    });
+    handle('sfu:breakout-return', async ({ roomId }) => {
+      const m = admitted(roomId);
+      const code = mainOf(roomId);
+      if (code && m.roomId !== 'meet:' + code) await moveSocket(socket.id, 'meet:' + code, 'Main meeting');
+      return {};
+    });
     // ---- Together mode (together.js) ----
     // Everyone shown cut out of their video and seated in one shared scene. A room-wide switch, like
     // spotlight: meeting owner in meetings, anyone in calls. While it's on, each browser sends its
@@ -417,7 +566,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
     // Spotlight: one person's video shown large for everyone in the call (Teams "Spotlight for
     // everyone"). Meetings: the owner. Calls: anyone in the call, as with recording. null clears it.
     async function maySpotlight(roomId, u) {
-      return !roomId.startsWith('meet:') || (await meetingOwnerId(roomId.slice(5))) === u.id;
+      return !roomId.startsWith('meet:') || (await meetingOwnerId(mainOf(roomId))) === u.id;
     }
     handle('sfu:spotlight', async ({ roomId, peerId }, u) => {
       admitted(roomId);
@@ -517,8 +666,8 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
     async function recordingPlace(roomId, u) {
       admitted(roomId);
       if (roomId.startsWith('meet:')) {
-        if ((await meetingOwnerId(roomId.slice(5))) !== u.id) throw Error('Only the meeting owner can record this meeting.');
-        return { meetingCode: roomId.slice(5), scope: null };
+        if ((await meetingOwnerId(mainOf(roomId))) !== u.id) throw Error('Only the meeting owner can record this meeting.');
+        return { meetingCode: mainOf(roomId), scope: null };
       }
       const scope = scopeForRoom(roomId);
       if (!scope) throw Error('Recording is not available here.');

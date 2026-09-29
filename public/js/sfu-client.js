@@ -108,7 +108,9 @@
             ],
             codecOptions: { videoGoogleStartBitrate: 1000 },
           } : {};
-          ownProducers[track.kind] = await transport.produce({ track, ...simulcast, appData: { source: 'camera' } });
+          // stopTracks: false — closing the session (leaving, or moving to a breakout room) must not stop
+          // your camera and microphone; the page stops them itself when you leave.
+          ownProducers[track.kind] = await transport.produce({ track, ...simulcast, stopTracks: false, appData: { source: 'camera' } });
           if (!track.enabled) await this.setPaused(track.kind, true); // joined with it off
         }
       },
@@ -135,7 +137,7 @@
         const transport = await ensureSendTransport();
         track.contentHint = 'detail';
         screenProducer = await transport.produce({
-          track,
+          track, stopTracks: false,
           encodings: [{ maxBitrate: 2500000, maxFramerate: 30 }],
           codecOptions: { videoGoogleStartBitrate: 1500 },
           appData: { source: 'screen' },
