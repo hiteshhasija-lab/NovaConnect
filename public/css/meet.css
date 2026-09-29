@@ -166,3 +166,6 @@
 .meet-device-note { margin: 6px 0 0; font-size: .8rem; color: var(--text-muted, #666); }
 .meet-chats { color:var(--text-muted); }.meet-chats .meet-link-row { color:inherit; }.meet-chats .meet-link-row strong { color:var(--text); }
 .meet-chat-history { max-height:min(60vh,520px);overflow-y:auto;min-width:min(480px,80vw); }.meet-chat-row { padding:8px 0;border-bottom:1px solid var(--border); }.meet-chat-row small { color:var(--text-muted);margin-left:8px; }.meet-chat-row p { margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere; }
+/* Live captions on the meeting page (line styles in calls.css). */
+.meet-captions { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1085; width: min(760px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.meet-captions[hidden] { display: none; }

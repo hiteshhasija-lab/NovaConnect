@@ -48,6 +48,18 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       io.to(sid).emit('meet:recording-ready', { ...ready, downloadUrl: mayDownload ? downloadUrl : null });
     }
   });
+  // Live captions: whether anyone in a room has them on, and telling the room when that changes.
+  function captionsWanted(roomId) {
+    for (const m of roomUserMap.values()) if (m.roomId === roomId && !m.inLobby && m.captions) return true;
+    return false;
+  }
+  function announceCaptions(roomId) {
+    const room = getRoom(roomId), wanted = captionsWanted(roomId);
+    if (!room || !!room.captionsWanted === wanted) return;
+    room.captionsWanted = wanted;
+    io.to('sfu:' + roomId).emit('sfu:captions-state', { roomId, wanted });
+  }
+
   // Call rooms: in-call chat so far, for people who join late (kept while the room exists).
   // Meeting rooms read theirs from meet_chat_messages instead.
   const chatHistory = new Map();
@@ -103,6 +115,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
             userId: socket.user.id,
             fullName: socket.user.full_name,
           });
+          if (mapping.captions) announceCaptions(roomCode); // maybe nobody wants captions now
         }
       }
       const roomAfter = getRoom(roomCode);
@@ -311,7 +324,28 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       // is dropped once that person has left.
       const room = getRoom(roomId);
       const spotlight = participants.some(p => p.peerId === room?.spotlight) ? room.spotlight : null;
-      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u) };
+      return { participants, speaker: room?.speaker || null, spotlight, canSpotlight: await maySpotlight(roomId, u), captions: captionsWanted(roomId) };
+    });
+    // Live captions (Teams-style, roadmap 2.8): speech is turned into text in each speaker's own
+    // browser (call-extras.js) and relayed here only to the people in the room who turned captions
+    // on. While anyone has them on, everyone's browser transcribes its own unmuted microphone.
+    handle('sfu:captions', async ({ roomId, on }) => {
+      const m = admitted(roomId);
+      m.captions = on === true;
+      announceCaptions(roomId);
+      return { wanted: captionsWanted(roomId) };
+    });
+    // Several a second while someone talks, so no per-event session reload (the socket was
+    // authenticated on connect; being in the room is checked). At most 20 lines a second each.
+    let captionWindow = 0, captionCount = 0;
+    socket.on('sfu:caption', ({ roomId, text, final, unavailable } = {}) => {
+      const m = roomUserMap.get(socket.id);
+      if (!m || m.roomId !== roomId || m.inLobby) return;
+      const now = Date.now();
+      if (now - captionWindow > 1000) { captionWindow = now; captionCount = 0; }
+      if (++captionCount > 20) return;
+      const line = { roomId, peerId: m.peerId, fullName: m.fullName, text: String(text || '').slice(0, 300), final: final === true, unavailable: unavailable === true };
+      for (const [sid, x] of roomUserMap.entries()) if (x.roomId === roomId && !x.inLobby && x.captions) io.to(sid).emit('sfu:caption', line);
     });
     // Spotlight: one person's video shown large for everyone in the call (Teams "Spotlight for
     // everyone"). Meetings: the owner. Calls: anyone in the call, as with recording. null clears it.

@@ -13,10 +13,14 @@
   // spotlight comes from the server (sfu:spotlight) and is the same for everyone. Your pin wins over
   // the spotlight for you. onFocus(peerId | null) tells the page whose video to show large; the page
   // calls decorate(tile, peerId) for each tile it creates, which adds the tile's pin button.
-  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [], onFocus = () => {} }) {
+  //
+  // Live captions: els.captionsBtn turns them on for you, els.captionsBox shows them; micTrack()
+  // is your microphone track (null when not in a call), and the page calls micChanged() when you
+  // mute, unmute or switch microphone.
+  window.createCallExtras = function ({ socket, request, notify, els, tiles, tileFor, reactionHost = () => null, fallbackHost, extraPanels = [], onFocus = () => {}, micTrack = () => null }) {
     const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'];
     const panels = [[els.participantsBtn, els.participantsPanel], [els.reactionsBtn, els.reactionsPanel], [els.chatBtn, els.chatPanel], ...extraPanels];
-    const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn, ...extraPanels.map(([btn]) => btn)];
+    const buttons = [els.participantsBtn, els.handBtn, els.reactionsBtn, els.chatBtn, els.captionsBtn, ...extraPanels.map(([btn]) => btn)].filter(Boolean);
     let ctx = null;                // { roomId, peerId, userId, hand } while in a call
     const seen = new Set();        // chat messages already shown (history and live can overlap)
     let unreadChat = 0, refreshTimer = null;
@@ -61,15 +65,103 @@
       if (!ctx) return;
       request('sfu:spotlight', { roomId: ctx.roomId, peerId }).catch(e => notify(e));
     }
+    // ---- Live captions (roadmap 2.8) ----
+    // Each speaker's own browser turns their speech into text (Web Speech API: Chrome, Edge,
+    // partly Safari; on-device where the browser offers it) and sends it to the room; the server
+    // relays it only to people who turned captions on. Transcribing runs only while someone in the
+    // call wants captions and your microphone is on. If this browser can't transcribe, the others
+    // are told once instead of seeing nothing.
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let captionsOn = false, captionsWanted = false, rec = null, recBroken = !Recognition, toldUnavailable = false, lastInterim = 0;
+    const captionLines = new Map(); // peerId -> { el, who, text, timer }
+    function paintCaptionsBtn() {
+      if (!els.captionsBtn) return;
+      els.captionsBtn.setAttribute('aria-pressed', String(captionsOn));
+      els.captionsBtn.title = captionsOn ? 'Turn off live captions' : 'Turn on live captions';
+      els.captionsBtn.setAttribute('aria-label', els.captionsBtn.title);
+      els.captionsBtn.classList.toggle('nc-active', captionsOn);
+    }
+    function clearCaptions() {
+      captionLines.forEach(l => clearTimeout(l.timer)); captionLines.clear();
+      if (els.captionsBox) { els.captionsBox.replaceChildren(); els.captionsBox.hidden = true; }
+    }
+    function showCaption({ peerId, fullName, text, final, unavailable }) {
+      if (!captionsOn || !els.captionsBox || (!text && !unavailable)) return;
+      let line = captionLines.get(peerId);
+      if (!line) {
+        const el = document.createElement('div'); el.className = 'nc-caption-line';
+        const who = document.createElement('b'); const said = document.createElement('span');
+        el.append(who, said); line = { el, who, said, timer: null }; captionLines.set(peerId, line);
+      }
+      line.who.textContent = (peerId === ctx?.peerId ? 'You' : fullName) + ': ';
+      line.said.textContent = unavailable ? 'live captions aren\u2019t available in their browser' : text;
+      line.el.classList.toggle('nc-caption-unavailable', !!unavailable);
+      els.captionsBox.append(line.el); els.captionsBox.hidden = false; // latest speaker at the bottom
+      clearTimeout(line.timer);
+      line.timer = setTimeout(() => { line.el.remove(); captionLines.delete(peerId); if (!captionLines.size) els.captionsBox.hidden = true; }, final || unavailable ? 7000 : 12000);
+      while (els.captionsBox.children.length > 3) {
+        const first = els.captionsBox.firstElementChild;
+        for (const [id, l] of captionLines) if (l.el === first) { clearTimeout(l.timer); captionLines.delete(id); }
+        first.remove();
+      }
+    }
+    const sendCaption = line => { if (ctx) socket.emit('sfu:caption', { roomId: ctx.roomId, ...line }); };
+    function updateTranscriber() {
+      const track = ctx ? micTrack() : null;
+      const speaking = !!ctx && captionsWanted && !!track && track.enabled && track.readyState === 'live';
+      if (speaking && recBroken && !toldUnavailable) { toldUnavailable = true; sendCaption({ unavailable: true }); notice('Live captions can\u2019t be produced in this browser, so others won\u2019t see captions for you.'); }
+      if (speaking && !recBroken && !rec) startTranscribing(track);
+      else if (!speaking && rec) stopTranscribing();
+    }
+    async function startTranscribing(track) {
+      const r = rec = new Recognition();
+      r.continuous = true; r.interimResults = true; r.lang = navigator.language || 'en-US';
+      // On-device recognition where the browser has it (nothing leaves the machine); otherwise the
+      // browser's own speech service (Chrome: Google's).
+      try { if (typeof Recognition.available === 'function' && await Recognition.available({ langs: [r.lang], processLocally: true }) === 'available') r.processLocally = true; } catch { /* service default */ }
+      if (rec !== r) return;
+      r.onresult = e => {
+        let finals = '', interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) finals += t; else interim += t; }
+        if (finals.trim()) sendCaption({ text: finals.trim(), final: true });
+        else if (interim.trim() && Date.now() - lastInterim > 300) { lastInterim = Date.now(); sendCaption({ text: interim.trim(), final: false }); }
+      };
+      r.onerror = e => {
+        if (!['not-allowed', 'service-not-allowed', 'network', 'audio-capture', 'language-not-supported'].includes(e.error)) return;
+        recBroken = true; rec = null;
+        updateTranscriber(); // tells the others once
+      };
+      // Browsers end recognition after a pause or a minute; carry on while still wanted.
+      r.onend = () => { if (rec === r) { rec = null; if (!recBroken) setTimeout(updateTranscriber, 250); } };
+      try { r.start(track); } catch { try { r.start(); } catch { if (rec === r) rec = null; } }
+    }
+    function stopTranscribing() { const r = rec; rec = null; try { r?.abort(); } catch { /* already stopped */ } }
+    function setCaptionsOn(on) {
+      if (!ctx) return;
+      captionsOn = on; paintCaptionsBtn();
+      if (!on) clearCaptions();
+      const mine = ctx;
+      request('sfu:captions', { roomId: ctx.roomId, on }).then(({ wanted }) => { if (ctx === mine) { captionsWanted = wanted; updateTranscriber(); } }).catch(e => notify(e));
+    }
+    els.captionsBtn?.addEventListener('click', () => setCaptionsOn(!captionsOn));
+    socket.on('sfu:captions-state', ({ roomId, wanted }) => {
+      if (!ours(roomId)) return;
+      const was = captionsWanted; captionsWanted = wanted;
+      if (wanted && !was) notice('Live captions are on: what you say is shown as text to people who turned them on.');
+      updateTranscriber();
+    });
+    socket.on('sfu:caption', line => { if (ours(line.roomId)) showCaption(line); });
+
     // Participant list, refreshed (debounced) whenever someone joins/leaves or changes state.
     function refresh() {
       clearTimeout(refreshTimer);
       const mine = ctx;
       refreshTimer = setTimeout(async () => {
         if (!mine || ctx !== mine) return;
-        let list, speaker, spot, may;
-        try { ({ participants: list, speaker, spotlight: spot, canSpotlight: may } = await request('sfu:participants', { roomId: mine.roomId })); } catch { return; }
+        let list, speaker, spot, may, captions;
+        try { ({ participants: list, speaker, spotlight: spot, canSpotlight: may, captions } = await request('sfu:participants', { roomId: mine.roomId })); } catch { return; }
         if (ctx !== mine) return;
+        if (!!captions !== captionsWanted) { captionsWanted = !!captions; updateTranscriber(); }
         spotlight = spot || null; canSpotlight = !!may;
         if (pinned && !list.some(p => p.peerId === pinned)) pinned = null;
         applyFocus();
@@ -184,6 +276,7 @@
       start({ roomId, peerId, userId = null }) {
         const mine = ctx = { roomId, peerId, userId, hand: false };
         pinned = spotlight = null; canSpotlight = false; lastFocus = undefined; applyFocus();
+        captionsOn = captionsWanted = false; toldUnavailable = false; recBroken = !Recognition; paintCaptionsBtn(); clearCaptions();
         buttons.forEach(b => { b.hidden = false; });
         setHand(false);
         refresh();
@@ -199,6 +292,7 @@
       stop() {
         ctx = null; clearTimeout(refreshTimer); seen.clear();
         pinned = spotlight = null; applyFocus();
+        stopTranscribing(); captionsOn = captionsWanted = false; paintCaptionsBtn(); clearCaptions();
         for (const [btn, panel] of panels) { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
         buttons.forEach(b => { b.hidden = true; });
         els.chatMessages.replaceChildren(); els.participantList.replaceChildren(); els.notices.replaceChildren();
@@ -219,6 +313,8 @@
       },
       // A tile went away or was replaced: re-check what's shown large.
       retile: applyFocus,
+      // You muted, unmuted or switched microphone: start/stop transcribing your speech.
+      micChanged() { if (rec) stopTranscribing(); updateTranscriber(); },
     };
   };
 })();

@@ -1,8 +1,8 @@
 <% if (layout) { %>
 <%- include('partials/head') %>
 <% } %>
-<link rel="stylesheet" href="/css/meet.css?v=13">
-<link rel="stylesheet" href="/css/calls.css?v=20">
+<link rel="stylesheet" href="/css/meet.css?v=14">
+<link rel="stylesheet" href="/css/calls.css?v=21">
 <main class="meet-room" data-code="<%= link.code %>">
   <header>
     <h1><%= link.title %></h1>
@@ -26,6 +26,7 @@
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetHandBtn" hidden aria-pressed="false" aria-label="Raise hand" title="Raise hand"><span aria-hidden="true">✋</span> Raise hand</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetReactionsBtn" hidden aria-expanded="false" aria-controls="meetReactionsPanel"><i class="bi bi-emoji-smile" aria-hidden="true"></i> React</button>
       <button type="button" class="btn btn-outline-secondary meet-extra-btn" id="meetChatBtn" hidden aria-expanded="false" aria-controls="meetChatPanel"><i class="bi bi-chat-dots" aria-hidden="true"></i> Chat <span class="nc-badge" id="meetChatBadge" hidden>0</span></button>
+      <button type="button" class="btn btn-outline-secondary meet-extra-btn nc-captions-btn" id="meetCaptionsBtn" hidden aria-pressed="false" aria-label="Turn on live captions" title="Turn on live captions"><span class="nc-cc" aria-hidden="true">CC</span> Captions</button>
     </div>
     <details class="meet-devices">
       <summary><i class="bi bi-gear" aria-hidden="true"></i> Devices</summary>
@@ -62,6 +63,8 @@
   <div class="meet-videos" id="meetVideos"></div>
 </main>
 <div class="meet-notices" id="meetNotices" aria-live="polite"></div>
+<!-- Live captions, for you when you turn them on (call-extras.js). -->
+<div class="meet-captions" id="meetCaptions" aria-live="polite" hidden></div>
 <aside class="nc-call-panel meet-side-panel" id="meetParticipantsPanel" role="complementary" aria-label="People in the meeting" hidden>
   <header><h3>People <span class="nc-badge" id="meetParticipantCount">0</span></h3><button type="button" class="nc-btn-close" aria-label="Close people">×</button></header>
   <div class="nc-participant-list" id="meetParticipantList"></div>
@@ -82,8 +85,8 @@
 <script src="/js/vendor/mediasoup-client.min.js?v=1"></script>
 <script src="/js/sfu-client.js?v=6"></script>
 <script src="/js/devices.js?v=2"></script>
-<script src="/js/call-extras.js?v=5"></script>
-<script src="/js/meet-room.js?v=19"></script>
+<script src="/js/call-extras.js?v=6"></script>
+<script src="/js/meet-room.js?v=20"></script>
 <% if (layout) { %>
 <%- include('partials/foot') %>
 <% } %>

@@ -275,8 +275,10 @@
         reactionsBtn: $('callReactions'), reactionsPanel: $('callReactionsPanel'), reactionGrid: $('reactionGrid'),
         chatBtn: $('callChat'), chatBadge: $('callChatCount'), chatPanel: $('callChatPanel'), chatMessages: $('callChatMessages'),
         chatForm: $('callChatForm'), chatInput: $('callChatInput'), notices: $('callNotices'),
+        captionsBtn: $('callCaptions'), captionsBox: $('callCaptionsBox'),
       },
       extraPanels: [[$('callSettings'), $('callSettingsPanel')]],
+      micTrack: () => (current?.joined ? current.stream?.getAudioTracks()[0] || null : null),
       onFocus: peerId => { focusPeer = peerId; if (current) arrangeTiles(); },
     });
 
@@ -346,6 +348,7 @@
       c.stream.removeTrack(old); old.stop(); c.stream.addTrack(fresh);
       const mine = allTiles().find(t => t.dataset.peerId === 'local')?.querySelector('video');
       if (mine) mine.srcObject = new MediaStream(c.stream.getTracks());
+      if (short === 'audio') extras.micChanged(); // captions follow the new microphone
     }
 
     socket.on('gcall:incoming', data => {
@@ -407,6 +410,7 @@
       if (kind === 'audio') setCallToggle($('callMute'), !enabled, enabled ? 'Mute' : 'Unmute');
       else setCallToggle($('callCamera'), !enabled, enabled ? 'Turn camera off' : 'Turn camera on');
       setTileState('local', kind, !enabled);
+      if (kind === 'audio') extras.micChanged(); // no captions of you while muted
       c.session?.setPaused(kind, !enabled)?.then(() => extras.refresh());
     }
     $('callMute').addEventListener('click', () => toggleOwn('audio'));

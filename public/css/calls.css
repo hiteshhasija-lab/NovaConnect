@@ -378,3 +378,14 @@
 }
 .nc-call-rec .nc-rec-dot { width: 9px; height: 9px; animation: pulse 1.2s infinite; }
 @media (prefers-reduced-motion: reduce) { .nc-rec-dot { animation: none !important; } }
+
+/* Live captions (call-extras.js): the CC button, and up to three "Name: text" lines above the
+   controls — in the call panel over the video, in the flow while the panel has no video. */
+.nc-cc { display: inline-block; font: 700 .7rem/1 system-ui, sans-serif; letter-spacing: .02em; border: 1.5px solid currentColor; border-radius: 3px; padding: 2px 3px; }
+.nc-captions-btn.nc-active { background: rgba(127, 133, 245, .35); }
+.nc-call-captions { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 4; width: min(720px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.nc-call-captions[hidden] { display: none; }
+.nc-call:not(.nc-call-video) .nc-call-captions { position: static; transform: none; width: auto; margin-top: 10px; }
+.nc-caption-line { background: rgba(0, 0, 0, .75); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+.nc-caption-line b { color: #ffd76a; font-weight: 600; }
+.nc-caption-unavailable { font-style: italic; opacity: .8; }

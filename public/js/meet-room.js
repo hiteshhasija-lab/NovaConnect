@@ -136,6 +136,7 @@ async function switchDevice(kind,id){
   fresh.enabled=old.enabled;
   await session?.replaceTrack(short,fresh);
   stream.removeTrack(old);old.stop();stream.addTrack(fresh);
+  if(short==='audio')extras.micChanged(); // captions follow the new microphone
   const mine=document.querySelector('#peer-local video');if(mine)mine.srcObject=new MediaStream(stream.getTracks());
   status.textContent=(short==='audio'?'Microphone':'Camera')+' switched.';
 }
@@ -155,7 +156,9 @@ const extras=createCallExtras({
     reactionsBtn:$('meetReactionsBtn'),reactionsPanel:$('meetReactionsPanel'),reactionGrid:$('meetReactionGrid'),
     chatBtn:$('meetChatBtn'),chatBadge:$('meetChatBadge'),chatPanel:$('meetChatPanel'),chatMessages:$('meetChatMessages'),
     chatForm:$('meetChatForm'),chatInput:$('meetChatInput'),notices:$('meetNotices'),
+    captionsBtn:$('meetCaptionsBtn'),captionsBox:$('meetCaptions'),
   },
+  micTrack:()=>joined?stream?.getAudioTracks()[0]||null:null,
 });
 
 function cleanup(){
@@ -266,7 +269,7 @@ enter.onclick=async()=>{
 
 // In the meeting these also pause the stream at the server, so everyone else is told.
 // Your choice is remembered for next time. Before joining, the camera switch starts/stops the preview.
-mic.onchange=()=>{setPref('mic',mic.checked);stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);if(joined){setTileState('local','audio',!mic.checked);session?.setPaused('audio',!mic.checked)}};
+mic.onchange=()=>{setPref('mic',mic.checked);stream?.getAudioTracks().forEach(t=>t.enabled=mic.checked);if(joined){setTileState('local','audio',!mic.checked);session?.setPaused('audio',!mic.checked);extras.micChanged()}};
 camera.onchange=()=>{
   setPref('camera',camera.checked);
   if(!joined){showPreview();return}
