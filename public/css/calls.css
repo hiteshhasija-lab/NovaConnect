@@ -5,11 +5,11 @@
   right: 24px; bottom: 24px;
   width: min(520px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px); overflow: auto;
-  padding: 24px; border: 1px solid #535a78; border-radius: 20px;
-  background: #171d32; color: #f5f6ff; box-shadow: 0 20px 70px #0007;
+  padding: 24px; border: 1px solid #41618b; border-radius: 20px;
+  background: #14243b; color: #f5f6ff; box-shadow: 0 20px 70px #0007;
 }
 .nc-call h2 { font-size: 1.3rem; margin: 6px 0; overflow-wrap: anywhere; }
-.nc-call-kind { color: #b7baf7; font-size: .85rem; }
+.nc-call-kind { color: #a9c8ec; font-size: .85rem; }
 .nc-call-status { color: #d5daee; }
 
 /* Header */
@@ -34,7 +34,7 @@
 }
 .nc-video-tile {
   position: relative; background: #0c1020; border-radius: 12px;
-  overflow: hidden; border: 1px solid #535a78;
+  overflow: hidden; border: 1px solid #41618b;
   display: flex; flex-direction: column;
 }
 .nc-video-tile video { width: 100%; height: auto; aspect-ratio: 16/9; object-fit: cover; }
@@ -59,7 +59,7 @@
 .nc-call-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 8px; padding: 12px; border-radius: 16px;
-  background: rgba(255,255,255,.05); border: 1px solid #535a78;
+  background: rgba(255,255,255,.05); border: 1px solid #41618b;
 }
 .nc-toolbar-group { display: flex; gap: 6px; align-items: center; }
 .nc-toolbar-group.nc-toolbar-media { gap: 4px; }
@@ -67,17 +67,17 @@
 .nc-btn-icon {
   width: 40px; height: 40px; border-radius: 50%;
   background: rgba(255,255,255,.08); color: #f5f6ff;
-  border: 1px solid #535a78; cursor: pointer;
+  border: 1px solid #41618b; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background .15s, border-color .15s;
 }
 .nc-btn-icon:hover { background: rgba(255,255,255,.15); }
 .nc-btn-icon[aria-expanded="true"] { background: #3a3f6b; }
-.nc-btn-icon[aria-pressed="true"] { background: #e7e9ff; color: #171d32; }
+.nc-btn-icon[aria-pressed="true"] { background: #d3f5ff; color: #073b94; }
 .nc-btn-icon svg { width: 20px; height: 20px; }
 .nc-btn-text {
   padding: 8px 16px; border-radius: 999px;
-  background: #f5a623; color: #171d32; font-weight: 600;
+  background: #f5a623; color: #14243b; font-weight: 600;
   border: none; cursor: pointer;
 }
 .nc-btn-text.nc-btn-warning { background: #f5a623; }
@@ -98,12 +98,12 @@
 .nc-call-panel {
   position: fixed; z-index: 1081; right: 24px; bottom: 80px;
   width: 320px; max-height: 50vh; overflow: auto;
-  padding: 16px; border: 1px solid #535a78; border-radius: 16px;
-  background: #171d32; color: #f5f6ff; box-shadow: 0 20px 70px #0007;
+  padding: 16px; border: 1px solid #41618b; border-radius: 16px;
+  background: #14243b; color: #f5f6ff; box-shadow: 0 20px 70px #0007;
 }
 .nc-call-panel header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #535a78;
+  margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #41618b;
 }
 .nc-call-panel h3 { margin: 0; font-size: 1.1rem; }
 .nc-badge { font-size: .7rem; padding: 2px 6px; }
@@ -120,19 +120,19 @@
 }
 .nc-participant-info { flex: 1; min-width: 0; }
 .nc-participant-name { font-weight: 500; }
-.nc-participant-status { font-size: .75rem; color: #b7baf7; display: flex; gap: 8px; }
+.nc-participant-status { font-size: .75rem; color: #a9c8ec; display: flex; gap: 8px; }
 .nc-status-muted { color: #ea4335; }
 .nc-status-raised { color: #f5a623; }
 .nc-status-pinned { color: #4285f4; }
 .nc-participant-actions { display: flex; gap: 4px; }
-.nc-panel-footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid #535a78; }
+.nc-panel-footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid #41618b; }
 .nc-btn-primary { width: 100%; padding: 10px; border-radius: 8px; font-weight: 600; }
 
 /* Reactions */
 .nc-reaction-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .nc-reaction-btn {
   font-size: 2rem; padding: 8px; border-radius: 12px;
-  background: rgba(255,255,255,.08); border: 1px solid #535a78;
+  background: rgba(255,255,255,.08); border: 1px solid #41618b;
   cursor: pointer; transition: transform .1s, background .15s;
 }
 .nc-reaction-btn:hover { transform: scale(1.2); background: rgba(255,255,255,.15); }
@@ -143,17 +143,17 @@
 .nc-chat-message.local { background: #4285f4; color: #fff; align-self: flex-end; }
 .nc-chat-sender { font-weight: 600; font-size: .8rem; display: block; margin-bottom: 2px; }
 .nc-chat-text { font-size: .9rem; }
-.nc-chat-time { font-size: .65rem; color: #b7baf7; margin-top: 4px; display: block; }
+.nc-chat-time { font-size: .65rem; color: #a9c8ec; margin-top: 4px; display: block; }
 .nc-chat-input { display: flex; gap: 8px; }
-.nc-chat-input input { flex: 1; padding: 10px 12px; border-radius: 999px; border: 1px solid #535a78; background: #0c1020; color: #f5f6ff; }
+.nc-chat-input input { flex: 1; padding: 10px 12px; border-radius: 999px; border: 1px solid #41618b; background: #0c1020; color: #f5f6ff; }
 .nc-chat-input button { width: 40px; height: 40px; }
 
 /* Settings */
 .nc-settings-grid { display: flex; flex-direction: column; gap: 16px; }
-.nc-setting h4 { margin: 0 0 8px; font-size: .9rem; color: #b7baf7; }
+.nc-setting h4 { margin: 0 0 8px; font-size: .9rem; color: #a9c8ec; }
 .nc-setting label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: .9rem; }
 .nc-setting input[type="range"] { flex: 1; }
-.nc-setting select { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid #535a78; background: #0c1020; color: #f5f6ff; }
+.nc-setting select { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid #41618b; background: #0c1020; color: #f5f6ff; }
 .nc-setting label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .nc-setting label > span { flex: 1; }
 
@@ -165,25 +165,25 @@
 .nc-call-panel {
   right: 24px; bottom: 80px;
   width: 340px; max-height: 60vh;
-  padding: 16px; border: 1px solid #535a78; border-radius: 16px;
-  background: #171d32; color: #f5f6ff; box-shadow: 0 20px 70px #0007;
+  padding: 16px; border: 1px solid #41618b; border-radius: 16px;
+  background: #14243b; color: #f5f6ff; box-shadow: 0 20px 70px #0007;
 }
-.nc-call-panel header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #535a78; }
+.nc-call-panel header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #41618b; }
 .nc-call-panel h3 { margin: 0; font-size: 1.1rem; }
-.nc-panel-footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid #535a78; }
+.nc-panel-footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid #41618b; }
 .nc-btn-close { background: none; border: none; color: inherit; font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
 .nc-btn-close:hover { background: rgba(255,255,255,.1); }
 .nc-btn-primary { width: 100%; padding: 10px; border-radius: 8px; font-weight: 600; background: #4285f4; color: #fff; border: none; }
-.nc-btn-text { padding: 8px 16px; border-radius: 999px; background: #f5a623; color: #171d32; font-weight: 600; border: none; cursor: pointer; }
+.nc-btn-text { padding: 8px 16px; border-radius: 999px; background: #f5a623; color: #14243b; font-weight: 600; border: none; cursor: pointer; }
 .nc-btn-text.nc-btn-warning { background: #f5a623; }
 .nc-btn-primary { background: #4285f4; color: #fff; border: none; }
 .nc-btn-danger { background: #ea4335; color: #fff; border: none; }
-.nc-btn-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.08); color: #f5f6ff; border: 1px solid #535a78; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, border-color .15s; }
+.nc-btn-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.08); color: #f5f6ff; border: 1px solid #41618b; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, border-color .15s; }
 .nc-btn-icon:hover { background: rgba(255,255,255,.15); }
 .nc-btn-icon[aria-expanded="true"] { background: #3a3f6b; }
-.nc-btn-icon[aria-pressed="true"] { background: #e7e9ff; color: #171d32; }
+.nc-btn-icon[aria-pressed="true"] { background: #d3f5ff; color: #073b94; }
 .nc-btn-icon svg { width: 20px; height: 20px; }
-.nc-btn-text { padding: 8px 16px; border-radius: 999px; background: #f5a623; color: #171d32; font-weight: 600; border: none; cursor: pointer; }
+.nc-btn-text { padding: 8px 16px; border-radius: 999px; background: #f5a623; color: #14243b; font-weight: 600; border: none; cursor: pointer; }
 .nc-btn-text.nc-btn-warning { background: #f5a623; }
 .nc-btn-primary { background: #4285f4; color: #fff; border: none; }
 .nc-btn-danger { background: #ea4335; color: #fff; border: none; }
@@ -205,7 +205,7 @@
   border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer;
 }
 .nc-call-view-btn:hover { background: rgba(255,255,255,.12); }
-.nc-call-view-btn:focus-visible { outline: 2px solid #b7baf7; outline-offset: 2px; }
+.nc-call-view-btn:focus-visible { outline: 2px solid #50d5ff; outline-offset: 2px; }
 .nc-call-view-btn svg { width: 18px; height: 18px; }
 .nc-call.nc-call-max, .nc-call:fullscreen {
   inset: 0; width: auto; max-height: none; display: flex; flex-direction: column; border-radius: 0; border: 0;
@@ -250,13 +250,13 @@
 /* Group calls: your own camera floats small in the corner while others are in the call. */
 .nc-call-self { position: absolute; right: 14px; bottom: 86px; z-index: 2; width: 150px; }
 .nc-call-self:empty { display: none; }
-.nc-call-self .nc-video-tile { border: 1px solid #8990b8; border-radius: 8px; box-shadow: 0 4px 16px #0008; }
+.nc-call-self .nc-video-tile { border: 1px solid #6d8fb8; border-radius: 8px; box-shadow: 0 4px 16px #0008; }
 .nc-call-max .nc-call-self, .nc-call:fullscreen .nc-call-self { width: clamp(160px, 16vw, 260px); }
 /* Someone without a picture (audio-only, or video not arrived yet): initials instead of black. */
 .nc-video-tile .nc-avatar { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .nc-video-tile .nc-avatar span {
   display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
-  background: #5b5fc7; color: #fff; font-size: 1.4rem; font-weight: 600;
+  background: #0755d9; color: #fff; font-size: 1.4rem; font-weight: 600;
 }
 .nc-call-self .nc-avatar span { width: 40px; height: 40px; font-size: 1rem; }
 .nc-video-tile.nc-has-video .nc-avatar { display: none; }
@@ -273,7 +273,7 @@
   display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; padding: 0;
 }
 .nc-call:is(.nc-call-presenting, .nc-call-focus) .nc-call-grid .nc-video-tile {
-  flex: 0 0 auto; border: 1px solid #8990b8; border-radius: 8px; box-shadow: 0 4px 12px #0007;
+  flex: 0 0 auto; border: 1px solid #6d8fb8; border-radius: 8px; box-shadow: 0 4px 12px #0007;
 }
 .nc-call:is(.nc-call-presenting, .nc-call-focus) .nc-call-grid .nc-video-tile video { height: auto; max-height: none; aspect-ratio: 16 / 9; }
 .nc-call.nc-call-presenting .nc-video-tile .nc-avatar span, .nc-call-focus .nc-call-grid .nc-avatar span { width: 36px; height: 36px; font-size: .9rem; }
@@ -296,19 +296,19 @@
   opacity: 0; transition: opacity .15s;
 }
 .nc-video-tile:hover .nc-tile-pin, .nc-tile-pin:focus-visible, .nc-tile-pin[aria-pressed="true"] { opacity: 1; }
-.nc-tile-pin[aria-pressed="true"] { background: #5b5fc7; }
-.nc-tile-pin:focus-visible { outline: 2px solid #b7baf7; outline-offset: 2px; }
+.nc-tile-pin[aria-pressed="true"] { background: #0755d9; }
+.nc-tile-pin:focus-visible { outline: 2px solid #50d5ff; outline-offset: 2px; }
 @media (hover: none) { .nc-tile-pin { opacity: .85; } }
 .nc-video-tile.nc-spotlit .nc-video-name::after { content: ' · Spotlight'; color: #ffd76a; font-weight: 600; }
 /* Participant list: Pin / Spotlight per person. */
 .nc-participant-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
 .nc-participant-action {
   font: inherit; font-size: .72rem; padding: 3px 9px; border-radius: 999px; cursor: pointer;
-  border: 1px solid #535a78; background: transparent; color: inherit;
+  border: 1px solid #41618b; background: transparent; color: inherit;
 }
 .nc-participant-action:hover { background: rgba(255, 255, 255, .08); }
-.nc-participant-action[aria-pressed="true"] { background: #5b5fc7; border-color: #5b5fc7; color: #fff; }
-.nc-participant-action:focus-visible { outline: 2px solid #b7baf7; outline-offset: 2px; }
+.nc-participant-action[aria-pressed="true"] { background: #0755d9; border-color: #0755d9; color: #fff; }
+.nc-participant-action:focus-visible { outline: 2px solid #50d5ff; outline-offset: 2px; }
 
 /* During a screen share only people with their camera on get a tile (group-calls.js
    fitShareLayout); the presenter's panel shrinks to a bar while nobody has video (nc-call-compact),
@@ -337,7 +337,7 @@
 .nc-participant-item { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-radius: 8px; }
 .nc-participant-avatar {
   display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%;
-  background: #5b5fc7; color: #fff; font-size: .8rem; font-weight: 600;
+  background: #0755d9; color: #fff; font-size: .8rem; font-weight: 600;
 }
 .nc-participant-status .bi-mic-mute-fill, .nc-participant-status .bi-camera-video-off-fill { color: #ff8a8e; }
 .nc-reaction-btn { font-size: 1.6rem; padding: 6px; border: 0; border-radius: 10px; background: rgba(255,255,255,.06); cursor: pointer; }
@@ -349,7 +349,7 @@
 .nc-video-tile.nc-hand { outline: 3px solid #f5a623; outline-offset: -3px; }
 /* Active speaker: a ring around whoever is talking. */
 .nc-video-tile::after { content: ''; position: absolute; inset: 0; border: 3px solid transparent; border-radius: inherit; pointer-events: none; z-index: 2; transition: border-color .2s; }
-.nc-video-tile.nc-speaking::after { border-color: #7f85f5; }
+.nc-video-tile.nc-speaking::after { border-color: #50d5ff; }
 /* Reactions float up from the sender's tile (or the shared screen). */
 .nc-float-reaction {
   position: absolute; bottom: 12%; z-index: 5; font-size: 2.2rem; pointer-events: none;
@@ -364,9 +364,9 @@
 
 /* Devices panel (microphone / camera / speaker), devices.js */
 .nc-device-picker label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0; font-size: .85rem; color: #d5daee; }
-.nc-device-picker select { width: 100%; padding: 7px 8px; border-radius: 8px; border: 1px solid #535a78; background: #0c1020; color: #f5f6ff; }
+.nc-device-picker select { width: 100%; padding: 7px 8px; border-radius: 8px; border: 1px solid #41618b; background: #0c1020; color: #f5f6ff; }
 .nc-device-picker label[hidden] { display: none; }
-.nc-settings-note { margin: 4px 0 0; font-size: .75rem; color: #b7baf7; }
+.nc-settings-note { margin: 4px 0 0; font-size: .75rem; color: #a9c8ec; }
 
 /* Recording: toolbar button (red dot; pulsing while recording) and the banner everyone sees. */
 .nc-rec-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ff5a5f; }
@@ -382,7 +382,7 @@
 /* Live captions (call-extras.js): the CC button, and up to three "Name: text" lines above the
    controls — in the call panel over the video, in the flow while the panel has no video. */
 .nc-cc { display: inline-block; font: 700 .7rem/1 system-ui, sans-serif; letter-spacing: .02em; border: 1.5px solid currentColor; border-radius: 3px; padding: 2px 3px; }
-.nc-captions-btn.nc-active { background: rgba(127, 133, 245, .35); }
+.nc-captions-btn.nc-active { background: rgba(80, 213, 255, .3); }
 .nc-call-captions { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 4; width: min(720px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
 .nc-call-captions[hidden] { display: none; }
 .nc-call:not(.nc-call-video) .nc-call-captions { position: static; transform: none; width: auto; margin-top: 10px; }
