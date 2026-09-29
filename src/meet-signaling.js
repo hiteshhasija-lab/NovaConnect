@@ -118,6 +118,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
     // Moves a lobby entry into the meeting: it starts receiving room broadcasts only now.
     function admitSocket(sid, mapping) {
       mapping.inLobby = false;
+      roomUserMap.touch?.(mapping.userId); // now in the meeting: call presence (realtime.js)
       const code = meetCode(mapping.roomId);
       if (code) db.prepare('INSERT INTO meet_attendees (meet_link_code, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(code, mapping.userId)
         .catch(e => console.error('Could not record meeting attendee', e.message));
@@ -282,6 +283,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
         sourceUserId: u.id,
         sourceFullName: u.full_name,
       });
+      if (source === 'screen') roomUserMap.touch?.(u.id); // "Presenting" (realtime.js)
       // Everyone already in the meeting starts receiving this new stream from the SFU.
       socket.to(`sfu:${roomId}`).emit('sfu:new-producer', {
         producerId, peerId: mapping.peerId, kind, fullName: u.full_name, source,
@@ -373,6 +375,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
     handle('sfu:close-producer', async ({ roomId, producerId }) => {
       const mapping = admitted(roomId);
       closeProducer(roomId, mapping.peerId, producerId);
+      roomUserMap.touch?.(mapping.userId); // a screen share may have ended ("Presenting")
       socket.to(`sfu:${roomId}`).emit('sfu:producer-closed', { producerId, peerId: mapping.peerId });
       return { success: true };
     });

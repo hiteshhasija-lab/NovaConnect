@@ -33,6 +33,42 @@ async function broadcastPresence(userId, status) {
   io.emit('presence:update', { userId, status });
 }
 
+// Presence from calls (Teams-style): while you're in a call your status reads "In a call" (1:1 and
+// group chats) or "In a meeting" (channel meetings, meeting links), and "Presenting" while you share
+// your screen — unless you chose Do not disturb or Appear offline, which win. It's written to
+// users.status like any status, so every view shows it, and your chosen status (presence_preference)
+// comes back when the call ends. Recomputed shortly after anything that could change it: the call
+// room map (CallRoomMap below), a lobby admit, a screen share starting or stopping.
+let callActivity = () => null; // userId -> 'presenting' | 'inmeeting' | 'incall' | null; set in attach()
+const presenceTimers = new Map();
+function touchPresence(userId) {
+  if (!userId) return;
+  clearTimeout(presenceTimers.get(userId));
+  presenceTimers.set(userId, setTimeout(() => {
+    presenceTimers.delete(userId);
+    refreshCallPresence(userId).catch(err => console.error('call presence failed:', err.message));
+  }, 300));
+}
+function effectiveStatus(userId, chosen) {
+  return (!['dnd', 'offline'].includes(chosen) && callActivity(userId)) || chosen;
+}
+async function refreshCallPresence(userId) {
+  if (!onlineSockets.get(userId)?.size) return; // going offline: the disconnect handler sets that
+  const row = await db.prepare('SELECT status, presence_preference FROM users WHERE id = ?').get(userId);
+  if (!row) return;
+  const next = effectiveStatus(userId, row.presence_preference || 'online');
+  if (next === row.status) return;
+  await db.prepare('UPDATE users SET status = ? WHERE id = ?').run(next, userId);
+  await broadcastPresence(userId, next);
+}
+// socket.id -> { roomId, peerId, userId, inLobby, ... } for every call/meeting room a socket is in,
+// shared by group-calls.js and meet-signaling.js; joining or leaving one updates call presence.
+class CallRoomMap extends Map {
+  set(key, value) { super.set(key, value); touchPresence(value?.userId); return this; }
+  delete(key) { const value = this.get(key); const removed = super.delete(key); if (value) touchPresence(value.userId); return removed; }
+  touch(userId) { touchPresence(userId); }
+}
+
 function attach(server, sessionMiddleware) {
   // socket.io's Engine.IO instance can bind to more than one underlying http(s) server —
   // when both the plain-HTTP and TLS listeners are running, attach() is called twice and
@@ -67,8 +103,23 @@ function attach(server, sessionMiddleware) {
   // All calls (1:1 chats, group chats, channel "Meet now") and meetings go through the SFU.
   // group-calls.js decides who is in which call; meet-signaling.js runs meetings and serves the
   // media (sfu:*) events for both. roomUserMap (socket.id -> the room it's in) is how they share it.
-  const roomUserMap = new Map();
+  const roomUserMap = new CallRoomMap();
   const groupCalls = createGroupCalls(io, db, roomUserMap);
+  const { getRoom } = require('./sfu');
+  callActivity = userId => {
+    let kind = null;
+    for (const m of roomUserMap.values()) {
+      if (m.userId !== userId || m.inLobby) continue;
+      const peer = getRoom(m.roomId)?.peers.get(m.peerId);
+      if (peer && [...peer.producers.values()].some(p => !p.closed && p.appData?.source === 'screen')) return 'presenting';
+      const meeting = m.roomId.startsWith('meet:') || groupCalls.scopeForRoom(m.roomId)?.type === 'channel';
+      kind = meeting ? 'inmeeting' : kind || 'incall';
+    }
+    return kind;
+  };
+  // Nobody is in a call right after a (re)start: clear call statuses left from before it.
+  db.prepare(`UPDATE users SET status = 'offline' WHERE status IN ('incall', 'inmeeting', 'presenting')`).run()
+    .catch(err => console.error('call presence reset failed:', err.message));
   endAllCalls = reason => groupCalls.endAll(reason);
   const meet = require('./meet-signaling').createMeetSignaling(io, db, roomUserMap, { scopeForRoom: roomId => groupCalls.scopeForRoom(roomId) });
   io.on('connection', (socket) => {
@@ -110,8 +161,11 @@ function attach(server, sessionMiddleware) {
     socket.on('presence:set', ({ status }) => {
       const allowed = ['online', 'away', 'brb', 'busy', 'dnd', 'offline', 'reset'];
       if (!allowed.includes(status)) return;
-      db.prepare('UPDATE users SET status = ?, presence_preference = ? WHERE id = ?').run(status === 'reset' ? 'online' : status, status === 'reset' ? null : status, userId)
-        .then(() => broadcastPresence(userId, status === 'reset' ? 'online' : status))
+      // In a call, a chosen status other than Do not disturb / Appear offline shows once it ends.
+      const chosen = status === 'reset' ? 'online' : status;
+      const shown = effectiveStatus(userId, chosen);
+      db.prepare('UPDATE users SET status = ?, presence_preference = ? WHERE id = ?').run(shown, status === 'reset' ? null : status, userId)
+        .then(() => broadcastPresence(userId, shown))
         .catch((err) => console.error('presence:set failed:', err.message));
     });
 

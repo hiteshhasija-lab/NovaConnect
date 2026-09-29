@@ -3,7 +3,7 @@
 // that's how Teams itself presents it. Fetches fresh from /api/users/:id/profile every open
 // so it always reflects current status/status message, never a stale cached copy.
 window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, onMessage }) {
-  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
+  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting' };
   let dialog = null;
 
   function close() { if (dialog) dialog.close(); }

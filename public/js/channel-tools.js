@@ -51,7 +51,7 @@ window.createChannelTools = function({api,escapeHtml,notify,navigate,events,pres
         nameBtn.onclick=()=>openProfile(user.id);
         nameBtn.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openProfile(user.id);}};
         const status=presence(user.id)||user.status||'offline';
-        const labels={ online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
+        const labels={ online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting' };
         const safeStatus=labels[status]?status:'offline';
         const dot=document.createElement('span');dot.className='member-presence presence-'+safeStatus+' presence-live-'+user.id;dot.setAttribute('role','img');dot.setAttribute('aria-label',labels[safeStatus]);dot.title=labels[safeStatus];r.querySelector('span').prepend(dot);
         if(data.canManage) {

@@ -2,7 +2,8 @@
   'use strict';
   const NC = window.__NC__;
   const AVATAR_PALETTE = ['#0755d9', '#009edb', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
-  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline' };
+  // The last three are set by the server while you're in a call or sharing (realtime.js).
+  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting' };
 
   const state = {
     view: NC.active?.type === 'dm' ? 'chat' : 'teams',
@@ -349,7 +350,7 @@
       const rowLabel=document.getElementById('statusRowLabel'); if(rowLabel) rowLabel.textContent=STATUS_LABELS[payload.status]||'Appear offline';
     }
     document.querySelectorAll('.presence-live-' + payload.userId).forEach(node => {
-      node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline)/, 'presence-' + payload.status);
+      node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline|incall|inmeeting|presenting)/, 'presence-' + payload.status);
       if(node.classList.contains('member-presence')||node.classList.contains('people-presence')) { node.title=STATUS_LABELS[payload.status]||'Offline';node.setAttribute('aria-label',node.title); }
     });
     if (state.active.type === 'dm') {
