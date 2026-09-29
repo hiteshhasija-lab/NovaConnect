@@ -89,7 +89,7 @@ function renderShare(){
   const boardShown=!latest&&!!board?.isOpen; // the whiteboard takes the stage when nobody shares
   shareStage.hidden=!latest;
   boardStage.hidden=!boardShown;if(boardShown)requestAnimationFrame(()=>board.fit());
-  boardBtn.setAttribute('aria-pressed',String(!!board?.isOpen));boardBtn.classList.toggle('active',!!board?.isOpen);
+  boardBtn.setAttribute('aria-pressed',String(!!board?.isOpen));boardBtn.classList.toggle('nc-on',!!board?.isOpen); // not Bootstrap's .active (white text)
   document.querySelector('.meet-room').classList.toggle('presenting',!!latest||boardShown);
   if(shareVideo.srcObject!==(latest?.stream||null)){shareVideo.srcObject=latest?.stream||null;if(latest)shareVideo.play().catch(()=>{})}
   shareLabel.textContent=latest?latest.name+' is sharing their screen':'';

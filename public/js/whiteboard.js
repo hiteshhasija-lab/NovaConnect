@@ -95,7 +95,7 @@
     canvas.addEventListener('pointerdown', e => {
       if (!ctx || !open || e.button > 0) return;
       canvas.setPointerCapture(e.pointerId);
-      if (erasing) { eraseAt(toBoard(e)); drawing = { erasing: true }; return; }
+      if (erasing) { const p = toBoard(e); drawing = { erasing: true, last: p }; eraseAlong(p, p); return; }
       const localId = 's' + (++seq) + '-' + Date.now().toString(36);
       const s = { id: ctx.peerId + ':' + localId, peerId: ctx.peerId, color, width, points: [toBoard(e)] };
       strokes.set(s.id, s); mine.push(s.id);
@@ -106,7 +106,7 @@
     });
     canvas.addEventListener('pointermove', e => {
       if (!drawing) return;
-      if (drawing.erasing) { eraseAt(toBoard(e)); return; }
+      if (drawing.erasing) { const p = toBoard(e); eraseAlong(drawing.last, p); drawing.last = p; return; }
       const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
       const s = drawing.stroke, before = s.points.length;
       for (const ev of events) {
@@ -122,12 +122,30 @@
     canvas.addEventListener('pointerup', endStroke);
     canvas.addEventListener('pointercancel', endStroke);
 
-    // Eraser: removes every stroke passing within reach of the pointer (Teams' ink eraser).
-    function eraseAt([x, y]) {
-      const r = ERASE_RADIUS / BOARD_W, hit = [];
+    // Eraser: removes every stroke that the eraser's path (from its last position to this one)
+    // comes within reach of (Teams' ink eraser). Distances are between line segments, not just
+    // recorded points: a quick straight stroke may be only its two ends, and a quick swipe skips
+    // what lies between two pointer positions. Worked in board-width units (y scaled to 9/16).
+    const Y = BOARD_H / BOARD_W;
+    const pointSeg = (px, py, ax, ay, bx, by) => {
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    };
+    const cross = (ax, ay, bx, by, cx, cy) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    function segSeg(a, b, c, d) {
+      const [ax, ay, bx, by, cx, cy, dx, dy] = [a[0], a[1] * Y, b[0], b[1] * Y, c[0], c[1] * Y, d[0], d[1] * Y];
+      const d1 = cross(cx, cy, dx, dy, ax, ay), d2 = cross(cx, cy, dx, dy, bx, by), d3 = cross(ax, ay, bx, by, cx, cy), d4 = cross(ax, ay, bx, by, dx, dy);
+      if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0; // they cross
+      return Math.min(pointSeg(ax, ay, cx, cy, dx, dy), pointSeg(bx, by, cx, cy, dx, dy), pointSeg(cx, cy, ax, ay, bx, by), pointSeg(dx, dy, ax, ay, bx, by));
+    }
+    function eraseAlong(from, to) {
+      const hit = [];
       for (const s of strokes.values()) {
-        const reach = r + (s.width / 2) / BOARD_W;
-        if (s.points.some(([px, py]) => Math.hypot((px - x), (py - y) * BOARD_H / BOARD_W) < reach)) hit.push(s.id);
+        const reach = (ERASE_RADIUS + s.width / 2) / BOARD_W, pts = s.points;
+        let near = pts.length === 1 && segSeg(pts[0], pts[0], from, to) < reach;
+        for (let i = 1; !near && i < pts.length; i++) near = segSeg(pts[i - 1], pts[i], from, to) < reach;
+        if (near) hit.push(s.id);
       }
       if (hit.length) removeStrokes(hit, true);
     }
