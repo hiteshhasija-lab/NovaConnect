@@ -350,6 +350,11 @@
         : !current.incoming && SAY_WHY.has(reason) ? reason : null;
       cleanup(current, say);
     });
+    // Chats/channels whose header asked whether a call is running there. Opening the app straight
+    // onto one asks before the connection is up, and a call can start or end while it's down, so
+    // ask again for each whenever the connection (re)opens.
+    const watched = new Set();
+    socket.on('connect', () => watched.forEach(key => api.refresh(key)));
     socket.on('gcall:state', ({ conversationId, channelId, call }) => {
       const key = channelId ? 'ch:' + Number(channelId) : 'dm:' + Number(conversationId);
       if (call) running.set(key, call); else running.delete(key);
@@ -399,7 +404,7 @@
     });
     window.addEventListener('pagehide', () => { if (current) stop(current); });
 
-    return {
+    const api = {
       active: () => !!current,
       // Targets are a conversation id, or a key: 'dm:<conversationId>' / 'ch:<channelId>'.
       keyOf,
@@ -409,6 +414,8 @@
       onChange(fn) { listeners.add(fn); },
       async refresh(target) {
         const key = keyOf(target);
+        watched.add(key);
+        if (!socket.connected) return; // asked again once connected (below)
         try {
           const { call } = await request('gcall:status', scopeOf(key));
           if (call) running.set(key, call); else running.delete(key);
@@ -439,5 +446,6 @@
         this.start(key, 'video', title, { display });
       },
     };
+    return api;
   };
 })();
