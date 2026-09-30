@@ -154,6 +154,7 @@
         while (i < lines.length && /^>\s?/.test(lines[i])) { quoted.push(renderInline(lines[i].replace(/^>\s?/, ''), members)); i++; }
         if (parts.length === 0 && quoted.length > 1 && /\d[\s\S]*\d:\d/.test(quoted[0])) {
           parts.push('<div class="reply-quote-card"><div class="reply-quote-heading">' + quoted[0] + '</div><div class="reply-quote-excerpt">' + quoted.slice(1).join('<br>') + '</div></div>');
+          while (i < lines.length && !lines[i].trim()) i++;
         } else parts.push('<blockquote>' + quoted.join('<br>') + '</blockquote>');
         continue;
       }
@@ -172,7 +173,7 @@
       parts.push(renderInline(line, members));
       i++;
     }
-    return parts.join('<br>');
+    return parts.map((part, index) => (index && !parts[index - 1].startsWith('<div class="reply-quote-card">') ? '<br>' : '') + part).join('');
   }
   function avatarHtml(user, size) {
     const style = 'background:' + avatarColor(user.id) + (size ? ';width:' + size + ';height:' + size : '');

@@ -706,7 +706,7 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 .composer-message-box.has-reply:focus-within { border-color:var(--brand); }
 .composer-message-box.has-reply > .composer-input { border:0;box-shadow:none;background:transparent;padding:0;min-height:36px; }
 .composer-message-box .composer-reply-preview { margin:0 0 8px;max-width:640px;background:#fafafa;--text:#242424;--text-muted:#666; }
-.reply-quote-card { position:relative;background:#fafafa;color:#242424;border:1px solid #e1e1e1;border-radius:6px;box-shadow:0 1px 3px #0002;padding:9px 12px 9px 18px;margin:0 0 8px;white-space:normal; }
+.reply-quote-card { position:relative;background:#fafafa;color:#242424;border:1px solid #e1e1e1;border-radius:6px;box-shadow:0 1px 3px #0002;padding:9px 12px 9px 18px;margin:0 0 4px;white-space:normal; }
 .reply-quote-card::before { content:'';position:absolute;left:5px;top:5px;bottom:5px;width:3px;border-radius:3px;background:#c6c6c6; }
 .reply-quote-heading { font-size:.85rem;color:#666;margin-bottom:4px; }
 .reply-quote-excerpt { display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere; }
