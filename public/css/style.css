@@ -657,8 +657,8 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 #messageList .dm-bubble.msg-other .msg-time-inline { display:none; }
 #messageList .dm-bubble.msg-other .msg-meta { justify-content:flex-end; }
 #messageList .dm-bubble.msg-own .msg-content { background:#fff;color:#183153; --text-muted:#5f718b; --brand:#0755d9; --surface-2:#edf3fa; }
-#messageList .dm-bubble.msg-other .msg-content { background:#b8d3f7;color:#183153; }
-[data-bs-theme="dark"] #messageList .dm-bubble.msg-other .msg-content { background:#123e75;color:#edf5ff; }
+#messageList .dm-bubble.msg-other .msg-content { background:#cce6ff;color:#17365d; }
+[data-bs-theme="dark"] #messageList .dm-bubble.msg-other .msg-content { background:#cce6ff;color:#17365d; --brand:#0755d9; --text-muted:#506985; --surface-2:#e5f2ff; }
 #messageList .dm-bubble .msg-meta { margin-bottom:5px; }
 #messageList .dm-bubble .msg-attachment-img { max-width:100%; }
 @media(max-width:650px) {
