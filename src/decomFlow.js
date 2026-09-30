@@ -11,6 +11,29 @@ const { hydrateOne } = require('./messageUtils');
 const NOVADESK_BASE_URL = process.env.NOVADESK_BASE_URL || 'http://host.containers.internal';
 const SYNC_API_KEY = process.env.SYNC_API_KEY || '';
 
+// Browser-facing NovaDesk URL for the approval card's "View Change" link — different from
+// NOVADESK_BASE_URL above, which is the internal pod-to-pod address and unreachable/untrusted
+// from a user's own browser. Matches the DNS SAN on NovaDesk's own mkcert certificate.
+const NOVADESK_PUBLIC_URL = process.env.NOVADESK_PUBLIC_URL || 'https://NovaDesk.lab.sps';
+
+// Mirrors NovaDesk's own CI_TYPE_LABELS/ENVIRONMENT_LABELS (src/helpers.js) just enough to build
+// the approval card's "Production Server" style subtitle — small and stable enough that
+// duplicating it here beats adding a cross-service API contract just for display labels.
+const CI_TYPE_LABELS = {
+  server: 'Server', network_device: 'Network Device', application: 'Application',
+  database: 'Database', workstation: 'Workstation', storage: 'Storage'
+};
+const ENVIRONMENT_LABELS = {
+  production: 'Production', staging: 'Staging', uat: 'UAT', development: 'Development', dr: 'Disaster Recovery'
+};
+function ciCategoryLabel(ci) {
+  const parts = [ENVIRONMENT_LABELS[ci.environment] || ci.environment, CI_TYPE_LABELS[ci.ci_type] || ci.ci_type].filter(Boolean);
+  return parts.join(' ');
+}
+function titleCase(s) {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
 // Plain HTTP, not HTTPS: this call never leaves the VM (NovaDesk and NovaConnect are
 // separate podman pods on the same host), and teaching Node in this container to trust
 // the mkcert CA used for the browser-facing side is unneeded complexity for it.
@@ -145,10 +168,28 @@ async function handleDecomTrigger(target, userId, text) {
     }
 
     const { change, ci, esxiHost } = result;
+    // The assignee is always 'admin'/Alex Admin — NovaDesk hardcodes this same default for
+    // every decommission Change it creates (see integrations.js) — looked up here rather than
+    // hardcoding the display name again, so a future full_name change still shows correctly.
+    const assignee = await db.prepare("SELECT full_name FROM users WHERE username = 'admin'").get();
     await postBotMessage(
       decomTargetsFromChange(change),
-      `🖥️ Found ${ci.name} (${ci.ci_number}) — runs on ${esxiHost.name}. Created ${change.number}: ${change.short_description}. Needs admin approval to proceed.`,
-      { cardType: 'decom_approval', changeId: change.id, changeNumber: change.number, ciName: ci.name, status: 'pending' }
+      `🖥️ Found ${ci.name} (${ci.ci_number}) — runs on ${esxiHost.name}.`,
+      {
+        cardType: 'decom_approval',
+        changeId: change.id,
+        changeNumber: change.number,
+        ciName: ci.name,
+        ciCategory: ciCategoryLabel(ci),
+        changeType: titleCase(change.change_type),
+        risk: titleCase(change.risk),
+        plannedStart: change.planned_start ? change.planned_start.replace(' ', 'T') + 'Z' : null,
+        requestedBy: user ? user.full_name : 'Unknown',
+        assignmentGroup: change.assignment_group,
+        assignedTo: assignee ? assignee.full_name : 'Unassigned',
+        novadeskChangeUrl: `${NOVADESK_PUBLIC_URL}/changes/${change.id}`,
+        status: 'pending'
+      }
     );
   } catch (e) {
     console.error('Decom trigger handling failed:', e.message);
