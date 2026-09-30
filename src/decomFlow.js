@@ -141,7 +141,7 @@ async function handleDecomTrigger(target, userId, text) {
         // was actually asked for, not just the bot's derived responses.
         await postBotMessage({ channelId: decomChannel.id }, `💬 ${user ? user.full_name : 'Someone'} asked (via DM): "${text}"`);
         setThinking(targets, true);
-        await sleep(10000);
+        await sleep(3000);
         setThinking(targets, false);
       }
     }
