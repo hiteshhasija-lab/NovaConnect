@@ -152,7 +152,9 @@
       if (/^>\s?/.test(line)) {
         const quoted = [];
         while (i < lines.length && /^>\s?/.test(lines[i])) { quoted.push(renderInline(lines[i].replace(/^>\s?/, ''), members)); i++; }
-        parts.push('<blockquote>' + quoted.join('<br>') + '</blockquote>');
+        if (parts.length === 0 && quoted.length > 1 && /\d[\s\S]*\d:\d/.test(quoted[0])) {
+          parts.push('<div class="reply-quote-card"><div class="reply-quote-heading">' + quoted[0] + '</div><div class="reply-quote-excerpt">' + quoted.slice(1).join('<br>') + '</div></div>');
+        } else parts.push('<blockquote>' + quoted.join('<br>') + '</blockquote>');
         continue;
       }
       if (/^[-*]\s+/.test(line)) {
@@ -1416,8 +1418,11 @@
   const replyPreview = document.createElement('div');
   replyPreview.className = 'composer-reply-preview';
   replyPreview.hidden = true;
-  document.getElementById('composer').prepend(replyPreview);
-  function clearReplyPreview() { pendingReply = null;replyPreview.hidden = true;replyPreview.replaceChildren(); }
+  const replyBox = document.createElement('div');
+  replyBox.className = 'composer-message-box';
+  composerInput.before(replyBox);
+  replyBox.append(replyPreview, composerInput);
+  function clearReplyPreview() { pendingReply = null;replyPreview.hidden = true;replyPreview.replaceChildren();replyBox.classList.remove('has-reply'); }
   function setReplyPreview(msg) {
     const date = toDate(msg.created_at);
     pendingReply = { author: String(msg.author.full_name || '').replace(/[\r\n]+/g, ' '),
@@ -1428,6 +1433,7 @@
     replyPreview.querySelector('.composer-reply-excerpt').textContent = pendingReply.text;
     replyPreview.querySelector('button').onclick = () => { clearReplyPreview();composerInput.focus(); };
     replyPreview.hidden = false;
+    replyBox.classList.add('has-reply');
   }
   function bodyWithReply(body) {
     if (!pendingReply) return body;
