@@ -356,13 +356,9 @@
     }
     document.querySelectorAll('.presence-live-' + payload.userId).forEach(node => {
       node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline|incall|inmeeting|presenting)/, 'presence-' + payload.status);
-      if(node.classList.contains('member-presence')||node.classList.contains('people-presence')) { node.title=STATUS_LABELS[payload.status]||'Offline';node.setAttribute('aria-label',node.title); }
+      if(node.classList.contains('member-presence')||node.classList.contains('people-presence')||node.classList.contains('dm-header-presence')) { node.title=STATUS_LABELS[payload.status]||'Offline';node.setAttribute('aria-label',node.title); }
     });
-    if (state.active.type === 'dm') {
-      const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
-      const label = document.querySelector('#mainHeader .main-header-sub');
-      if (others.length === 1 && others[0].id === payload.userId && label) label.textContent = STATUS_LABELS[payload.status] || 'Offline';
-    }
+
   });
   socket.on('typing', (payload) => {
     const key = payload.scope + ':' + payload.id;
@@ -899,11 +895,16 @@
     } else if (state.active.type === 'dm') {
       const c = state.active.conversation;
       const others = state.active.participants.filter(p => p.id !== NC.currentUser.id);
-      let statusText = others.length === 1 ? (STATUS_LABELS[state.presence[others[0].id] || others[0].status] || 'Offline') : others.length + ' people';
-      if (others.length === 1 && others[0].status_message) statusText += ' · ' + others[0].status_message;
+      const person = others.length === 1 ? others[0] : null;
+      const presence = person ? (state.presence[person.id] || person.status || 'offline') : null;
+      const statusLabel = STATUS_LABELS[presence] || 'Appear offline';
+      const identity = person
+        ? '<span class="dm-header-avatar">' + avatarHtml(person) + '<span class="presence-dot dm-header-presence presence-' + escapeHtml(presence) + ' presence-live-' + person.id + '" role="img" aria-label="' + escapeHtml(statusLabel) + '" title="' + escapeHtml(statusLabel) + '"></span></span>'
+        : '<i class="bi bi-chat-dots" aria-hidden="true"></i>';
+      const subtitle = person ? (person.status_message || '') : others.length + ' people';
       header.innerHTML =
-        '<div class="main-header-title"><i class="bi bi-chat-dots"></i><span class="' + (others.length === 1 ? 'msg-author-btn' : '') + '" id="dmHeaderTitle">' + escapeHtml(convoTitle({ ...c, participants: others })) + '</span>' +
-        '<span class="main-header-sub">' + escapeHtml(statusText) + '</span></div>' +
+        '<div class="main-header-title">' + identity + '<span class="' + (person ? 'msg-author-btn' : '') + '" id="dmHeaderTitle">' + escapeHtml(convoTitle({ ...c, participants: others })) + '</span>' +
+        (subtitle ? '<span class="main-header-sub">' + escapeHtml(subtitle) + '</span>' : '') + '</div>' +
         '<nav class="channel-tabs" aria-label="Chat tabs">' + ['Chat', 'Files', 'Photos'].map((t, i) => '<button type="button" class="' + (!i ? 'selected' : '') + '" aria-pressed="' + (!i) + '">' + t + '</button>').join('') + '</nav>';
       header.querySelectorAll('.channel-tabs button').forEach(b => b.addEventListener('click', () => {
         header.querySelectorAll('.channel-tabs button').forEach(x => { x.classList.toggle('selected', x === b); x.setAttribute('aria-pressed', String(x === b)); });
@@ -992,7 +993,7 @@
 
   function buildMessageRow(msg, grouped, isThreadReply) {
     const row = el(
-      '<div class="msg-row ' + (grouped ? 'grouped' : '') + '" data-id="' + msg.id + '">' +
+      '<div class="msg-row ' + (grouped ? 'grouped ' : '') + (state.active.type === 'dm' && !isThreadReply ? 'dm-bubble ' : '') + (Number(msg.author.id) === Number(NC.currentUser.id) ? 'msg-own' : 'msg-other') + '" data-id="' + msg.id + '">' +
         (grouped ? '<div class="msg-time-inline">' + fmtTime(msg.created_at) + '</div>' : '<div class="msg-avatar-slot msg-avatar-btn" role="button" tabindex="0">' + avatarHtml(msg.author) + '</div>') +
         '<div class="msg-body-col">' +
           (grouped ? '' : '<div class="msg-meta"><span class="msg-author msg-author-btn" role="button" tabindex="0">' + escapeHtml(msg.author.full_name) + '</span><span class="msg-time">' + fmtTime(msg.created_at) + '</span></div>') +
@@ -1406,8 +1407,14 @@
     handleMentionTyping(composerInput, document.getElementById('mentionPopover'));
     emitTyping();
   });
+  const composerHistory = window.createComposerHistory(composerInput, () => ({
+    scope: state.active.type === 'channel' ? 'channel:'+state.active.channel.id : state.active.type === 'dm' ? 'dm:'+state.active.conversation.id : null,
+    userId: NC.currentUser.id, messages: state.active.messages || []
+  }));
+  composerInput.title = 'At the start of the message, press Up to recall your earlier messages. Press Down at the end to return to your draft.';
   composerInput.addEventListener('keydown', (e) => {
     if (handleMentionKeydown(e, composerInput, document.getElementById('mentionPopover'))) return;
+    if (composerHistory.handle(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComposerMessage(); }
   });
   composerFileInput.addEventListener('change', () => {
@@ -1551,6 +1558,7 @@
     const body = composerInput.value.trim();
     if (!body && !pendingFile) return;
     if (state.active.type === 'none') return;
+    composerHistory.reset();
     const fd = new FormData();
     fd.append('body', body);
     if (pendingFile) fd.append('file', pendingFile);

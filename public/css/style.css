@@ -630,3 +630,40 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 .team-requests-badge:hover { filter: brightness(1.1); }
 .team-requests-badge:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .activity-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+/* Conversation reading size matches Meet's inherited 1rem empty-state text. */
+#messageList .msg-text, #threadPanel .msg-text,
+#composerInput, #threadComposerInput,
+.sidebar .team-group-header, .sidebar .channel-item,
+.sidebar .chat-list-name, .sidebar .chat-list-preview { font-size:1rem; }
+
+/* Direct-chat identity: live presence overlays the avatar instead of a text label. */
+#mainHeader .dm-header-avatar { position:relative;display:inline-flex;flex:none; }
+#mainHeader .dm-header-avatar .user-avatar { width:2.3rem;height:2.3rem;font-size:.85rem; }
+#mainHeader .dm-header-presence { width:1rem;height:1rem;right:-2px;bottom:-2px;border:2px solid var(--surface); }
+
+/* Reserve a toolbar lane above messages so actions never cover message content. */
+.message-list .msg-row, .thread-panel .msg-row,
+:root[data-density="compact"] .message-list .msg-row,
+:root[data-density="compact"] .thread-panel .msg-row { padding-top:36px; }
+.msg-row .msg-actions { top:2px;max-width:calc(100% - 16px);flex-wrap:wrap;z-index:2; }
+.msg-row:focus-within .msg-actions { display:flex; }
+/* Direct and group chats use left/right bubbles; channel posts retain their layout. */
+#messageList .dm-bubble { max-width:100%;background:transparent; }
+#messageList .dm-bubble .msg-body-col { flex:0 1 auto;min-width:0;max-width: min(78%, 850px); }
+#messageList .dm-bubble .msg-content { background:var(--surface-2);padding:10px 14px;border-radius:12px;overflow-wrap:anywhere; }
+#messageList .dm-bubble.msg-other { justify-content:flex-end; }
+#messageList .dm-bubble.msg-other .msg-avatar-slot,
+#messageList .dm-bubble.msg-other .msg-time-inline { display:none; }
+#messageList .dm-bubble.msg-other .msg-meta { justify-content:flex-end; }
+#messageList .dm-bubble.msg-other .msg-content { background:#dbeafe;color:#183153; }
+[data-bs-theme="dark"] #messageList .dm-bubble.msg-other .msg-content { background:#123e75;color:#edf5ff; }
+#messageList .dm-bubble .msg-meta { margin-bottom:5px; }
+#messageList .dm-bubble .msg-attachment-img { max-width:100%; }
+@media(max-width:650px) {
+ .message-list .msg-row, .thread-panel .msg-row,
+ :root[data-density="compact"] .message-list .msg-row,
+ :root[data-density="compact"] .thread-panel .msg-row { padding-top:64px; }
+ #messageList .dm-bubble .msg-body-col { max-width:85%; }
+ .msg-row .msg-actions button { width:1.7rem;height:1.7rem; }
+}
