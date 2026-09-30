@@ -986,7 +986,7 @@
     return html;
   }
 
-  const QUICK_EMOJI = ['👍', '❤️', '😂', '🎉', '👀', '✅'];
+  const QUICK_EMOJI = ['👍', '❤️', '😂', '✅'];
   let emojiPickerCallback = null;
   const emojiPicker = window.createEmojiPicker((emoji) => { const cb = emojiPickerCallback; emojiPickerCallback = null; if (cb) cb(emoji); });
   function openEmojiPicker(anchorBtn, onPick) { emojiPickerCallback = onPick; emojiPicker.open(anchorBtn); }
@@ -1002,6 +1002,7 @@
         '<div class="msg-actions">' +
           '<div class="reaction-picker">' + QUICK_EMOJI.map(e => '<button data-emoji="' + e + '" title="React">' + e + '</button>').join('') + '<button class="more-emoji-btn" title="More reactions"><i class="bi bi-emoji-smile"></i></button></div>' +
           '<button class="pin-btn" title="' + (msg.pinned ? 'Unpin' : 'Pin') + '"><i class="bi ' + (msg.pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle') + '"></i></button>' +
+          '<button type="button" class="reply-btn" title="Reply" aria-label="Reply"><i class="bi bi-arrow-90deg-left" aria-hidden="true"></i></button>' +
           '<button class="forward-btn" title="Forward"><i class="bi bi-arrow-90deg-right"></i></button>' +
           (msg.body.trim() ? '<button class="translate-btn" title="Translate"><i class="bi bi-translate"></i></button>' : '') +
           (msg.author.id === NC.currentUser.id ? '<button class="edit-btn" title="Edit"><i class="bi bi-pencil"></i></button><button class="delete-btn" title="Delete"><i class="bi bi-trash"></i></button>' : '') +
@@ -1020,6 +1021,10 @@
       openEmojiPicker(e.currentTarget, (emoji) => api('/api/messages/' + msg.id + '/reactions', { method: 'POST', body: { emoji } }).catch(showToastError));
     });
     row.querySelector('.pin-btn').addEventListener('click', () => api('/api/messages/' + msg.id + '/pin', { method: 'POST' }).catch(showToastError));
+    row.querySelector('.reply-btn').addEventListener('click', () => {
+      if (!isThreadReply) openThread(msg.id);
+      document.getElementById('threadComposerInput').focus();
+    });
     row.querySelector('.forward-btn').addEventListener('click', () => openForwardPicker(msg));
     const translateBtn = row.querySelector('.translate-btn');
     if (translateBtn) translateBtn.addEventListener('click', () => toggleTranslation(row, msg));
