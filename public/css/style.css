@@ -631,11 +631,11 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 .team-requests-badge:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .activity-actions { display: flex; gap: 8px; margin-top: 6px; }
 
-/* Conversation reading size matches Meet's inherited 1rem empty-state text. */
+/* Conversation reading size: slightly reduced from the v1.0.143 increase. */
 #messageList .msg-text, #threadPanel .msg-text,
 #composerInput, #threadComposerInput,
 .sidebar .team-group-header, .sidebar .channel-item,
-.sidebar .chat-list-name, .sidebar .chat-list-preview { font-size:1rem; }
+.sidebar .chat-list-name, .sidebar .chat-list-preview { font-size:.95rem; }
 
 /* Direct-chat identity: live presence overlays the avatar instead of a text label. */
 #mainHeader .dm-header-avatar { position:relative;display:inline-flex;flex:none; }
