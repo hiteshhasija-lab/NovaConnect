@@ -1022,8 +1022,16 @@
     });
     row.querySelector('.pin-btn').addEventListener('click', () => api('/api/messages/' + msg.id + '/pin', { method: 'POST' }).catch(showToastError));
     row.querySelector('.reply-btn').addEventListener('click', () => {
-      if (!isThreadReply) openThread(msg.id);
-      document.getElementById('threadComposerInput').focus();
+      closeThread();
+      const input = document.getElementById('composerInput');
+      const author = String(msg.author.full_name || '').replace(/[\r\n]+/g, ' ');
+      const excerpt = msg.deleted ? 'This message was deleted' : (msg.body.trim() || 'Attachment');
+      const quote = [author + ':', ...excerpt.slice(0, 1000).split('\n')].map(line => '> ' + line).join('\n');
+      input.value = quote + '\n\n' + input.value;
+      document.getElementById('composer').classList.remove('d-none');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
     });
     row.querySelector('.forward-btn').addEventListener('click', () => openForwardPicker(msg));
     const translateBtn = row.querySelector('.translate-btn');
@@ -1071,13 +1079,13 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_summary') html += decomSummaryCardHtml(msg.metadata);
     (msg.attachments || []).forEach(a => { html += attachmentHtml(a); });
     html += reactionsHtml(msg);
-    if (!isThreadReply) {
+    if (!isThreadReply && msg.reply_count) {
       html += '<button class="thread-link" data-count="' + (msg.reply_count || 0) + '">' +
         (msg.reply_count ? '<i class="bi bi-chat-square-text"></i> ' + msg.reply_count + (msg.reply_count === 1 ? ' reply' : ' replies') : '<i class="bi bi-chat-square-text"></i> Reply in thread') +
         '</button>';
     }
     box.innerHTML = html;
-    if (!isThreadReply) box.querySelector('.thread-link').addEventListener('click', () => openThread(msg.id));
+    box.querySelector('.thread-link')?.addEventListener('click', () => openThread(msg.id));
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') wireDecomApprovalCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') wireDecomConfirmDestroyCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') wireDecomSkipManualTasksCard(box, msg);
