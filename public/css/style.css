@@ -684,3 +684,9 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
   .msg-row .reaction-picker button { width:1.87rem;height:1.87rem; }
   .msg-row .reaction-picker { flex-wrap:wrap; }
 }
+
+/* Status choices expand inside the account menu, beneath the status row. */
+.user-menu { max-height:calc(100dvh - 24px);overflow-y:auto; }
+#userMenuStatusSub { margin:0 8px 6px 24px;padding:4px 0;border-left:2px solid var(--border);background:var(--surface-2);border-radius:6px; }
+#statusRowBtn[aria-expanded="true"] { background:var(--surface-2); }
+#statusRowBtn[aria-expanded="true"] .bi-chevron-right { transform:rotate(90deg); }

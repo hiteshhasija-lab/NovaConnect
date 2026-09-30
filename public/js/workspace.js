@@ -2062,24 +2062,25 @@
     });
   });
 
-  // Teams-style two-panel account menu: the status row expands into a submenu (in place,
-  // same dropdown) rather than listing every status flatly. stopPropagation on both the
-  // expand and back buttons keeps Bootstrap's dropdown open across the panel switch — without
-  // it, Bootstrap's own document-level click listener treats this as a normal item click and
-  // closes the whole menu.
-  const userMenuMain = document.getElementById('userMenuMain');
+  // Expand status choices directly below their row within the account menu.
   const userMenuStatusSub = document.getElementById('userMenuStatusSub');
-  document.getElementById('statusRowBtn').addEventListener('click', (e) => {
+  const statusRowBtn = document.getElementById('statusRowBtn');
+  function setStatusExpanded(expanded) {
+    userMenuStatusSub.classList.toggle('d-none', !expanded);
+    statusRowBtn.setAttribute('aria-expanded', String(expanded));
+    bootstrap.Dropdown.getInstance(document.querySelector('.rail-avatar-btn'))?.update();
+  }
+  statusRowBtn.addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
-    userMenuMain.classList.add('d-none'); userMenuStatusSub.classList.remove('d-none');
+    const expanded = statusRowBtn.getAttribute('aria-expanded') !== 'true';
+    setStatusExpanded(expanded);
+    if (expanded) userMenuStatusSub.querySelector('.presence-option')?.focus();
   });
-  document.getElementById('statusBackBtn').addEventListener('click', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    userMenuStatusSub.classList.add('d-none'); userMenuMain.classList.remove('d-none');
+  userMenuStatusSub.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault();e.stopPropagation();setStatusExpanded(false);statusRowBtn.focus(); }
   });
-  document.querySelector('.rail-avatar-btn').addEventListener('click', () => {
-    userMenuStatusSub.classList.add('d-none'); userMenuMain.classList.remove('d-none');
-  });
+  userMenuStatusSub.querySelectorAll('.presence-option').forEach(option => option.addEventListener('click', () => setStatusExpanded(false)));
+  document.querySelector('.rail-avatar-btn').addEventListener('hidden.bs.dropdown', () => setStatusExpanded(false));
   document.getElementById('toggleThemeBtn').addEventListener('click', (e) => {
     e.preventDefault();
     const root = document.documentElement;

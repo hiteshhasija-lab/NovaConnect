@@ -41,11 +41,21 @@
             </div>
             <div class="user-menu-status-message d-none" id="myStatusMessageDisplay"></div>
             <hr class="dropdown-divider">
-            <button type="button" class="dropdown-item user-menu-expand-btn" id="statusRowBtn" aria-haspopup="true" aria-expanded="false">
+            <button type="button" class="dropdown-item user-menu-expand-btn" id="statusRowBtn" aria-controls="userMenuStatusSub" aria-expanded="false">
               <span class="presence-dot presence-online" id="statusRowDot" aria-hidden="true"></span>
               <span id="statusRowLabel">Available</span>
               <i class="bi bi-chevron-right ms-auto"></i>
             </button>
+          <div class="user-menu-panel d-none" id="userMenuStatusSub">
+            <a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online" aria-hidden="true"></span> Available</a>
+            <a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy" aria-hidden="true"></span> Busy</a>
+            <a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd" aria-hidden="true"></span> Do not disturb</a>
+            <a class="dropdown-item presence-option" href="#" data-status="brb"><span class="presence-dot presence-brb" aria-hidden="true"></span> Be right back</a>
+            <a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away" aria-hidden="true"></span> Appear away</a>
+            <a class="dropdown-item presence-option" href="#" data-status="offline"><span class="presence-dot presence-offline" aria-hidden="true"></span> Appear offline</a>
+            <hr class="dropdown-divider">
+            <a class="dropdown-item presence-option" href="#" data-status="reset"><i class="bi bi-arrow-counterclockwise me-2"></i> Reset status</a>
+          </div>
             <a class="dropdown-item" href="#" id="setStatusMessageBtn"><i class="bi bi-chat-left-quote me-2"></i>Set status message</a>
             <hr class="dropdown-divider">
             <a class="dropdown-item" href="/profile"><i class="bi bi-person me-2"></i>My Profile</a>
@@ -61,18 +71,7 @@
             <hr class="dropdown-divider">
             <form action="/logout" method="POST"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></form>
           </div>
-          <div class="user-menu-panel d-none" id="userMenuStatusSub">
-            <button type="button" class="dropdown-item user-menu-back-btn" id="statusBackBtn"><i class="bi bi-chevron-left me-2"></i>Status</button>
-            <hr class="dropdown-divider">
-            <a class="dropdown-item presence-option" href="#" data-status="online"><span class="presence-dot presence-online" aria-hidden="true"></span> Available</a>
-            <a class="dropdown-item presence-option" href="#" data-status="busy"><span class="presence-dot presence-busy" aria-hidden="true"></span> Busy</a>
-            <a class="dropdown-item presence-option" href="#" data-status="dnd"><span class="presence-dot presence-dnd" aria-hidden="true"></span> Do not disturb</a>
-            <a class="dropdown-item presence-option" href="#" data-status="brb"><span class="presence-dot presence-brb" aria-hidden="true"></span> Be right back</a>
-            <a class="dropdown-item presence-option" href="#" data-status="away"><span class="presence-dot presence-away" aria-hidden="true"></span> Appear away</a>
-            <a class="dropdown-item presence-option" href="#" data-status="offline"><span class="presence-dot presence-offline" aria-hidden="true"></span> Appear offline</a>
-            <hr class="dropdown-divider">
-            <a class="dropdown-item presence-option" href="#" data-status="reset"><i class="bi bi-arrow-counterclockwise me-2"></i> Reset status</a>
-          </div>
+
         </div>
       </div>
       <div class="status-message-popover d-none" id="statusMessagePopover">
