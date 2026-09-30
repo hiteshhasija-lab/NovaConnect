@@ -805,6 +805,7 @@
 
   // ---------------- navigation ----------------
   function navigateToChannel(id) {
+    clearReplyPreview();
     newChat.close();
     api('/api/channels/' + id).then(({ channel, members }) => {
       return api('/api/channels/' + id + '/messages').then(({ messages }) => {
@@ -819,6 +820,7 @@
     }).catch(showToastError);
   }
   function navigateToDm(id) {
+    clearReplyPreview();
     newChat.close();
     Promise.all([api('/api/dm/' + id), api('/api/dm/' + id + '/messages')]).then(([{ conversation, participants }, { messages }]) => {
       state.view = 'chat'; meetHub.close(); closeAiPane(); closeCalendarPane();
@@ -1024,10 +1026,7 @@
     row.querySelector('.reply-btn').addEventListener('click', () => {
       closeThread();
       const input = document.getElementById('composerInput');
-      const author = String(msg.author.full_name || '').replace(/[\r\n]+/g, ' ');
-      const excerpt = msg.deleted ? 'This message was deleted' : (msg.body.trim() || 'Attachment');
-      const quote = [author + ':', ...excerpt.slice(0, 1000).split('\n')].map(line => '> ' + line).join('\n');
-      input.value = quote + '\n\n' + input.value;
+      setReplyPreview(msg);
       document.getElementById('composer').classList.remove('d-none');
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.focus();
@@ -1413,6 +1412,28 @@
   const composerFileInput = document.getElementById('composerFileInput');
   const composerFilePreview = document.getElementById('composerFilePreview');
   let pendingFile = null;
+  let pendingReply = null;
+  const replyPreview = document.createElement('div');
+  replyPreview.className = 'composer-reply-preview';
+  replyPreview.hidden = true;
+  document.getElementById('composer').prepend(replyPreview);
+  function clearReplyPreview() { pendingReply = null;replyPreview.hidden = true;replyPreview.replaceChildren(); }
+  function setReplyPreview(msg) {
+    const date = toDate(msg.created_at);
+    pendingReply = { author: String(msg.author.full_name || '').replace(/[\r\n]+/g, ' '),
+      date: Number.isNaN(date.getTime()) ? '' : date.toLocaleString([], {dateStyle:'short',timeStyle:'short'}),
+      text: (msg.deleted ? 'This message was deleted' : (msg.body.trim() || 'Attachment')).slice(0,1000) };
+    replyPreview.innerHTML = '<div class="composer-reply-heading"></div><div class="composer-reply-excerpt"></div><button type="button" aria-label="Remove quoted message" title="Remove quoted message">×</button>';
+    replyPreview.querySelector('.composer-reply-heading').textContent = pendingReply.author + '  ' + pendingReply.date;
+    replyPreview.querySelector('.composer-reply-excerpt').textContent = pendingReply.text;
+    replyPreview.querySelector('button').onclick = () => { clearReplyPreview();composerInput.focus(); };
+    replyPreview.hidden = false;
+  }
+  function bodyWithReply(body) {
+    if (!pendingReply) return body;
+    return [pendingReply.author + '  ' + pendingReply.date, ...pendingReply.text.split('\n')].map(line => '> ' + line).join('\n') + '\n\n' + body;
+  }
+
 
   composerInput.addEventListener('input', () => {
     composerInput.style.height = 'auto';
@@ -1573,9 +1594,10 @@
     if (state.active.type === 'none') return;
     composerHistory.reset();
     const fd = new FormData();
-    fd.append('body', body);
+    fd.append('body', bodyWithReply(body));
     if (pendingFile) fd.append('file', pendingFile);
     const url = state.active.type === 'channel' ? '/api/channels/' + state.active.channel.id + '/messages' : '/api/dm/' + state.active.conversation.id + '/messages';
+    clearReplyPreview();
     composerInput.value = ''; composerInput.style.height = 'auto';
     pendingFile = null; composerFileInput.value = ''; composerFilePreview.classList.add('d-none');
     api(url, { method: 'POST', body: fd }).then(msg => appendMessageToList(msg)).catch(showToastError);
@@ -1605,8 +1627,9 @@
     if (pendingFile) { scheduleError.textContent = 'Scheduled messages can\'t include an attachment yet — remove the file first.'; return; }
     const sendAt = localInputToUtcStr(scheduleAtInput.value);
     if (!sendAt) { scheduleError.textContent = 'Choose a time.'; return; }
-    api(scheduleEndpoint(), { method: 'POST', body: { body, send_at: sendAt } }).then(() => {
+    api(scheduleEndpoint(), { method: 'POST', body: { body: bodyWithReply(body), send_at: sendAt } }).then(() => {
       composerInput.value = ''; composerInput.style.height = 'auto';
+      clearReplyPreview();
       closeSchedulePopover();
       refreshScheduledBadge();
     }).catch(e => { scheduleError.textContent = e.message; });
