@@ -1467,12 +1467,6 @@
     }
   });
   document.getElementById('composerSendBtn').addEventListener('click', sendComposerMessage);
-  const gifPicker = window.createGifPicker(api, (gifUrl) => {
-    if (state.active.type === 'none') return;
-    const url = state.active.type === 'channel' ? '/api/channels/' + state.active.channel.id + '/messages' : '/api/dm/' + state.active.conversation.id + '/messages';
-    api(url, { method: 'POST', body: { gif_url: gifUrl } }).then(msg => appendMessageToList(msg)).catch(showToastError);
-  });
-  document.getElementById('composerGifBtn').addEventListener('click', (e) => { gifPicker.open(e.currentTarget); });
   document.getElementById('composerEmojiBtn').addEventListener('click', (e) => {
     openEmojiPicker(e.currentTarget, (emoji) => {
       const start = composerInput.selectionStart || composerInput.value.length, end = composerInput.selectionEnd || composerInput.value.length;

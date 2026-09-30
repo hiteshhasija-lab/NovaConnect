@@ -48,24 +48,8 @@ async function callNovaDesk(path, body) {
   return data;
 }
 
-// Deliberately not Gemini/AI-based: this trigger must not depend on an external service's
-// uptime (Gemini's own "high demand" 503s were causing real, confusing failures here). Every
-// real-world message in the decom channel has followed the same "decommission <hostname>"
-// shape, so a plain, local, instant regex match covers it — case-insensitive, tolerant of a
-// leading "please"/"can you" etc. since it just looks for the word anywhere.
-//
-// Originally also required the hostname token to contain a digit, on the assumption every real
-// hostname would have one (TESTVM01, PRD-WEB-01) — dropped 2026-09-21 after live testing showed
-// two of the real ESXi lab VMs (WIN-TEST, LINUX-TEST) don't. "decommission" itself is unusual
-// enough as a deliberate word, in a channel dedicated to exactly this, to be signal enough on
-// its own without the digit requirement.
-const DECOM_PATTERN = /\bdecommission(?:ing)?\b\s*:?\s*([A-Za-z0-9][A-Za-z0-9._-]*)/i;
-
-function extractDecomIntent(text) {
-  const match = text.match(DECOM_PATTERN);
-  if (!match) return null;
-  return { hostname: match[1] };
-}
+// Parse only the explicit standalone Decommission keyword, without an AI dependency.
+const { extractDecomIntent } = require('./decomIntent');
 
 async function findServerDecomChannel() {
   return db.prepare("SELECT id FROM channels WHERE name = 'server-decom'").get();
