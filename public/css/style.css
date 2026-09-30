@@ -685,8 +685,10 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
   .msg-row .reaction-picker { flex-wrap:wrap; }
 }
 
-/* Status choices expand inside the account menu, beneath the status row. */
-.user-menu { max-height:calc(100dvh - 24px);overflow-y:auto; }
-#userMenuStatusSub { margin:0 8px 6px 24px;padding:4px 0;border-left:2px solid var(--border);background:var(--surface-2);border-radius:6px; }
+/* White status flyout anchored to the right of the Available row. */
+.user-menu { overflow:visible; }
+#userMenuMain { max-height:calc(100dvh - 24px);overflow-y:auto; }
+#userMenuStatusSub { position:absolute;left:100%;top:0;z-index:1080;width:15.5rem;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow-y:auto;margin:0;padding:4px 0;border:1px solid #d6e3f0;background:#fff;color:#183153;border-radius:8px;box-shadow:0 6px 20px #0002; }
+#userMenuStatusSub .dropdown-item { color:#183153; }
+#userMenuStatusSub .dropdown-item:hover, #userMenuStatusSub .dropdown-item:focus { background:#edf5ff; }
 #statusRowBtn[aria-expanded="true"] { background:var(--surface-2); }
-#statusRowBtn[aria-expanded="true"] .bi-chevron-right { transform:rotate(90deg); }

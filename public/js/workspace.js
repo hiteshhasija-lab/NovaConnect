@@ -2062,13 +2062,29 @@
     });
   });
 
-  // Expand status choices directly below their row within the account menu.
+  // Keep the status flyout beside its row within the same account dropdown.
   const userMenuStatusSub = document.getElementById('userMenuStatusSub');
   const statusRowBtn = document.getElementById('statusRowBtn');
+  const accountMenu = statusRowBtn.closest('.user-menu');
+  accountMenu.append(userMenuStatusSub);
+  function positionStatusFlyout() {
+    if (userMenuStatusSub.classList.contains('d-none')) return;
+    const menu = accountMenu.getBoundingClientRect(), row = statusRowBtn.getBoundingClientRect();
+    const scale = menu.width / accountMenu.offsetWidth || 1;
+    const width = userMenuStatusSub.offsetWidth * scale;
+    const height = userMenuStatusSub.offsetHeight * scale;
+    const left = menu.right + width + 8 <= innerWidth ? menu.width : Math.max(8 - menu.left, innerWidth - 8 - width - menu.left);
+    userMenuStatusSub.style.left = left / scale + 'px';
+    userMenuStatusSub.style.top = (Math.max(8, Math.min(row.top, innerHeight - height - 8)) - menu.top) / scale + 'px';
+  }
+  window.addEventListener('resize', positionStatusFlyout);
+  document.getElementById('userMenuMain').addEventListener('scroll', positionStatusFlyout);
+
   function setStatusExpanded(expanded) {
     userMenuStatusSub.classList.toggle('d-none', !expanded);
     statusRowBtn.setAttribute('aria-expanded', String(expanded));
     bootstrap.Dropdown.getInstance(document.querySelector('.rail-avatar-btn'))?.update();
+    if (expanded) { positionStatusFlyout(); requestAnimationFrame(positionStatusFlyout); }
   }
   statusRowBtn.addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
