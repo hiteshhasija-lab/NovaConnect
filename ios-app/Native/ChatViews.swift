@@ -106,6 +106,7 @@ struct ConversationList: View {
 
 struct ChatTimeline: View {
     @EnvironmentObject private var session: AppSession
+    @Environment(\.dismiss) private var dismiss
     let scope: String
     let id: Int
     let title: String
@@ -167,25 +168,35 @@ struct ChatTimeline: View {
             }
             .navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
-            .toolbar {
-                if scope == "dm" {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        HStack(spacing: 2) {
-                            Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: { Image(systemName: "phone").frame(width: 36, height: 44) }
-                                .accessibilityLabel("Start audio call").accessibilityIdentifier("chat.audioCall")
-                            Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: { Image(systemName: "video").frame(width: 36, height: 44) }
-                                .accessibilityLabel("Start video call").accessibilityIdentifier("chat.videoCall")
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 8) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.left").frame(width: 36, height: 44)
+                    }.accessibilityLabel("Back to chats")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title).font(.headline).lineLimit(2)
+                        if let chatPerson {
+                            Text(chatPerson.chatPresence).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(1).accessibilityElement(children: .combine)
+                    if scope == "dm" {
+                        HStack(spacing: 4) {
+                            Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: {
+                                Image(systemName: "phone").frame(width: 44, height: 44)
+                                    .background(.thinMaterial, in: Circle())
+                            }.accessibilityLabel("Start audio call").accessibilityIdentifier("chat.audioCall")
+                            Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: {
+                                Image(systemName: "video").frame(width: 44, height: 44)
+                                    .background(.thinMaterial, in: Circle())
+                            }.accessibilityLabel("Start video call").accessibilityIdentifier("chat.videoCall")
                         }.fixedSize()
                     }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.headline).lineLimit(1)
-                        if let chatPerson { Text(chatPerson.chatPresence).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
-                    }.frame(maxWidth: 185, alignment: .leading).accessibilityElement(children: .combine)
-                }
+                }.buttonStyle(.plain).tint(.blue)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Color(.systemBackground))
             }
-            .toolbarRole(.editor)
             .task { await refreshChatPerson() }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
                 guard scope == "dm" else { return }

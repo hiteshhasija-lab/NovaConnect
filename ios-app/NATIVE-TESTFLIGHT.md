@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (22). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (23). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -172,3 +172,7 @@ Moved audio and video actions out of a shared ToolbarItem into individual traili
 ## Build 22 — chat header and last seen
 
 Call buttons are explicitly arranged in a compact horizontal toolbar container. Chat identity is leading beside the native back arrow, with current presence or the recorded offline last-seen time beneath it. One-to-one chat participant data refreshes on presence changes and reconnect. Server/web companion 1.0.162 exposes the stored last_seen_at in existing authorized chat responses; deployment is required for mobile timestamps. Group/channel headers do not invent a collective last-seen time.
+
+## Build 23 — readable chat header
+
+Replaced auto-grouped navigation toolbar content with a safe-area header: back control, leading flexible name/subtitle, and two independent circular audio/video buttons with 4pt separation. The name can wrap to two lines; no fixed toolbar capsule constrains it. Native navigation bar is hidden only in the conversation; an explicit dismiss button returns to the chat list.
