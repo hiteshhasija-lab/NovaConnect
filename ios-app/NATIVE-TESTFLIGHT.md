@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (19). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (20). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -158,3 +158,9 @@ Reference: https://developer.apple.com/documentation/pushkit/responding-to-voip-
 ## Build 19 — CallKit configuration correction
 
 Added the missing `voip` entry alongside `audio` in UIBackgroundModes. Apple identifies this omission as the common cause of CallKit requesttransaction error 1 (unentitled). Added a regression test that reads the built app bundle, not just the source plist. This does not enable APNs/PushKit delivery; incoming ringing while suspended still requires that separate integration.
+
+## Build 20 — native video-call preview
+
+Separate camera icon beside the audio icon starts video calls in direct/group chats. Incoming video calls use CallKit’s video indication; answering starts with camera off. The caller’s camera starts after microphone/camera permission and media setup. Native WebRTC video tiles show remote streams, names, camera-off placeholders and local preview. Camera on/off, front/back switching, mute, speaker and hang-up are available. Remote screen streams can be viewed; native screen broadcast is not implemented.
+
+Camera capture stops on backgrounding and call end; returning to the app does not automatically re-enable it. Permission denial preserves audio. Existing SFU signaling, memberships and auth remain unchanged, with no server deployment required. Physical two-phone video/audio, camera switching, remote pause, group participants, interruption and background checks remain required. APNs/PushKit, scheduled meeting participation and TestFlight are still separate pending work.

@@ -11,6 +11,7 @@
 		03C39D978AFE2265E78E22F7 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA24AAF2B2640E82AE4DA11 /* RootView.swift */; };
 		0FB33E18043914848E61F7DF /* NovaConnectApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57B3CE1A466B265AC5E44CF /* NovaConnectApp.swift */; };
 		1579EC543BEE847CEB933749 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649990D44622D280C68CF60D /* APIClient.swift */; };
+		185971A55BD75D6860530F26 /* CallVideo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 677BB2ABF7A10AEEFE0EA604 /* CallVideo.swift */; };
 		302B0C69B56FF60734CC0CF6 /* LiveConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33003A350FD2941CD2A999D8 /* LiveConnection.swift */; };
 		385BBB4571767C3597F29AA6 /* CallMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7D3473DB84CE81DF952005 /* CallMedia.swift */; };
 		3E5FE43021D4C84FC54D5BFA /* NativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1ABE149FA30E5B44418795A /* NativeApp.swift */; };
@@ -58,6 +59,7 @@
 		524EBA68960ED349F7B8BE7B /* NovaConnectNativeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NovaConnectNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5EA9D3B14AB44869E8524857 /* ChatReliability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatReliability.swift; sourceTree = "<group>"; };
 		649990D44622D280C68CF60D /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		677BB2ABF7A10AEEFE0EA604 /* CallVideo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallVideo.swift; sourceTree = "<group>"; };
 		7A087DE0D21024F09CAD43EB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		82909264C40572BF614E2B9A /* LabServer.der */ = {isa = PBXFileReference; path = LabServer.der; sourceTree = "<group>"; };
 		8A6D52D34224F9085FD0450C /* LabCA.der */ = {isa = PBXFileReference; path = LabCA.der; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 			children = (
 				649990D44622D280C68CF60D /* APIClient.swift */,
 				EF7D3473DB84CE81DF952005 /* CallMedia.swift */,
+				677BB2ABF7A10AEEFE0EA604 /* CallVideo.swift */,
 				5EA9D3B14AB44869E8524857 /* ChatReliability.swift */,
 				8F5CCFF53BD7F613C3409E58 /* ChatViews.swift */,
 				4AE57AF60B08F4C57A702204 /* DirectoryViews.swift */,
@@ -324,6 +327,7 @@
 			files = (
 				1579EC543BEE847CEB933749 /* APIClient.swift in Sources */,
 				385BBB4571767C3597F29AA6 /* CallMedia.swift in Sources */,
+				185971A55BD75D6860530F26 /* CallVideo.swift in Sources */,
 				B7FD9F5CAF53E8A77E2C4832 /* ChatReliability.swift in Sources */,
 				6972434330DD91A947F03BD4 /* ChatViews.swift in Sources */,
 				AD901985CCD64A31743D21F3 /* DirectoryViews.swift in Sources */,
@@ -431,7 +435,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				INFOPLIST_FILE = Native/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -537,7 +541,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				INFOPLIST_FILE = Native/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

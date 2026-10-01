@@ -9,11 +9,12 @@ final class CallMedia: NSObject, SendTransportDelegate, ReceiveTransportDelegate
     let signal: (String, [String: Any]) async throws -> [String: Any]
     let failed: (String) -> Void
     private var device: Device?
-    private let factory = RTCPeerConnectionFactory()
+    private let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
     private var send: SendTransport?
     private var receive: ReceiveTransport?
     private var producer: Producer?
     private var track: RTCAudioTrack?
+    private var videoProducer: Producer?
     private var consumers: [String: Consumer] = [:]
     private var room = ""
     private var closed = false
@@ -45,25 +46,42 @@ final class CallMedia: NSObject, SendTransportDelegate, ReceiveTransportDelegate
             self.producer = try self.send?.createProducer(for: track, encodings: nil, codecOptions: nil, codec: nil, appData: "{}")
         }
     }
-    func consume(_ producerID: String, peerID: String) async throws {
+    func consume(_ producerID: String, peerID: String) async throws -> RTCVideoTrack? {
         let info: (String, Any)? = try await work {
             guard self.consumers[producerID] == nil, let receive = self.receive, let device = self.device else { return nil }
             return (receive.id, try Self.object(device.rtpCapabilities()))
         }
-        guard let info else { return }
+        guard let info else { return nil }
         let result = try await signal("sfu:consume", ["roomId": room, "transportId": info.0, "producerId": producerID, "rtpCapabilities": info.1, "appData": ["sourcePeerId": peerID]])
-        guard result["kind"] as? String == "audio", let id = result["id"] as? String, let rtp = result["rtpParameters"] else { return }
-        try await work {
-            guard let receive = self.receive else { return }
-            self.consumers[producerID] = try receive.consume(consumerId: id, producerId: producerID, kind: .audio, rtpParameters: Self.json(rtp), appData: nil)
+        guard let kind = result["kind"] as? String, ["audio", "video"].contains(kind), let id = result["id"] as? String, let rtp = result["rtpParameters"] else { throw APIError(message: "Invalid call stream response.") }
+        let video: RTCVideoTrack? = try await work {
+            guard !self.closed, let receive = self.receive else { return nil }
+            let consumer = try receive.consume(consumerId: id, producerId: producerID, kind: kind == "video" ? .video : .audio, rtpParameters: Self.json(rtp), appData: nil)
+            self.consumers[producerID] = consumer
+            return consumer.track as? RTCVideoTrack
         }
         _ = try await signal("sfu:resume-consumer", ["roomId": room, "consumerId": id])
+        return video
+    }
+    func sendVideo(_ track: RTCVideoTrack) async throws {
+        try await work {
+            guard !self.closed, let send = self.send, let device = self.device, try device.canProduce(.video) else { throw APIError(message: "Video is unavailable for this call.") }
+            if self.videoProducer == nil {
+                self.videoProducer = try send.createProducer(for: track, encodings: nil, codecOptions: nil, codec: nil, appData: "{\"source\":\"camera\"}")
+            }
+        }
+        try await pauseVideo(false)
+    }
+    func pauseVideo(_ paused: Bool) async throws {
+        let id = try await work { self.videoProducer?.id }
+        if let id { _ = try await signal("sfu:pause-producer", ["roomId": room, "producerId": id, "paused": paused]) }
     }
     func remove(_ id: String) { queue.async { self.consumers.removeValue(forKey: id)?.close() } }
     func mute(_ muted: Bool) { queue.async { self.track?.isEnabled = !muted } }
     func speaker(_ enabled: Bool) throws { try AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none) }
     func close() { queue.async {
         self.closed = true
+        self.videoProducer?.close(); self.videoProducer = nil
         self.track?.isEnabled = false; self.producer?.close(); self.producer = nil
         self.consumers.values.forEach { $0.close() }; self.consumers.removeAll()
         self.send?.close(); self.receive?.close(); self.send = nil; self.receive = nil; self.track = nil; self.device = nil
@@ -76,9 +94,9 @@ final class CallMedia: NSObject, SendTransportDelegate, ReceiveTransportDelegate
     }
     func onProduce(transport: Transport, kind: MediaKind, rtpParameters: String, appData: String, callback: @escaping (String?) -> Void) {
         Task { do {
-            let result = try await signal("sfu:produce", ["roomId": room, "transportId": transport.id, "kind": "audio", "rtpParameters": Self.object(rtpParameters), "appData": [:]])
+            let result = try await signal("sfu:produce", ["roomId": room, "transportId": transport.id, "kind": kind == .video ? "video" : "audio", "rtpParameters": Self.object(rtpParameters), "appData": Self.object(appData)])
             callback(result["producerId"] as? String)
-        } catch { callback(nil); failed(error.localizedDescription) } }
+        } catch { callback(nil); if kind == .audio { failed(error.localizedDescription) } } }
     }
     func onProduceData(transport: Transport, sctpParameters: String, label: String, protocol dataProtocol: String, appData: String, callback: @escaping (String?) -> Void) { callback(nil) }
 }

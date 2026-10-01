@@ -7,11 +7,12 @@ import XCTest
     var mute: ((Bool) -> Void)?
     var reset: (() -> Void)?
     var incomingTitles: [String] = []
+    var incomingVideo: [Bool] = []
     var finished = 0
     var rejectIncoming = false
-    func outgoing(title: String) async throws {}
-    func incoming(title: String) async throws {
-        incomingTitles.append(title)
+    func outgoing(title: String, video: Bool) async throws {}
+    func incoming(title: String, video: Bool) async throws {
+        incomingTitles.append(title); incomingVideo.append(video)
         if rejectIncoming { throw APIError(message: "Call unavailable") }
     }
     func requestAnswer() async throws { _ = await answer?() }
@@ -27,6 +28,32 @@ import XCTest
         let modes = app.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
         XCTAssertTrue(modes.contains("voip"), "CallKit rejects transactions without the voip background mode.")
         XCTAssertTrue(modes.contains("audio"), "Active calls require background audio.")
+    }
+    func testVideoIncomingUsesVideoSystemUIWithoutStartingCamera() async {
+        let system = FakeSystemCalls(), live = LiveConnection()
+        let calls = NativeCalls(system: system)
+        calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": "v", "title": "Eva", "mode": "video"]), live: live)
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertTrue(calls.video)
+        XCTAssertEqual(calls.phase, "Incoming video call")
+        XCTAssertEqual(system.incomingVideo, [true])
+        XCTAssertFalse(calls.cameraOn)
+        XCTAssertNil(calls.localTrack)
+        calls.setForeground(false)
+        XCTAssertTrue(calls.active, "Backgrounding must preserve the call while stopping camera capture.")
+        XCTAssertFalse(calls.cameraOn)
+        calls.event(LiveEvent(name: "gcall:ended", payload: ["id": "v"]), live: live)
+        XCTAssertFalse(calls.active)
+        XCTAssertTrue(calls.participants.isEmpty)
+        XCTAssertNil(calls.localTrack)
+    }
+    func testCameraCannotStartBeforeCallAndCameraPermissionHasPurpose() async {
+        let calls = NativeCalls(system: FakeSystemCalls())
+        await calls.toggleCamera()
+        XCTAssertFalse(calls.cameraOn)
+        XCTAssertNil(calls.localTrack)
+        let bundle = Bundle(for: SystemCalls.self)
+        XCTAssertFalse((bundle.object(forInfoDictionaryKey: "NSCameraUsageDescription") as? String ?? "").isEmpty)
     }
     private func incoming(_ calls: NativeCalls, id: String = "first") {
         calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": id, "title": "Eva", "mode": "audio"]), live: LiveConnection())

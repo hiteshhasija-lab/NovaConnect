@@ -73,6 +73,7 @@ import SwiftUI
                    let status = event.payload["status"] as? String { session.user?.status = status }
             }
             .onChange(of: phase) { _, next in
+                if next != .inactive { session.calls.setForeground(next == .active) }
                 if next == .active, session.user != nil, !session.live.connected, let api = session.api { session.live.start(api) }
                 if next == .background, !session.calls.keepsConnection { session.live.stop() }
             }

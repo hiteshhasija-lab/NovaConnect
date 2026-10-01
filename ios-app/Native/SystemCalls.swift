@@ -8,8 +8,8 @@ import WebRTC
     var end: (() async -> Void)? { get set }
     var mute: ((Bool) -> Void)? { get set }
     var reset: (() -> Void)? { get set }
-    func outgoing(title: String) async throws
-    func incoming(title: String) async throws
+    func outgoing(title: String, video: Bool) async throws
+    func incoming(title: String, video: Bool) async throws
     func requestAnswer() async throws
     func requestEnd() async throws
     func requestMute(_ muted: Bool) async throws
@@ -30,7 +30,7 @@ import WebRTC
 
     override init() {
         let config = CXProviderConfiguration()
-        config.supportsVideo = false
+        config.supportsVideo = true
         config.maximumCallGroups = 1
         config.maximumCallsPerCallGroup = 1
         config.supportedHandleTypes = [.generic]
@@ -41,27 +41,29 @@ import WebRTC
         RTCAudioSession.sharedInstance().useManualAudio = true
         RTCAudioSession.sharedInstance().isAudioEnabled = false
     }
-    private func update(_ title: String) -> CXCallUpdate {
+    private func update(_ title: String, video: Bool) -> CXCallUpdate {
         let value = CXCallUpdate()
         value.remoteHandle = CXHandle(type: .generic, value: title)
         value.localizedCallerName = title
         value.supportsHolding = false; value.supportsGrouping = false
         value.supportsUngrouping = false; value.supportsDTMF = false
-        value.hasVideo = false
+        value.hasVideo = video
         return value
     }
-    func outgoing(title: String) async throws {
+    func outgoing(title: String, video: Bool) async throws {
         let id = UUID(); uuid = id; outgoingCall = true; reportedConnected = false
         do {
-            try await controller.request(CXTransaction(action: CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: title))))
+            let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: title))
+            action.isVideo = video
+            try await controller.request(CXTransaction(action: action))
             guard uuid == id else { throw CancellationError() }
-            provider.reportCall(with: id, updated: update(title))
+            provider.reportCall(with: id, updated: update(title, video: video))
         } catch { if uuid == id { finish(failed: true) }; throw error }
     }
-    func incoming(title: String) async throws {
+    func incoming(title: String, video: Bool) async throws {
         let id = UUID(); uuid = id; outgoingCall = false; reportedConnected = false
         do {
-            try await provider.reportNewIncomingCall(with: id, update: update(title))
+            try await provider.reportNewIncomingCall(with: id, update: update(title, video: video))
             // A remote hang-up can arrive while CallKit is still reporting the call.
             guard uuid == id else {
                 provider.reportCall(with: id, endedAt: Date(), reason: .remoteEnded)
