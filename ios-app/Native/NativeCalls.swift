@@ -231,14 +231,14 @@ struct NativeCallView: View {
             }
             if calls.incoming {
                 if calls.video { Text("Your camera stays off until you turn it on.").font(.footnote).foregroundStyle(.secondary) }
-                Button("Answer") { Task { await calls.answer() } }.buttonStyle(.borderedProminent)
+                Button("Answer") { Task { await calls.answer() } }.novaGlassButtons(prominent: true)
             } else if calls.error == nil {
                 ViewThatFits(in: .horizontal) {
                     HStack { audioControls; cameraControls }
                     VStack { HStack { audioControls }; HStack { cameraControls } }
-                }.buttonStyle(.bordered)
+                }.novaGlassButtons()
             }
-            Button(calls.error != nil ? "Close" : (calls.incoming ? "Decline" : "Hang up"), role: .destructive) { Task { await calls.hangUp() } }.buttonStyle(.borderedProminent).tint(.red)
+            Button(calls.error != nil ? "Close" : (calls.incoming ? "Decline" : "Hang up"), role: .destructive) { Task { await calls.hangUp() } }.novaGlassButtons(prominent: true).tint(.red)
         }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(.systemBackground)).interactiveDismissDisabled()
     }
     @ViewBuilder private var audioControls: some View {

@@ -123,7 +123,7 @@ struct NativeMore: View {
                         HStack(spacing: 12) { PersonAvatar(person: user); VStack(alignment: .leading) { Text(user.full_name).font(.headline); Text("@\(user.username)").foregroundStyle(.secondary) } }
                         PhotosPicker(selection: $selectedPhoto, matching: .images) {
                             Label(uploadingPhoto ? "Uploading picture…" : "Change profile picture", systemImage: "photo")
-                        }.disabled(uploadingPhoto)
+                        }.novaGlassButtons().disabled(uploadingPhoto)
                         ConnectionStatus(live: session.live)
                     }
                 }
@@ -146,7 +146,7 @@ struct NativeMore: View {
                     Button("Save status message") { Task { do {
                         try await session.api?.send("/api/profile/status-message", method: "PATCH", body: ["status_message": statusMessage, "clear_after": "today"])
                         feedback = "Status message saved until the end of today."; error = nil
-                    } catch { self.error = error.localizedDescription } } }
+                    } catch { self.error = error.localizedDescription } } }.novaGlassButtons()
                     if let feedback { Text(feedback).font(.caption).foregroundStyle(.secondary) }
                     InlineError(text: error)
                 }
@@ -240,7 +240,7 @@ struct GeminiView: View {
             InlineError(text: error)
         }.navigationTitle("Gemini").task { await load() }
             .safeAreaInset(edge: .bottom) {
-                HStack { TextField("Ask Gemini", text: $draft, axis: .vertical).lineLimit(1...5); Button("Send") { Task { await send() } }.disabled(busy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }.padding().background(.bar)
+                HStack { TextField("Ask Gemini", text: $draft, axis: .vertical).lineLimit(1...5); Button("Send") { Task { await send() } }.disabled(busy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }.padding(12).novaGlass(in: RoundedRectangle(cornerRadius: 20)).padding(.horizontal).padding(.vertical, 8)
             }
     }
     private func load() async {

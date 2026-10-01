@@ -28,7 +28,7 @@ struct ConversationList: View {
                             Button { filter = item } label: {
                                 Text(item).font(.subheadline.weight(filter == item ? .semibold : .regular))
                                     .padding(.horizontal, 16).padding(.vertical, 9)
-                                    .background(filter == item ? Color.blue.opacity(0.12) : Color(.systemBackground), in: Capsule())
+                                    .novaGlass(in: Capsule(), interactive: true, tint: filter == item ? Color.blue.opacity(0.12) : nil)
                                     .overlay(Capsule().stroke(filter == item ? Color.blue.opacity(0.35) : Color(.separator).opacity(0.4), lineWidth: 1))
                             }.foregroundStyle(filter == item ? Color.blue : Color.secondary)
                                 .accessibilityAddTraits(filter == item ? .isSelected : [])
@@ -172,7 +172,7 @@ struct ChatTimeline: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 8) {
                     Button { dismiss() } label: {
-                        Image(systemName: "chevron.left").frame(width: 36, height: 44)
+                        Image(systemName: "chevron.left").frame(width: 44, height: 44).novaGlass(in: Circle(), interactive: true)
                     }.accessibilityLabel("Back to chats")
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title).font(.headline).lineLimit(2)
@@ -185,17 +185,17 @@ struct ChatTimeline: View {
                         HStack(spacing: 4) {
                             Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: {
                                 Image(systemName: "phone").frame(width: 44, height: 44)
-                                    .background(.thinMaterial, in: Circle())
+                                    .novaGlass(in: Circle(), interactive: true)
                             }.accessibilityLabel("Start audio call").accessibilityIdentifier("chat.audioCall")
                             Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: {
                                 Image(systemName: "video").frame(width: 44, height: 44)
-                                    .background(.thinMaterial, in: Circle())
+                                    .novaGlass(in: Circle(), interactive: true)
                             }.accessibilityLabel("Start video call").accessibilityIdentifier("chat.videoCall")
                         }.fixedSize()
                     }
                 }.buttonStyle(.plain).tint(.blue)
                     .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Color(.systemBackground))
+                    .background(.bar)
             }
             .task { await refreshChatPerson() }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
@@ -256,12 +256,12 @@ struct ChatTimeline: View {
                     ForEach(message.attachments) { attachment in
                         Button { Task { await download(attachment) } } label: {
                             Label(attachment.original_name, systemImage: "doc").font(.subheadline).lineLimit(2)
-                        }.buttonStyle(.bordered)
+                        }.novaGlassButtons()
                     }
                     if !message.reactions.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) { HStack { ForEach(message.reactions) { reaction in
                             Button("\(reaction.emoji) \(reaction.count)") { Task { await react(message, emoji: reaction.emoji) } }
-                                .font(.caption).buttonStyle(.bordered).tint(reaction.mine ? .blue : .secondary)
+                                .font(.caption).novaGlassButtons().tint(reaction.mine ? .blue : .secondary)
                         } } }
                     }
                     if message.edited { Text("Edited").font(.caption2).foregroundStyle(.secondary) }
@@ -297,13 +297,13 @@ struct ChatTimeline: View {
                 HStack { Label(attachmentURL.lastPathComponent, systemImage: "paperclip").font(.caption).lineLimit(1); Spacer(); Button("Remove") { self.attachmentURL = nil } }
             }
             HStack(alignment: .bottom) {
-                Button { importFile = true } label: { Image(systemName: "plus").font(.title3).frame(minWidth: 44, minHeight: 44) }
+                Button { importFile = true } label: { Image(systemName: "plus").font(.title3).frame(minWidth: 44, minHeight: 44).novaGlass(in: Circle(), interactive: true) }
                     .accessibilityLabel("Attach a file").disabled(sending || editing != nil)
                 TextField("Type a message", text: $draft, axis: .vertical).lineLimit(1...6).padding(10)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    .novaGlass(in: RoundedRectangle(cornerRadius: 18))
                 Button { Task { await send() } } label: {
                     if sending { ProgressView().frame(width: 44, height: 44) }
-                    else { Image(systemName: "paperplane.fill").font(.title2).frame(minWidth: 44, minHeight: 44) }
+                    else { Image(systemName: "paperplane.fill").font(.title2).frame(minWidth: 44, minHeight: 44).novaGlass(in: Circle(), interactive: true, tint: .blue.opacity(0.12)) }
                 }.accessibilityLabel(editing == nil ? "Send message" : "Save message")
                     .disabled(sending || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachmentURL == nil))
             }

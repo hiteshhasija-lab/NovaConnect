@@ -126,7 +126,7 @@ struct NativeLogin: View {
                         Task { await session.login(username: username, password: password); password = "" }
                     } label: {
                         HStack { Text("Sign in"); Spacer(); if session.busy { ProgressView() } else { Image(systemName: "arrow.right") } }
-                    }.disabled(session.busy || username.isEmpty || password.isEmpty)
+                    }.novaGlassButtons(prominent: true).disabled(session.busy || username.isEmpty || password.isEmpty)
                 }
                 if let error = session.error { Section { Text(error).foregroundStyle(.red) } }
                 Section {
