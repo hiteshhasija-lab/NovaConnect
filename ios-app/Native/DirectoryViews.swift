@@ -151,6 +151,7 @@ struct NativeMore: View {
                     InlineError(text: error)
                 }
                 Section("Workspace") {
+                    NavigationLink { ActivityView() } label: { Label("Activity", systemImage: "bell") }
                     NavigationLink("Upcoming meetings") { MeetingsView() }
                     NavigationLink("Activity") { ActivityView() }
                     NavigationLink("Gemini") { GeminiView() }
@@ -190,6 +191,7 @@ struct NativeMore: View {
     }
 }
 struct MeetingsView: View {
+    var title = "Meetings"
     @EnvironmentObject private var session: AppSession
     @State private var meetings: [Meeting] = []
     @State private var error: String?
@@ -200,7 +202,7 @@ struct MeetingsView: View {
             ForEach(meetings) { meeting in VStack(alignment: .leading, spacing: 8) { Text(meeting.title).font(.headline); Text(Timeline.label(meeting.start_at)).font(.subheadline).foregroundStyle(.secondary) } }
             if loaded && meetings.isEmpty { ContentUnavailableView("No upcoming meetings", systemImage: "calendar") }
             Section { Text("This preview displays your schedule. Native meeting participation is not available yet.").font(.footnote).foregroundStyle(.secondary) }
-        }.navigationTitle("Meetings").task { await load() }.refreshable { await load() }
+        }.navigationTitle(title).task { await load() }.refreshable { await load() }
     }
     private func load() async {
         do { if let api = session.api { meetings = try await api.get("/api/meet/scheduled"); loaded = true; error = nil } }
