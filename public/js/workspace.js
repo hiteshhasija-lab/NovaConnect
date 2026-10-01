@@ -350,8 +350,15 @@
   socket.on('notification:new', () => {
     api('/api/notifications').then(d => { updateActivityBadge(d.unread_count); if (state.view === 'activity') loadActivity(); });
   });
+  socket.on('connect', () => {
+    if (state.active.type === 'dm') {
+      const other = state.active.participants.find(p => p.id !== NC.currentUser.id);
+      if (other) refreshChatLastSeen(other.id);
+    }
+  });
   socket.on('presence:update', (payload) => {
     state.presence[payload.userId] = payload.status;
+    refreshChatLastSeen(payload.userId);
     if(payload.userId===NC.currentUser.id){
       const dot=document.getElementById('myPresenceDot');dot.className='presence-dot presence-'+payload.status;dot.title=STATUS_LABELS[payload.status]||'Offline';
       const rowDot=document.getElementById('statusRowDot'); if(rowDot) rowDot.className='presence-dot presence-'+payload.status;
@@ -888,6 +895,27 @@
     document.getElementById('composer').classList.toggle('d-none', state.active.type === 'none');
   }
 
+  function lastSeenLabel(person) {
+    const status = state.presence[person.id] || person.status || 'offline';
+    if (status !== 'offline') return status === 'online' ? 'Available now' : (STATUS_LABELS[status] || status);
+    if (!person.last_seen_at) return 'Last seen unavailable';
+    const value = String(person.last_seen_at).replace(' ', 'T');
+    const date = new Date(/[zZ]$|[+-]\d\d:\d\d$/.test(value) ? value : value + 'Z');
+    return Number.isNaN(date.getTime()) ? 'Last seen unavailable' : 'Last seen ' + date.toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
+  }
+  async function refreshChatLastSeen(userId) {
+    if (state.active.type !== 'dm' || !state.active.participants.some(p => p.id === userId)) return;
+    const id = state.active.conversation.id;
+    try {
+      const detail = await api('/api/dm/' + id);
+      if (state.active.type !== 'dm' || state.active.conversation.id !== id) return;
+      state.active.participants = detail.participants;
+      detail.participants.forEach(p => { state.presence[p.id] = p.status; });
+      const others = detail.participants.filter(p => p.id !== NC.currentUser.id);
+      const node = document.getElementById('dmHeaderLastSeen');
+      if (node && others.length === 1) node.textContent = lastSeenLabel(others[0]);
+    } catch (_) { /* Preserve the last verified value until the connection recovers. */ }
+  }
   function renderMainHeader() {
     chatHeader.close(false);
     closeSchedulePopover();
@@ -908,7 +936,8 @@
         : '<i class="bi bi-chat-dots" aria-hidden="true"></i>';
       const subtitle = person ? (person.status_message || '') : others.length + ' people';
       header.innerHTML =
-        '<div class="main-header-title">' + identity + '<span class="' + (person ? 'msg-author-btn' : '') + '" id="dmHeaderTitle">' + escapeHtml(convoTitle({ ...c, participants: others })) + '</span>' +
+        '<div class="main-header-title">' + identity + '<span class="dm-header-identity"><span class="' + (person ? 'msg-author-btn' : '') + '" id="dmHeaderTitle">' + escapeHtml(convoTitle({ ...c, participants: others })) + '</span>' +
+        (person ? '<small id="dmHeaderLastSeen">' + escapeHtml(lastSeenLabel(person)) + '</small>' : '') + '</span>' +
         (subtitle ? '<span class="main-header-sub">' + escapeHtml(subtitle) + '</span>' : '') + '</div>' +
         '<nav class="channel-tabs" aria-label="Chat tabs">' + ['Chat', 'Files', 'Photos'].map((t, i) => '<button type="button" class="' + (!i ? 'selected' : '') + '" aria-pressed="' + (!i) + '">' + t + '</button>').join('') + '</nav>';
       header.querySelectorAll('.channel-tabs button').forEach(b => b.addEventListener('click', () => {

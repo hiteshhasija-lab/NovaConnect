@@ -74,6 +74,17 @@ import Security
         XCTAssertNotNil(calls.error)
         XCTAssertEqual(calls.phase, "Call ended")
     }
+    func testChatLastSeenUsesTimestampAndCurrentPresence() throws {
+        var person = try JSONDecoder().decode(Person.self, from: Data(#"{"id":2,"username":"eva","full_name":"Eva","status":"offline","last_seen_at":"2026-10-01 15:00:00"}"#.utf8))
+        XCTAssertTrue(person.chatPresence.hasPrefix("Last seen "))
+        XCTAssertNotEqual(person.chatPresence, "Last seen unavailable")
+        person.status = "online"
+        XCTAssertEqual(person.chatPresence, "Available now")
+        person.status = "offline"; person.last_seen_at = "invalid"
+        XCTAssertEqual(person.chatPresence, "Last seen unavailable")
+        person.last_seen_at = nil
+        XCTAssertEqual(person.chatPresence, "Last seen unavailable")
+    }
     func testUTCDateDecoding() {
         XCTAssertNotNil(Timeline.date("2026-09-30 14:00:00"))
         XCTAssertNil(Timeline.date("not a date"))

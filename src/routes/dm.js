@@ -23,7 +23,7 @@ router.get('/api/dm', async (req, res) => {
   const result = [];
   for (const c of convos) {
     const others = await db.prepare(`
-      SELECT u.id, u.full_name, u.username, u.status FROM dm_participants dp
+      SELECT u.id, u.full_name, u.username, u.last_seen_at, u.status FROM dm_participants dp
       JOIN users u ON u.id = dp.user_id WHERE dp.conversation_id = ? AND dp.user_id != ?
     `).all(c.id, userId);
     const last = await db.prepare(`
@@ -113,7 +113,7 @@ router.get('/api/dm/:id', async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
   const participants = await db.prepare(`
-    SELECT u.id, u.full_name, u.username, u.status, u.title, u.status_message, u.status_message_expires_at, dp.last_read_message_id
+    SELECT u.id, u.full_name, u.username, u.last_seen_at, u.status, u.title, u.status_message, u.status_message_expires_at, dp.last_read_message_id
     FROM dm_participants dp JOIN users u ON u.id = dp.user_id
     WHERE dp.conversation_id = ? ORDER BY u.full_name
   `).all(convo.id);

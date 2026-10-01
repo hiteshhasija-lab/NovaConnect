@@ -109,6 +109,7 @@ struct ChatTimeline: View {
     let scope: String
     let id: Int
     let title: String
+    @State private var chatPerson: Person?
     @State private var messages: [Message] = []
     @State private var draft = ""
     @State private var error: String?
@@ -164,26 +165,33 @@ struct ChatTimeline: View {
                     composer
                 }
             }
-            .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 if scope == "dm" {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: { Image(systemName: "phone") }
-                            .accessibilityLabel("Start audio call").accessibilityIdentifier("chat.audioCall")
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: { Image(systemName: "video") }
-                            .accessibilityLabel("Start video call").accessibilityIdentifier("chat.videoCall")
+                        HStack(spacing: 2) {
+                            Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: { Image(systemName: "phone").frame(width: 36, height: 44) }
+                                .accessibilityLabel("Start audio call").accessibilityIdentifier("chat.audioCall")
+                            Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: { Image(systemName: "video").frame(width: 36, height: 44) }
+                                .accessibilityLabel("Start video call").accessibilityIdentifier("chat.videoCall")
+                        }.fixedSize()
                     }
                 }
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 9) {
-                        Image(systemName: scope == "dm" ? "bubble.left.and.bubble.right.fill" : "number")
-                            .font(.subheadline).foregroundStyle(.blue)
-                            .frame(width: 30, height: 30).background(Color.blue.opacity(0.1), in: Circle())
+                ToolbarItem(placement: .topBarLeading) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(title).font(.headline).lineLimit(1)
-                    }
+                        if let chatPerson { Text(chatPerson.chatPresence).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
+                    }.frame(maxWidth: 185, alignment: .leading).accessibilityElement(children: .combine)
+                }
+            }
+            .toolbarRole(.editor)
+            .task { await refreshChatPerson() }
+            .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
+                guard scope == "dm" else { return }
+                if notification.object == nil { Task { await refreshChatPerson() }; return }
+                if let event = notification.object as? LiveEvent, event.name == "presence:update", event.payload["userId"] as? Int == chatPerson?.id {
+                    Task { await refreshChatPerson() }
                 }
             }
             .task { active = true; draft = session.drafts[draftKey] ?? ""; await load() }
@@ -207,6 +215,14 @@ struct ChatTimeline: View {
                 Button("Cancel", role: .cancel) { deleting = nil }
             }
         }
+    }
+    private func refreshChatPerson() async {
+        guard scope == "dm", let api = session.api else { return }
+        do {
+            let detail: ChatParticipants = try await api.get("/api/dm/\(id)")
+            let others = detail.participants.filter { $0.id != session.user?.id }
+            chatPerson = others.count == 1 ? others.first : nil
+        } catch { chatPerson = nil }
     }
     private func messageView(_ message: Message) -> some View {
         let mine = message.author.id == session.user?.id

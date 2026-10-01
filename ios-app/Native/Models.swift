@@ -4,6 +4,7 @@ struct Person: Codable, Identifiable, Hashable {
     let id: Int
     var username: String
     var full_name: String
+    var last_seen_at: String?
     var status: String?
     var role: String?
     var email: String?
@@ -106,5 +107,24 @@ struct SocketAcknowledgement {
               let array = try? JSONSerialization.jsonObject(with: Data(frame[bracket...].utf8)) as? [[String: Any]],
               let payload = array.first else { return nil }
         return SocketAcknowledgement(id: id, payload: payload)
+    }
+}
+
+struct ChatParticipants: Decodable { let participants: [Person] }
+extension Person {
+    var chatPresence: String {
+        switch status {
+        case "online": return "Available now"
+        case "busy": return "Busy"
+        case "dnd": return "Do not disturb"
+        case "away": return "Away"
+        case "brb": return "Be right back"
+        case "incall": return "In a call"
+        case "inmeeting": return "In a meeting"
+        case "presenting": return "Presenting"
+        default:
+            guard let last_seen_at, let date = Timeline.date(last_seen_at) else { return "Last seen unavailable" }
+            return "Last seen " + date.formatted(date: .abbreviated, time: .shortened)
+        }
     }
 }

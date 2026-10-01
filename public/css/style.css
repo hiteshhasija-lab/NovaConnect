@@ -723,3 +723,7 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 
 /* Profile forms can extend below the viewport, unlike the fixed chat workspace. */
 body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
+
+/* Chat identity keeps presence beneath the name without moving contextual tabs. */
+#mainHeader .dm-header-identity { display:flex;flex-direction:column;min-width:0;gap:2px; }
+#mainHeader #dmHeaderLastSeen { font-size:.75em;font-weight:400;color:var(--text-muted);line-height:1.3; }
