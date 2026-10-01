@@ -160,7 +160,7 @@ struct NativeMore: View {
                 }
                 Section {
                     LabeledContent("Build", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"))")
-                    Text("Native calling, push notifications, meeting participation and administrative screens are still in development. This build is not yet ready for TestFlight.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Foreground audio calling is a development preview. Background ringing, video, push notifications, meeting participation and administrative screens are still in development. This build is not ready for TestFlight.").font(.footnote).foregroundStyle(.secondary)
                     Button("Sign out", role: .destructive) { confirmLogout = true }
                     InlineError(text: session.error)
                 }

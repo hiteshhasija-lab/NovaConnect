@@ -167,6 +167,9 @@ struct ChatTimeline: View {
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if scope == "dm" { Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: { Image(systemName: "phone") }.accessibilityLabel("Start audio call") }
+                }
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 9) {
                         Image(systemName: scope == "dm" ? "bubble.left.and.bubble.right.fill" : "number")

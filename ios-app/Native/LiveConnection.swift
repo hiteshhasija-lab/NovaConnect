@@ -7,6 +7,34 @@ import Foundation
     private var loop: Task<Void, Never>?
     private var client: APIClient?
     private var generation = UUID()
+    private var nextRequestID = 0
+    private var pending: [Int: CheckedContinuation<[String: Any], Error>] = [:]
+    private var timeouts: [Int: Task<Void, Never>] = [:]
+    func request(_ event: String, _ payload: [String: Any] = [:]) async throws -> [String: Any] {
+        guard connected, let socket else { throw APIError(message: "The live connection is unavailable.") }
+        nextRequestID += 1
+        let id = nextRequestID
+        let data = try JSONSerialization.data(withJSONObject: [event, payload])
+        return try await withCheckedThrowingContinuation { continuation in
+            pending[id] = continuation
+            timeouts[id] = Task { [weak self] in
+                do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { return }
+                self?.finish(id, .failure(APIError(message: "The call request timed out.")))
+            }
+            Task {
+                do { try await socket.send(.string("42\(id)" + String(decoding: data, as: UTF8.self))) }
+                catch { finish(id, .failure(error)) }
+            }
+        }
+    }
+    private func finish(_ id: Int, _ result: Result<[String: Any], Error>) {
+        timeouts.removeValue(forKey: id)?.cancel()
+        pending.removeValue(forKey: id)?.resume(with: result)
+    }
+    private func failPending() {
+        for id in Array(pending.keys) { finish(id, .failure(APIError(message: "The call connection closed."))) }
+    }
+
     func start(_ api: APIClient) {
         stop(); client = api
         let token = generation
@@ -32,6 +60,9 @@ import Foundation
                         else if text.hasPrefix("40") {
                             self.connected = true; delay = 1
                             NotificationCenter.default.post(name: .liveUpdate, object: nil)
+                        } else if let ack = SocketAcknowledgement.parse(text) {
+                            if ack.payload["ok"] as? Bool == true { self.finish(ack.id, .success(ack.payload)) }
+                            else { self.finish(ack.id, .failure(APIError(message: ack.payload["error"] as? String ?? "Call request failed."))) }
                         } else if let event = LiveEvent.parse(text) {
                             NotificationCenter.default.post(name: .liveUpdate, object: event)
                         } else if text.hasPrefix("44") {
@@ -41,7 +72,7 @@ import Foundation
                     }
                 } catch {
                     guard self.generation == token, !Task.isCancelled else { return }
-                    self.connected = false
+                    self.connected = false; self.failPending()
                 }
                 self.socket?.cancel(with: .goingAway, reason: nil)
                 do { try await Task.sleep(nanoseconds: delay * 1_000_000_000) } catch { return }
@@ -55,7 +86,7 @@ import Foundation
         try await socket.send(.string("42" + String(decoding: data, as: UTF8.self)))
     }
     func stop() {
-        generation = UUID()
+        generation = UUID(); failPending()
         loop?.cancel(); loop = nil
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         connected = false; client = nil

@@ -9,6 +9,7 @@ import SwiftUI
     @Published var restoring = true
     var api: APIClient?
     let live = LiveConnection()
+    let calls = NativeCalls()
     var drafts: [String: String] = [:]
     func login(username: String, password: String) async {
         guard let url = APIClient.serverURL(server) else { error = "Enter an HTTPS server address without a path."; return }
@@ -43,7 +44,7 @@ import SwiftUI
         expire()
     }
     func expire() {
-        live.stop(); if let api { SessionVault.delete(api.baseURL); api.clearCookies() }; api = nil; user = nil; drafts.removeAll(); AttachmentCache.clear()
+        calls.disconnected(); live.stop(); if let api { SessionVault.delete(api.baseURL); api.clearCookies() }; api = nil; user = nil; drafts.removeAll(); AttachmentCache.clear()
     }
 }
 
@@ -55,7 +56,7 @@ import SwiftUI
         WindowGroup {
             Group {
                 if session.restoring { ProgressView("Connecting…") }
-                else if session.user != nil { NativeTabs() }
+                else if session.user != nil { NativeRoot() }
                 else { NativeLogin() }
             }
             .environmentObject(session)
@@ -66,15 +67,29 @@ import SwiftUI
                 if let source = notification.object as? APIClient, source === session.api { session.expire() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
+                if let event = notification.object as? LiveEvent { session.calls.event(event, live: session.live) }
                 if let event = notification.object as? LiveEvent, event.name == "presence:update",
                    let id = event.payload["userId"] as? Int, id == session.user?.id,
                    let status = event.payload["status"] as? String { session.user?.status = status }
             }
             .onChange(of: phase) { _, next in
-                if next == .active, session.user != nil, let api = session.api { session.live.start(api) }
-                if next == .background { session.live.stop() }
+                if next == .active, session.user != nil, !session.live.connected, let api = session.api { session.live.start(api) }
+                if next == .background { session.calls.disconnected(); session.live.stop() }
             }
         }
+    }
+}
+
+struct NativeRoot: View {
+    @EnvironmentObject private var session: AppSession
+    var body: some View { CallRoot(calls: session.calls, live: session.live) }
+}
+struct CallRoot: View {
+    @ObservedObject var calls: NativeCalls
+    @ObservedObject var live: LiveConnection
+    var body: some View {
+        NativeTabs().fullScreenCover(isPresented: $calls.visible) { NativeCallView(calls: calls) }
+            .onChange(of: live.connected) { _, connected in if !connected { calls.disconnected() } }
     }
 }
 

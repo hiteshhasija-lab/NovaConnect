@@ -10,6 +10,10 @@ settings:
     CURRENT_PROJECT_VERSION: "2"
     # Baked into Info.plist so the app goes straight to your server on first launch.
     NOVACONNECT_DEFAULT_SERVER_URL: "https://10.0.0.102"
+packages:
+  MediasoupClient:
+    url: https://github.com/VLprojects/mediasoup-client-swift.git
+    exactVersion: 0.13.2
 targets:
   NovaConnect:
     type: application
@@ -26,6 +30,9 @@ targets:
         SWIFT_VERSION: "5.0"
 
   NovaConnectNative:
+    dependencies:
+      - package: MediasoupClient
+        product: Mediasoup
     type: application
     platform: iOS
     sources:
@@ -36,7 +43,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.novaconnect.native
         INFOPLIST_FILE: Native/Info.plist
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "15"
+        CURRENT_PROJECT_VERSION: "16"
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

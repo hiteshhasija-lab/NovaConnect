@@ -47,6 +47,33 @@ import Security
         let file = try JSONDecoder().decode(PreviewMessage.self, from: Data(#"{"user_id":7,"author_name":"Eva Hasija","body":""}"#.utf8))
         XCTAssertEqual(file.summary(currentUserID: 7), "You: Attachment")
     }
+    func testCallAcknowledgementContract() {
+        let ack = SocketAcknowledgement.parse(#"4312[{"ok":true,"id":"call-id"}]"#)
+        XCTAssertEqual(ack?.id, 12)
+        XCTAssertEqual(ack?.payload["id"] as? String, "call-id")
+        XCTAssertNil(SocketAcknowledgement.parse("43[]"))
+        XCTAssertNil(SocketAcknowledgement.parse("431[]"))
+        XCTAssertNil(SocketAcknowledgement.parse("42[\"presence:update\",{}]"))
+        XCTAssertEqual(SocketAcknowledgement.parse(#"433[{"ok":false,"error":"Offline"}]"#)?.payload["ok"] as? Bool, false)
+    }
+    func testIncomingAudioCallEndsOnlyForMatchingCall() async {
+        let calls = NativeCalls(), live = LiveConnection()
+        calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": "a", "title": "Eva", "mode": "audio"]), live: live)
+        XCTAssertTrue(calls.visible); XCTAssertTrue(calls.incoming)
+        XCTAssertEqual(calls.title, "Eva")
+        calls.event(LiveEvent(name: "gcall:ended", payload: ["id": "other"]), live: live)
+        XCTAssertTrue(calls.visible)
+        calls.event(LiveEvent(name: "gcall:ended", payload: ["id": "a"]), live: live)
+        XCTAssertFalse(calls.visible); XCTAssertFalse(calls.incoming)
+    }
+    func testCallDisconnectClearsIncomingControls() {
+        let calls = NativeCalls(), live = LiveConnection()
+        calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": "a", "mode": "audio"]), live: live)
+        calls.disconnected()
+        XCTAssertFalse(calls.incoming)
+        XCTAssertNotNil(calls.error)
+        XCTAssertEqual(calls.phase, "Call ended")
+    }
     func testUTCDateDecoding() {
         XCTAssertNotNil(Timeline.date("2026-09-30 14:00:00"))
         XCTAssertNil(Timeline.date("not a date"))

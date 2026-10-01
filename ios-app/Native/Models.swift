@@ -96,3 +96,15 @@ struct LiveEvent {
         return LiveEvent(name: name, payload: array.count > 1 ? (array[1] as? [String: Any] ?? [:]) : [:])
     }
 }
+
+struct SocketAcknowledgement {
+    let id: Int
+    let payload: [String: Any]
+    static func parse(_ frame: String) -> SocketAcknowledgement? {
+        guard frame.hasPrefix("43"), let bracket = frame.firstIndex(of: "["),
+              let id = Int(frame[frame.index(frame.startIndex, offsetBy: 2)..<bracket]),
+              let array = try? JSONSerialization.jsonObject(with: Data(frame[bracket...].utf8)) as? [[String: Any]],
+              let payload = array.first else { return nil }
+        return SocketAcknowledgement(id: id, payload: payload)
+    }
+}

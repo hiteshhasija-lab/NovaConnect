@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (15). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (16). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -124,3 +124,13 @@ Build 14 compiled for iPhone; installation is held for the companion server depl
 ## Build 15 — slightly roomier chat list
 
 Conversation-row insets increased from 5 to 7 points at the top and bottom. Message spacing inside conversations and font sizes remain unchanged.
+
+## Build 16 — foreground native audio-call preview
+
+Chat headers expose audio calling through existing gcall and SFU signaling. Incoming audio calls while the app is open show Answer/Decline. Native media handles microphone capture, remote audio, mute, speaker and hang-up. Socket requests now support acknowledgments, timeout errors and disconnect cleanup. Returning from the microphone permission prompt does not restart a healthy socket. This is an unverified audio preview until a two-account iPhone/web call confirms both directions.
+
+Calls end when this preview enters the background or loses its live connection. There is no CallKit, push/incoming background ringing, video support or native meeting UI yet. Bluetooth routing and interruptions require physical-device validation. Do not claim full calling parity. No server changes are required for this preview.
+
+Dependency: MIT-licensed VLprojects/mediasoup-client-swift 0.13.2 (revision a3206f704fb2f13390c74df45dba692a1c8a5598), with upstream binary Mediasoup and WebRTC frameworks, pinned by Package.resolved and artifact SHA-256 checksums. See https://github.com/VLprojects/mediasoup-client-swift. Review all bundled WebRTC third-party license/privacy requirements before distribution.
+
+Xcode initially stalled while downloading binary artifacts. Official release archives were downloaded directly and their SHA-256 checksums verified against Package.swift, then placed in SwiftPM's artifact cache. Normal project package resolution subsequently succeeded. The temporary verification project is not required for the app.

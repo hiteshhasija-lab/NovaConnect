@@ -7,15 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		017C50F7A80EA1753F05490A /* Mediasoup-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = BBF3F37050139ACCAF44678C /* Mediasoup-LICENSE.txt */; };
 		03C39D978AFE2265E78E22F7 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA24AAF2B2640E82AE4DA11 /* RootView.swift */; };
 		0FB33E18043914848E61F7DF /* NovaConnectApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57B3CE1A466B265AC5E44CF /* NovaConnectApp.swift */; };
 		1579EC543BEE847CEB933749 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649990D44622D280C68CF60D /* APIClient.swift */; };
 		302B0C69B56FF60734CC0CF6 /* LiveConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33003A350FD2941CD2A999D8 /* LiveConnection.swift */; };
+		385BBB4571767C3597F29AA6 /* CallMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7D3473DB84CE81DF952005 /* CallMedia.swift */; };
 		3E5FE43021D4C84FC54D5BFA /* NativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1ABE149FA30E5B44418795A /* NativeApp.swift */; };
 		50D3C6ADD458C36846A5AF85 /* NovaConnectLabCA.der in Resources */ = {isa = PBXBuildFile; fileRef = CFA2B14E4C0D5680F52B3C68 /* NovaConnectLabCA.der */; };
 		54F0969E4C21BD3057EE04B7 /* LabServer.der in Resources */ = {isa = PBXBuildFile; fileRef = 82909264C40572BF614E2B9A /* LabServer.der */; };
 		5C8A6F64ED06929C016F3F27 /* SessionVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57FC946D8B62668276BE09D /* SessionVault.swift */; };
 		6972434330DD91A947F03BD4 /* ChatViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5CCFF53BD7F613C3409E58 /* ChatViews.swift */; };
+		6B364667FDE6E2B33313F02F /* NativeCalls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EB8BF934E680062E2A8A306 /* NativeCalls.swift */; };
 		7487EF7A8C6D71949A79F550 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CE85314EBAA698DC93CAD1 /* WebView.swift */; };
 		7E87C141C78919468F4F8C27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 362575A534DEA60B869216E4 /* Assets.xcassets */; };
 		9EC0FD8190AC6BAFAB715AB6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A087DE0D21024F09CAD43EB /* PrivacyInfo.xcprivacy */; };
@@ -26,6 +29,7 @@
 		B9454AB6ED1EE8C5B37058CF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 362575A534DEA60B869216E4 /* Assets.xcassets */; };
 		BCBD6205B70DFEB640ED10A6 /* NativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9AB3E1FDD903740A6A7A67E /* NativeTests.swift */; };
 		CE488D40EF40FB60AD0FF628 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCF5ED369CC35B21B9E32AF /* Models.swift */; };
+		F8C523D104423CE7B95116F7 /* Mediasoup in Frameworks */ = {isa = PBXBuildFile; productRef = 0F56FFB3EBF4096799DA4B7A /* Mediasoup */; };
 		FBFA06B76FF9D26E62FF8ED6 /* LabCA.der in Resources */ = {isa = PBXBuildFile; fileRef = 8A6D52D34224F9085FD0450C /* LabCA.der */; };
 /* End PBXBuildFile section */
 
@@ -56,15 +60,29 @@
 		8A6D52D34224F9085FD0450C /* LabCA.der */ = {isa = PBXFileReference; path = LabCA.der; sourceTree = "<group>"; };
 		8F5CCFF53BD7F613C3409E58 /* ChatViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViews.swift; sourceTree = "<group>"; };
 		914E08FD4DCC274E1ABFF87E /* NovaConnectNative.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NovaConnectNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9EB8BF934E680062E2A8A306 /* NativeCalls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCalls.swift; sourceTree = "<group>"; };
 		A9AB3E1FDD903740A6A7A67E /* NativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTests.swift; sourceTree = "<group>"; };
+		BBF3F37050139ACCAF44678C /* Mediasoup-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Mediasoup-LICENSE.txt"; sourceTree = "<group>"; };
 		C1ABE149FA30E5B44418795A /* NativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeApp.swift; sourceTree = "<group>"; };
 		C7CE85314EBAA698DC93CAD1 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
 		CFA2B14E4C0D5680F52B3C68 /* NovaConnectLabCA.der */ = {isa = PBXFileReference; path = NovaConnectLabCA.der; sourceTree = "<group>"; };
 		DBBA81EFB8BA6CC243ED2B8E /* ReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReliabilityTests.swift; sourceTree = "<group>"; };
+		EF7D3473DB84CE81DF952005 /* CallMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallMedia.swift; sourceTree = "<group>"; };
 		F265FA793D37390CC5150047 /* ServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSettings.swift; sourceTree = "<group>"; };
 		F57B3CE1A466B265AC5E44CF /* NovaConnectApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NovaConnectApp.swift; sourceTree = "<group>"; };
 		F57FC946D8B62668276BE09D /* SessionVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionVault.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F1FAD63457130A8494833878 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F8C523D104423CE7B95116F7 /* Mediasoup in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0CE29CECA1D3389070F930E2 = {
@@ -123,13 +141,16 @@
 			isa = PBXGroup;
 			children = (
 				649990D44622D280C68CF60D /* APIClient.swift */,
+				EF7D3473DB84CE81DF952005 /* CallMedia.swift */,
 				5EA9D3B14AB44869E8524857 /* ChatReliability.swift */,
 				8F5CCFF53BD7F613C3409E58 /* ChatViews.swift */,
 				4AE57AF60B08F4C57A702204 /* DirectoryViews.swift */,
 				3CFAC97AC733AA6A85E0B23F /* Info.plist */,
 				33003A350FD2941CD2A999D8 /* LiveConnection.swift */,
+				BBF3F37050139ACCAF44678C /* Mediasoup-LICENSE.txt */,
 				3BCF5ED369CC35B21B9E32AF /* Models.swift */,
 				C1ABE149FA30E5B44418795A /* NativeApp.swift */,
+				9EB8BF934E680062E2A8A306 /* NativeCalls.swift */,
 				CFA2B14E4C0D5680F52B3C68 /* NovaConnectLabCA.der */,
 				7A087DE0D21024F09CAD43EB /* PrivacyInfo.xcprivacy */,
 				F57FC946D8B62668276BE09D /* SessionVault.swift */,
@@ -146,6 +167,7 @@
 			buildPhases = (
 				EF85139E11EA3DB88351ABB7 /* Sources */,
 				20CA08277EFCDEF7E007898F /* Resources */,
+				F1FAD63457130A8494833878 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -153,6 +175,7 @@
 			);
 			name = NovaConnectNative;
 			packageProductDependencies = (
+				0F56FFB3EBF4096799DA4B7A /* Mediasoup */,
 			);
 			productName = NovaConnectNative;
 			productReference = 914E08FD4DCC274E1ABFF87E /* NovaConnectNative.app */;
@@ -221,6 +244,9 @@
 			);
 			mainGroup = 0CE29CECA1D3389070F930E2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A30FBA542F3C1724B4E9633E /* XCRemoteSwiftPackageReference "mediasoup-client-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C0845C107F68147100C4BF06 /* Products */;
 			projectDirPath = "";
@@ -239,6 +265,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9454AB6ED1EE8C5B37058CF /* Assets.xcassets in Resources */,
+				017C50F7A80EA1753F05490A /* Mediasoup-LICENSE.txt in Resources */,
 				50D3C6ADD458C36846A5AF85 /* NovaConnectLabCA.der in Resources */,
 				9EC0FD8190AC6BAFAB715AB6 /* PrivacyInfo.xcprivacy in Resources */,
 			);
@@ -289,12 +316,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				1579EC543BEE847CEB933749 /* APIClient.swift in Sources */,
+				385BBB4571767C3597F29AA6 /* CallMedia.swift in Sources */,
 				B7FD9F5CAF53E8A77E2C4832 /* ChatReliability.swift in Sources */,
 				6972434330DD91A947F03BD4 /* ChatViews.swift in Sources */,
 				AD901985CCD64A31743D21F3 /* DirectoryViews.swift in Sources */,
 				302B0C69B56FF60734CC0CF6 /* LiveConnection.swift in Sources */,
 				CE488D40EF40FB60AD0FF628 /* Models.swift in Sources */,
 				3E5FE43021D4C84FC54D5BFA /* NativeApp.swift in Sources */,
+				6B364667FDE6E2B33313F02F /* NativeCalls.swift in Sources */,
 				5C8A6F64ED06929C016F3F27 /* SessionVault.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -394,7 +423,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				INFOPLIST_FILE = Native/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -500,7 +529,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				INFOPLIST_FILE = Native/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -591,6 +620,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A30FBA542F3C1724B4E9633E /* XCRemoteSwiftPackageReference "mediasoup-client-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/VLprojects/mediasoup-client-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.13.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0F56FFB3EBF4096799DA4B7A /* Mediasoup */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A30FBA542F3C1724B4E9633E /* XCRemoteSwiftPackageReference "mediasoup-client-swift" */;
+			productName = Mediasoup;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6DC1954080D50A79682ACC17 /* Project object */;
 }
