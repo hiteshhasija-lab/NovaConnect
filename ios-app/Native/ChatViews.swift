@@ -110,6 +110,8 @@ struct ChatTimeline: View {
     let scope: String
     let id: Int
     let title: String
+    @State private var botThinking = false
+    @State private var thinkingTimer: Task<Void, Never>?
     @State private var chatPerson: Person?
     @State private var messages: [Message] = []
     @State private var draft = ""
@@ -143,6 +145,7 @@ struct ChatTimeline: View {
                     ForEach(messages) { message in
                         messageView(message).id(message.id)
                     }
+                    if botThinking { HStack { Spacer(); BotThinkingBubble() }.id("bot-thinking") }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { atBottom = true; showNewMessages = false }
                         .onDisappear { atBottom = false }
@@ -152,6 +155,7 @@ struct ChatTimeline: View {
             .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom)
             .refreshable { await load() }
+            .onChange(of: botThinking) { _, value in if value && atBottom { proxy.scrollTo("bottom", anchor: .bottom) } }
             .onChange(of: messages.last?.id) { _, last in
                 if last != nil {
                     if atBottom || scrollAfterSend {
@@ -216,7 +220,20 @@ struct ChatTimeline: View {
             }
             .task { active = true; draft = session.drafts[draftKey] ?? ""; await load() }
             .onChange(of: draft) { _, value in if editing == nil { session.drafts[draftKey] = value } }
-            .onDisappear { active = false; AttachmentCache.remove(previewURL) }
+            .onDisappear { active = false; thinkingTimer?.cancel(); botThinking = false; AttachmentCache.remove(previewURL) }
+            .onChange(of: session.live.connected) { _, connected in if !connected { thinkingTimer?.cancel(); botThinking = false } }
+            .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
+                guard let event = notification.object as? LiveEvent, event.name == "bot:thinking",
+                      event.payload["scope"] as? String == scope, event.payload["id"] as? Int == id else { return }
+                thinkingTimer?.cancel()
+                botThinking = event.payload["thinking"] as? Bool == true
+                if botThinking {
+                    thinkingTimer = Task {
+                        do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
+                        botThinking = false
+                    }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate).filter { notification in
                 guard let event = notification.object as? LiveEvent else { return true }
                 return ["message:new", "message:update", "message:delete", "reaction:update"].contains(event.name)
@@ -262,6 +279,9 @@ struct ChatTimeline: View {
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
                     }
                     Text((try? AttributedString(markdown: content.body, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content.body)).textSelection(.enabled)
+                    if let metadata = message.metadata {
+                        WorkflowCard(metadata: metadata, messageID: message.id, scope: scope, chatID: id) { await load() }
+                    }
                     ForEach(message.attachments) { attachment in
                         Button { Task { await download(attachment) } } label: {
                             Label(attachment.original_name, systemImage: "doc").font(.subheadline).lineLimit(2)

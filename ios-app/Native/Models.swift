@@ -39,6 +39,7 @@ private extension String { var nonEmpty: String? { isEmpty ? nil : self } }
 struct Reaction: Decodable, Identifiable { var id: String { emoji }; let emoji: String; let count: Int; let mine: Bool }
 struct Attachment: Decodable, Identifiable { let id: Int; let original_name: String; let mime_type: String?; let size: Int? }
 struct Message: Decodable, Identifiable {
+    var metadata: [String: CardValue]? = nil
     let id: Int
     let body: String
     let author: Person

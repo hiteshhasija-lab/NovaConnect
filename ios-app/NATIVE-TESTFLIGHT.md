@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (28). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (29). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -37,7 +37,7 @@ Passwords are used for login only, never saved. Session cookies are stored in Ke
 - Meeting scheduling/invitation management, join-link workflows and calendar editing.
 - Complete team/channel creation/deletion, membership roles and moderation, admin/user settings.
 - Message forwarding, full server search, pinned/scheduled messages, old thread navigation, report/block controls, rich message metadata and workflow approval cards.
-- Native decommission messages use existing server trigger logic, but interactive approval/confirmation cards are not implemented. Do not use this preview as the sole operational client.
+- Native decommission cards are implemented in build29; physical workflow acceptance remains pending. Existing server authorization and NovaDesk workflow rules govern actions.
 - Large attachment streaming/progress, S3 redirect support, richer media rendering.
 - End-to-end tests against the staging server with two accounts, revoked permissions, network loss/reconnect, keyboard/VoiceOver/Dynamic Type, compact iPhone/iPad and both appearances. Current unit tests do not establish that parity.
 - App Store privacy disclosures covering account information, messages, attachments and diagnostics. Privacy manifest currently declares this target's UserDefaults use; complete the full product review before distribution.
@@ -196,3 +196,9 @@ Bottom navigation is Chat, Calendar, Teams, People, More. Calendar opens the exi
 ## Build 28 — restore Activity tab
 
 Restored Activity before Chat, retaining Calendar immediately after Chat and all existing Teams, People and More destinations. Uses native TabView overflow on devices where all six destinations cannot be shown directly.
+
+## Build 29 — native decommission workflow cards
+
+Decode message metadata and render approval/rejection details, Complete/Skip CTASKs, Skip all checks, final destruction/cancellation checkpoint and terminal summary. Resolved approval cards retain full details with Approved/Rejected labels; original message body and separate confirmation messages remain intact. Existing authenticated /api/decom routes receive the same context as web. Busy/submitted controls prevent repeat taps; errors are displayed and status is reloaded from the server rather than fabricated locally. Permanent destruction and power-back-on require confirmation, matching web behavior.
+
+Scoped bot:thinking events render a three-dot processing bubble, cleared by the stop event, disconnect, navigation, or 30-second safety timeout. Reduce Motion shows static dots. Tests cover metadata preservation, numeric IDs, resolved/unknown action rejection, DM/channel action context and summary fields. No live workflow actions were executed during testing. No server deployment is required for these native additions.
