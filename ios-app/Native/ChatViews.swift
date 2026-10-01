@@ -174,6 +174,15 @@ struct ChatTimeline: View {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left").frame(width: 44, height: 44).novaGlass(in: Circle(), interactive: true)
                     }.accessibilityLabel("Back to chats")
+                    if let chatPerson {
+                        PersonAvatar(person: chatPerson, size: 32, showsPresence: false)
+                    } else {
+                        Text(title.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.blue)
+                            .frame(width: 32, height: 32)
+                            .background(Color.blue.opacity(0.12), in: Circle())
+                            .accessibilityHidden(true)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title).font(.headline).lineLimit(2)
                         if let chatPerson {

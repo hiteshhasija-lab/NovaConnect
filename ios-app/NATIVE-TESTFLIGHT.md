@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (24). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (25). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -180,3 +180,7 @@ Replaced auto-grouped navigation toolbar content with a safe-area header: back c
 ## Build 24 — shared native glass chrome
 
 Shared Liquid Glass surfaces and glass button styles on iOS26+, with material/bordered fallbacks on iOS17–25. Applies to chat filters, independent call/back controls, composer input/attachment/send, message actions, call controls, sign-in/profile actions and Gemini composer. Native tabs, navigation, menus and sheets retain system glass styling. Message bodies and form content remain solid for readability. Reduce Transparency/increased contrast use opaque surfaces; Reduce Motion disables custom interactive glass. No call, API or messaging behavior changes.
+
+## Build 25 — chat identity avatar
+
+Circular 32pt avatar precedes the chat header name. Direct chats use the existing authenticated profile-photo loader with initials fallback. Group/channel or loading states use title initials. The header omits the separate avatar presence symbol to preserve name width; presence remains below the name. Other avatar placements retain their status badges.

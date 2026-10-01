@@ -157,6 +157,7 @@ struct PersonAvatar: View {
     @State private var photo: UIImage?
     let person: Person
     var size: CGFloat = 46
+    var showsPresence = true
     var body: some View {
         HStack(alignment: .bottom, spacing: 3) {
             ZStack {
@@ -164,14 +165,17 @@ struct PersonAvatar: View {
                 if let photo { Image(uiImage: photo).resizable().scaledToFill() }
                 else { Text(person.initials).font(.system(size: size * 0.34, weight: .bold)) }
             }.frame(width: size, height: size).clipShape(Circle())
+            if showsPresence {
             Image(systemName: presenceSymbol)
                 .font(.system(size: size <= 32 ? 12 : 14, weight: .bold))
                 .foregroundStyle(presenceColor)
                 .frame(width: size <= 32 ? 14 : 16, height: size <= 32 ? 14 : 16)
                 .accessibilityLabel(person.status ?? "Offline")
+            }
         }
         .fixedSize()
         .task(id: "\(person.id):\(session.photoRevision)") {
+            photo = nil
             guard let api = session.api else { return }
             do { photo = UIImage(data: try await api.data(api.request("/api/profile-photo/\(person.id)"))) }
             catch { photo = nil }
