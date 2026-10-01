@@ -179,7 +179,7 @@ struct ChatTimeline: View {
                         Image(systemName: "chevron.left").frame(width: 44, height: 44).novaGlass(in: Circle(), interactive: true)
                     }.accessibilityLabel("Back to chats")
                     if let chatPerson {
-                        PersonAvatar(person: chatPerson, size: 36, showsPresence: false)
+                        PersonAvatar(person: chatPerson, size: 36, overlaysPresence: true)
                     } else {
                         Text(title.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
                             .font(.system(size: 13, weight: .bold)).foregroundStyle(.blue)

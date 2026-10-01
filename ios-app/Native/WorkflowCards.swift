@@ -85,7 +85,11 @@ struct WorkflowCard: View {
                 case "decom_confirm_destroy":
                     Text("\(metadata.text("changeNumber")) — \(metadata.text("ciName"))").font(.headline)
                     if pending {
-                        Text("This permanently destroys the VM and releases its storage. This cannot be undone.").foregroundStyle(.red)
+                        Text("This permanently destroys the VM and releases its storage. This cannot be undone.")
+                            .foregroundStyle(.red)
+                            .lineLimit(nil).multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         action("Confirm Destroy", "confirm-destroy", destructive: true)
                         action("Cancel and power back on", "cancel-destroy")
                     } else { Text(status == "cancelled" ? "Cancelled — powered back on" : status.capitalized).font(.subheadline.bold()) }
@@ -94,7 +98,8 @@ struct WorkflowCard: View {
                 if busy { ProgressView("Submitting…") }
                 else if submitted && pending { Text("Submitted. Waiting for the workflow update…").font(.caption) }
                 if let failure { Text(failure).font(.caption).foregroundStyle(.red) }
-            }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            }.lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
                 .confirmationDialog(confirmation == "confirm-destroy" ? "Permanently destroy \(metadata.text("ciName"))? This cannot be undone." : "Cancel destruction and power the VM back on?", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), titleVisibility: .visible) {
                     if let confirmation { Button(confirmation == "confirm-destroy" ? "Permanently destroy" : "Power back on", role: confirmation == "confirm-destroy" ? .destructive : nil) { Task { await submit(confirmation) } } }

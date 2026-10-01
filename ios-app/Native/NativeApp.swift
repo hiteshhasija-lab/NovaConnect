@@ -159,6 +159,7 @@ struct PersonAvatar: View {
     let person: Person
     var size: CGFloat = 46
     var showsPresence = true
+    var overlaysPresence = false
     var body: some View {
         HStack(alignment: .bottom, spacing: 3) {
             ZStack {
@@ -166,12 +167,21 @@ struct PersonAvatar: View {
                 if let photo { Image(uiImage: photo).resizable().scaledToFill() }
                 else { Text(person.initials).font(.system(size: size * 0.34, weight: .bold)) }
             }.frame(width: size, height: size).clipShape(Circle())
-            if showsPresence {
+            if showsPresence && !overlaysPresence {
             Image(systemName: presenceSymbol)
                 .font(.system(size: size <= 32 ? 12 : 14, weight: .bold))
                 .foregroundStyle(presenceColor)
                 .frame(width: size <= 32 ? 14 : 16, height: size <= 32 ? 14 : 16)
                 .accessibilityLabel(person.status ?? "Offline")
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if showsPresence && overlaysPresence {
+                Image(systemName: presenceSymbol)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(presenceColor)
+                    .frame(width: 16, height: 16)
+                    .background(Color(uiColor: .systemBackground), in: Circle())
             }
         }
         .fixedSize()

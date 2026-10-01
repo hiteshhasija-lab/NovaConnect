@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (29). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (30). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -202,3 +202,9 @@ Restored Activity before Chat, retaining Calendar immediately after Chat and all
 Decode message metadata and render approval/rejection details, Complete/Skip CTASKs, Skip all checks, final destruction/cancellation checkpoint and terminal summary. Resolved approval cards retain full details with Approved/Rejected labels; original message body and separate confirmation messages remain intact. Existing authenticated /api/decom routes receive the same context as web. Busy/submitted controls prevent repeat taps; errors are displayed and status is reloaded from the server rather than fabricated locally. Permanent destruction and power-back-on require confirmation, matching web behavior.
 
 Scoped bot:thinking events render a three-dot processing bubble, cleared by the stop event, disconnect, navigation, or 30-second safety timeout. Reduce Motion shows static dots. Tests cover metadata preservation, numeric IDs, resolved/unknown action rejection, DM/channel action context and summary fields. No live workflow actions were executed during testing. No server deployment is required for these native additions.
+
+## Build 30 — complete workflow warning
+
+Workflow cards expand vertically at their available width. The permanent-destruction warning explicitly allows unlimited lines with vertical intrinsic sizing so its full text remains visible on narrow screens and at larger text sizes. No workflow actions changed.
+
+Build 30 also restores a live presence badge at the bottom-right of the chat header avatar, including profile photos, within its existing footprint. Existing presence events refresh the contact.
