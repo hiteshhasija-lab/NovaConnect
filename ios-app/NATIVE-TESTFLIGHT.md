@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (14). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (15). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -120,3 +120,7 @@ More → Change profile picture uses the system photo picker, converts the selec
 Web My Profile accepts JPEG/PNG up to 5 MB. Photos are stored under LOCAL_UPLOAD_ROOT/profile-photos (default data/uploads/profile-photos), with one atomically replaced file per user. This directory must be persisted and included in backups; shared deployments must share that volume. This photo storage is local even when chat attachments use S3. No database migration or new dependency. Native channels already share the DM left/right layout.
 
 Build 14 compiled for iPhone; installation is held for the companion server deployment. Upload and photo display need authenticated user acceptance testing after deployment.
+
+## Build 15 — slightly roomier chat list
+
+Conversation-row insets increased from 5 to 7 points at the top and bottom. Message spacing inside conversations and font sizes remain unchanged.
