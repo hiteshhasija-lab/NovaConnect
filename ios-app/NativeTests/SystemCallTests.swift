@@ -22,6 +22,12 @@ import XCTest
 }
 
 @MainActor final class SystemCallTests: XCTestCase {
+    func testBuiltAppDeclaresCallKitBackgroundModes() {
+        let app = Bundle(for: SystemCalls.self)
+        let modes = app.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        XCTAssertTrue(modes.contains("voip"), "CallKit rejects transactions without the voip background mode.")
+        XCTAssertTrue(modes.contains("audio"), "Active calls require background audio.")
+    }
     private func incoming(_ calls: NativeCalls, id: String = "first") {
         calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": id, "title": "Eva", "mode": "audio"]), live: LiveConnection())
     }

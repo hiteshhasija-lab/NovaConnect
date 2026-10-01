@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (18). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (19). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -154,3 +154,7 @@ A paid Apple Developer team with Push Notifications enabled, APNs signing key an
 The server must store user-bound VoIP device tokens through authenticated registration, invalidate them on logout/reassignment and APNs rejection, and send short-lived call notifications only to authorized invitees. Push payloads must identify an actual incoming call and must not include message history or session credentials. The app must report the call to CallKit immediately, reconnect with its existing protected session, validate call membership/state and dismiss ended/answered-elsewhere calls. Add duplicate/stale delivery and logout tests before enabling push. This integration is not implemented or deployed in build 18.
 
 Reference: https://developer.apple.com/documentation/pushkit/responding-to-voip-notifications-from-pushkit
+
+## Build 19 — CallKit configuration correction
+
+Added the missing `voip` entry alongside `audio` in UIBackgroundModes. Apple identifies this omission as the common cause of CallKit requesttransaction error 1 (unentitled). Added a regression test that reads the built app bundle, not just the source plist. This does not enable APNs/PushKit delivery; incoming ringing while suspended still requires that separate integration.
