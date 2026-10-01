@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (32). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (33). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -216,3 +216,7 @@ An idle background transition signals the server before disconnecting, using a b
 
 ## Build 32 — full-screen video grid
 Replaces fixed190pt scrolling cards with edge-to-edge equal-height rows; two participants are side by side, more adapt to available screen proportions. Camera video fills/crops tiles; screen sharing retains aspect fit. Controls and call details overlay video; incoming and audio call controls unchanged. Physical multi-phone video/layout acceptance pending.
+
+
+## Build 33 — message alignment and inset self-video
+Own messages right, incoming left in shared DM/channel timeline; colors retained. One remote video fills screen, local camera in bottom-right inset clear of call controls. Multi-stream group calls retain adaptive grid. Signed build/device installation and physical acceptance tracked separately.

@@ -145,7 +145,7 @@ struct ChatTimeline: View {
                     ForEach(messages) { message in
                         messageView(message).id(message.id)
                     }
-                    if botThinking { HStack { Spacer(); BotThinkingBubble() }.id("bot-thinking") }
+                    if botThinking { HStack { BotThinkingBubble(); Spacer() }.id("bot-thinking") }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { atBottom = true; showNewMessages = false }
                         .onDisappear { atBottom = false }
@@ -264,7 +264,7 @@ struct ChatTimeline: View {
     private func messageView(_ message: Message) -> some View {
         let mine = message.author.id == session.user?.id
         return HStack(alignment: .top) {
-            if !mine { Spacer(minLength: 24) }
+            if mine { Spacer(minLength: 24) }
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(mine ? "You" : message.author.full_name).font(.caption.bold())
@@ -308,7 +308,7 @@ struct ChatTimeline: View {
                     }
                 }
             }
-            if mine { Spacer(minLength: 24) }
+            if !mine { Spacer(minLength: 24) }
         }
     }
     private var composer: some View {

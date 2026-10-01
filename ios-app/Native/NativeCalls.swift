@@ -260,7 +260,27 @@ struct NativeCallView: View {
             Button { Task { await calls.switchCamera() } } label: { Image(systemName: "arrow.triangle.2.circlepath.camera") }.accessibilityLabel("Switch camera").disabled(!calls.cameraOn || calls.cameraBusy)
         }
     }
-    private var videoGrid: some View {
+    @ViewBuilder private var videoGrid: some View {
+        if calls.videoParticipants.count <= 1 {
+            GeometryReader { geometry in
+                ZStack(alignment: .bottomTrailing) {
+                    if let person = calls.videoParticipants.first {
+                        tile(name: person.name, track: person.track, paused: person.paused, screen: person.source == "screen")
+                    } else {
+                        tile(name: "Waiting for participants", track: nil, paused: true)
+                    }
+                    tile(name: calls.cameraOn ? "You" : "You · Camera off", track: calls.localTrack, paused: !calls.cameraOn, mirrored: calls.frontCamera, labelInset: 6)
+                        .frame(width: min(140, geometry.size.width * 0.29), height: min(190, geometry.size.height * 0.28))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.5), lineWidth: 1))
+                        .shadow(radius: 8)
+                        .padding(.trailing, max(12, geometry.safeAreaInsets.trailing))
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + 88)
+                }.frame(width: geometry.size.width, height: geometry.size.height)
+            }
+        } else { participantGrid }
+    }
+    private var participantGrid: some View {
         GeometryReader { geometry in
             let count = max(1, calls.videoParticipants.count) + 1
             let columns = count == 2 ? 2 : max(2, Int(ceil(sqrt(Double(count) * Double(geometry.size.width / max(1, geometry.size.height))))))
@@ -285,7 +305,7 @@ struct NativeCallView: View {
             }.frame(width: geometry.size.width, height: geometry.size.height).background(.black)
         }
     }
-    private func tile(name: String, track: RTCVideoTrack?, paused: Bool, mirrored: Bool = false, screen: Bool = false) -> some View {
+    private func tile(name: String, track: RTCVideoTrack?, paused: Bool, mirrored: Bool = false, screen: Bool = false, labelInset: CGFloat = 88) -> some View {
         ZStack {
             Color.black
             if let track, !paused { CallVideoTile(track: track, mirrored: mirrored, fillsTile: !screen) }
@@ -294,7 +314,7 @@ struct NativeCallView: View {
             .overlay(alignment: .bottomLeading) {
                 Text(name).font(.caption).lineLimit(2).foregroundStyle(.white)
                     .padding(6).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
-                    .padding(.horizontal, 8).padding(.bottom, 88)
+                    .padding(.horizontal, 8).padding(.bottom, labelInset)
             }
             .accessibilityElement(children: .combine)
     }
