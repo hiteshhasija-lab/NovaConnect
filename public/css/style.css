@@ -720,3 +720,6 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 
 .user-avatar { position:relative; overflow:hidden; }
 .user-avatar > .profile-photo { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:inherit; }
+
+/* Profile forms can extend below the viewport, unlike the fixed chat workspace. */
+body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
