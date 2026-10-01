@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (7). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (8). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -84,3 +84,7 @@ Last-message previews show `You: …` for the signed-in user's messages and the 
 ## Build 7 — tighter message spacing
 
 Reduced the vertical gap between timeline messages from 12 to 8 points for direct, group and channel conversations. Font sizes and internal bubble padding remain unchanged.
+
+## Build 8 — automatic presence selection
+
+Selecting a presence sends the change immediately; the Update status button is removed. The picker follows server presence updates, prevents overlapping sends, and restores the confirmed status with an error if sending fails. The separate status-message save action remains unchanged.

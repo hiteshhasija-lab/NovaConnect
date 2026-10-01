@@ -107,6 +107,7 @@ struct NativeMore: View {
     @EnvironmentObject private var session: AppSession
     @AppStorage("native.appearance") private var appearance = "system"
     @State private var status = "online"
+    @State private var savingPresence = false
     @State private var statusMessage = ""
     @State private var feedback: String?
     @State private var error: String?
@@ -121,11 +122,20 @@ struct NativeMore: View {
                     }
                 }
                 Section("Your presence") {
-                    Picker("Status", selection: $status) {
+                    Picker("Status", selection: Binding(get: { status }, set: { selected in
+                        guard selected != status, !savingPresence else { return }
+                        let previous = status
+                        status = selected; savingPresence = true; error = nil
+                        Task {
+                            defer { savingPresence = false }
+                            do { try await session.live.presence(selected) }
+                            catch { status = session.user?.status ?? previous; self.error = error.localizedDescription }
+                        }
+                    })) {
                         Text("Available").tag("online"); Text("Busy").tag("busy"); Text("Do not disturb").tag("dnd")
                         Text("Be right back").tag("brb"); Text("Away").tag("away"); Text("Appear offline").tag("offline")
                     }
-                    Button("Update status") { Task { do { try await session.live.presence(status); feedback = "Status update sent."; error = nil } catch { self.error = error.localizedDescription } } }
+                    .disabled(savingPresence)
                     TextField("Status message", text: $statusMessage, axis: .vertical)
                     Button("Save status message") { Task { do {
                         try await session.api?.send("/api/profile/status-message", method: "PATCH", body: ["status_message": statusMessage, "clear_after": "today"])
@@ -149,6 +159,7 @@ struct NativeMore: View {
                     InlineError(text: session.error)
                 }
             }.navigationTitle("You").onAppear { status = session.user?.status ?? "online" }
+                .onChange(of: session.user?.status) { _, updated in if let updated { status = updated } }
                 .confirmationDialog("Sign out of NovaConnect?", isPresented: $confirmLogout) { Button("Sign out", role: .destructive) { Task { await session.logout() } } }
         }
     }
