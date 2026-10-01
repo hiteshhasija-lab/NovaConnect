@@ -37,7 +37,7 @@
   overflow: hidden; border: 1px solid #41618b;
   display: flex; flex-direction: column;
 }
-.nc-video-tile video { width: 100%; height: auto; aspect-ratio: 16/9; object-fit: cover; }
+.nc-video-tile video { width: 100%; height: auto; aspect-ratio: 16/9; object-fit: contain; }
 .nc-video-overlay {
   position: absolute; bottom: 0; left: 0; right: 0;
   padding: 12px; pointer-events: none;
@@ -286,7 +286,7 @@
    the stage like a shared screen, the rest are the side strip above. */
 .nc-focus-stage { position: relative; background: #000; }
 .nc-focus-stage .nc-video-tile { border: 0; border-radius: 0; height: 100%; }
-.nc-focus-stage .nc-video-tile video { min-height: 240px; object-fit: cover; background: #000; }
+.nc-focus-stage .nc-video-tile video { min-height: 240px; object-fit: contain; background: #000; }
 .nc-call-max .nc-focus-stage, .nc-call:fullscreen .nc-focus-stage { flex: 1; min-height: 0; }
 .nc-call-max .nc-focus-stage .nc-video-tile video, .nc-call:fullscreen .nc-focus-stage .nc-video-tile video { height: 100%; aspect-ratio: auto; }
 /* The pin button on a tile (call-extras.js decorate): shows on hover, stays while pinned. */
@@ -438,5 +438,8 @@
 .meet-videos .nc-gallery-more { border-radius: 10px; }
 #meetViewBtn { white-space: nowrap; }
 
-/* Camera frames fill the panel without distortion; shared screens retain contain. */
-.nc-call-video:not(.nc-call-presenting) .nc-call-grid .nc-video-tile video { object-fit:cover; }
+/* Preserve the entire camera frame at its natural ratio, including letterboxing. */
+.nc-call-video:not(.nc-call-presenting) .nc-call-grid .nc-video-tile video { object-fit:contain; }
+
+/* Never reflect camera video, including a retained local-preview class. */
+.nc-call video, .nc-call .nc-video-tile video.nc-video-local { transform:none; object-fit:contain; }

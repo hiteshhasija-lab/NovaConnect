@@ -14,7 +14,7 @@
 /* Before joining: live camera preview (meet-room.js showPreview), or "camera is off". */
 .meet-prejoin { position:relative;width:min(480px,100%);aspect-ratio:16/9;margin:12px 0 4px;border-radius:12px;overflow:hidden;background:#14243b; }
 .meet-prejoin[hidden] { display:none; }
-.meet-prejoin video { display:none;width:100%;height:100%;object-fit:cover;transform:scaleX(-1); }
+.meet-prejoin video { display:none;width:100%;height:100%;object-fit:cover;transform:none; }
 .meet-prejoin.on video { display:block; }
 .meet-prejoin-off { position:absolute;inset:0;display:flex;gap:8px;align-items:center;justify-content:center;color:#c9cde6; }
 .meet-prejoin.on .meet-prejoin-off { display:none; }
