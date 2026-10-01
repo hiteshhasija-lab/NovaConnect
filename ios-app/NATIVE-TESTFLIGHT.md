@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (27). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (28). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -192,3 +192,7 @@ Header avatar increased from 32pt to 36pt, including initials fallback. Separate
 ## Build 27 — Calendar tab
 
 Bottom navigation is Chat, Calendar, Teams, People, More. Calendar opens the existing scheduled-meetings view; Activity moves under More > Workspace to keep five visible tabs and preserve access. Calendar participation/scheduling capabilities are unchanged.
+
+## Build 28 — restore Activity tab
+
+Restored Activity before Chat, retaining Calendar immediately after Chat and all existing Teams, People and More destinations. Uses native TabView overflow on devices where all six destinations cannot be shown directly.

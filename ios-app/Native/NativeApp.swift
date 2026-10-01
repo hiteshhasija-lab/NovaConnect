@@ -142,6 +142,7 @@ struct NativeTabs: View {
     @State private var selection = 1
     var body: some View {
         TabView(selection: $selection) {
+            NavigationStack { ActivityView() }.tabItem { Label("Activity", systemImage: "bell") }.tag(0)
             ConversationList().tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
             NavigationStack { MeetingsView(title: "Calendar") }.tabItem { Label("Calendar", systemImage: "calendar") }.tag(5)
             TeamList().tabItem { Label("Teams", systemImage: "person.3") }.tag(2)
