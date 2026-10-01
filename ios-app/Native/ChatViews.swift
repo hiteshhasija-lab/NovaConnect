@@ -66,8 +66,9 @@ struct ConversationList: View {
                                         if conversation.is_unread == 1 { Circle().fill(.blue).frame(width: 7, height: 7).accessibilityLabel("Unread") }
                                     }
                                 }
-                            }.padding(.vertical, 2)
+                            }
                         }.listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                     }
                 }.listStyle(.plain)
                     .overlay { if !loaded && error == nil { ProgressView() } }
@@ -88,7 +89,7 @@ struct ConversationList: View {
                 }
             }
             .sheet(isPresented: $newChat) { PeopleList() }
-            .sheet(isPresented: $profile) { NativeMore() }
+            .sheet(isPresented: $profile) { PresenceSheet().presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
             .task { await load() }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate).filter { notification in
                 guard let event = notification.object as? LiveEvent else { return true }

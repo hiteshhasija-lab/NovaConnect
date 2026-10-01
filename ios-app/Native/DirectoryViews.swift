@@ -229,3 +229,46 @@ struct GeminiView: View {
         catch { self.error = error.localizedDescription }
     }
 }
+
+
+struct PresenceSheet: View {
+    @EnvironmentObject private var session: AppSession
+    @Environment(\.dismiss) private var dismiss
+    @State private var saving = false
+    @State private var error: String?
+    private let options: [(String, String, String, Color)] = [
+        ("online", "Available", "checkmark.circle.fill", .green),
+        ("busy", "Busy", "circle.fill", .red),
+        ("dnd", "Do not disturb", "minus.circle.fill", .red),
+        ("brb", "Be right back", "clock.fill", .orange),
+        ("away", "Away", "clock.fill", .orange),
+        ("offline", "Appear offline", "xmark.circle", .gray)
+    ]
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(options, id: \.0) { option in
+                    Button {
+                        saving = true; error = nil
+                        Task {
+                            defer { saving = false }
+                            do { try await session.live.presence(option.0); dismiss() }
+                            catch { self.error = error.localizedDescription }
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: option.2).foregroundStyle(option.3).frame(width: 22)
+                            Text(option.1).foregroundStyle(.primary)
+                            Spacer()
+                            if session.user?.status == option.0 { Image(systemName: "checkmark").foregroundStyle(.blue) }
+                        }.frame(minHeight: 36)
+                    }.disabled(saving)
+                    .accessibilityAddTraits(session.user?.status == option.0 ? .isSelected : [])
+                }
+                if let error { InlineError(text: error) }
+            }
+            .navigationTitle("Live status").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
