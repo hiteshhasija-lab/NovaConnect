@@ -24,3 +24,41 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
         SWIFT_VERSION: "5.0"
+
+  NovaConnectNative:
+    type: application
+    platform: iOS
+    sources:
+      - path: Native
+      - path: NovaConnect/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.novaconnect.native
+        INFOPLIST_FILE: Native/Info.plist
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "4"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+  NovaConnectNativeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [NativeTests]
+    dependencies:
+      - target: NovaConnectNative
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+schemes:
+  NovaConnectNative:
+    build:
+      targets:
+        NovaConnectNative: all
+        NovaConnectNativeTests: [test]
+    test:
+      targets: [NovaConnectNativeTests]
+    archive:
+      config: Release
