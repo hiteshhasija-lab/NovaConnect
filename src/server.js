@@ -91,6 +91,7 @@ const authLimiter = rateLimit({
   keyGenerator: (req) => req.ip,
 });
 app.use('/api/auth/login', authLimiter);
+app.use('/api/mobile/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
 app.set('view engine', 'ejs');
@@ -155,6 +156,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/mobile', require('./mobileSession').createMobileSessionRouter({ db: require('./db').db }));
 app.use('/', authRoutes);
 app.use('/app', appRoutes);
 app.use('/', require('./routes/membership'));
