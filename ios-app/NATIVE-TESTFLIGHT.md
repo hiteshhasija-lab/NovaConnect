@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (6). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (7). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -80,3 +80,7 @@ User confirmed build 4 light/dark mode, keyboard, attachments, two-account messa
 ## Build 6 — sender names in chat previews
 
 Last-message previews show `You: …` for the signed-in user's messages and the author's name for other messages, in direct and group chats. Reply previews use the reply text rather than the quoted original. Deleted messages retain the author prefix without exposing their former content; attachment-only messages show `Attachment`. Empty conversations retain `No messages yet`. Existing API author fields are used; no server changes are needed. All 15 simulator tests passed.
+
+## Build 7 — tighter message spacing
+
+Reduced the vertical gap between timeline messages from 12 to 8 points for direct, group and channel conversations. Font sizes and internal bubble padding remain unchanged.

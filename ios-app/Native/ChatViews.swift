@@ -133,7 +133,7 @@ struct ChatTimeline: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ConnectionStatus(live: session.live)
                     if hasMore { Button("Load earlier messages") { Task { await load(older: true) } }.disabled(busy).frame(maxWidth: .infinity) }
                     if loaded && messages.isEmpty { ContentUnavailableView("Start the conversation", systemImage: "bubble.left", description: Text("Send your first message below.")) }
