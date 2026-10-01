@@ -66,7 +66,7 @@ struct ConversationList: View {
                                         if conversation.is_unread == 1 { Circle().fill(.blue).frame(width: 7, height: 7).accessibilityLabel("Unread") }
                                     }
                                 }
-                            }.padding(.vertical, 7)
+                            }.padding(.vertical, 2)
                         }.listRowSeparator(.hidden)
                     }
                 }.listStyle(.plain)
@@ -133,7 +133,7 @@ struct ChatTimeline: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
+                LazyVStack(alignment: .leading, spacing: 12) {
                     ConnectionStatus(live: session.live)
                     if hasMore { Button("Load earlier messages") { Task { await load(older: true) } }.disabled(busy).frame(maxWidth: .infinity) }
                     if loaded && messages.isEmpty { ContentUnavailableView("Start the conversation", systemImage: "bubble.left", description: Text("Send your first message below.")) }

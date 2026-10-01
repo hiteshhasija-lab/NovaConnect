@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (10). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (11). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -100,3 +100,7 @@ Build 9 also reduces message gaps from 8 to 6 points, preserving text sizes and 
 Presence now occupies its own fixed-width space beside the avatar, instead of an overlay, preventing overlap with initials or neighboring profile text. Timeline message gaps are 4 points.
 
 The in-app Build section reads CFBundleShortVersionString and CFBundleVersion from the installed bundle, so subsequent builds display their actual version automatically.
+
+## Build 11 — correct chat-list density
+
+User clarified that reduced spacing applies between conversations in the chat list, not messages within a conversation. Chat-row vertical padding is reduced from 7 to 2 points per edge (4 points total custom padding). Timeline message spacing is restored to its original 12 points. Text sizes and preview content are unchanged.
