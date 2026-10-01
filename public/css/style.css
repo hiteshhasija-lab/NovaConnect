@@ -723,18 +723,3 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 
 /* Profile forms can extend below the viewport, unlike the fixed chat workspace. */
 body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
-
-/* Match the native timeline's 12-point inter-message spacing. Reserve the
-   action lane only for the active row instead of every message in history. */
-#messageList .msg-row,
-:root[data-density="compact"] #messageList .msg-row { padding-top:6px; padding-bottom:6px; }
-#messageList .msg-row:hover,
-#messageList .msg-row:focus-within,
-:root[data-density="compact"] #messageList .msg-row:hover,
-:root[data-density="compact"] #messageList .msg-row:focus-within { padding-top:42px; }
-@media(max-width:650px) {
-  #messageList .msg-row:hover,
-  #messageList .msg-row:focus-within,
-  :root[data-density="compact"] #messageList .msg-row:hover,
-  :root[data-density="compact"] #messageList .msg-row:focus-within { padding-top:70px; }
-}
