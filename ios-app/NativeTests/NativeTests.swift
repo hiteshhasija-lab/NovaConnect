@@ -38,6 +38,15 @@ import Security
         XCTAssertEqual(event?.name, "presence:update")
         XCTAssertEqual(event?.payload["status"] as? String, "dnd")
     }
+    func testChatPreviewIdentifiesSenderAndUsesReplyBody() throws {
+        let message = try JSONDecoder().decode(PreviewMessage.self, from: Data(#"{"user_id":7,"author_name":"Eva Hasija","body":"> Original message\n\nHello"}"#.utf8))
+        XCTAssertEqual(message.summary(currentUserID: 7), "You: Hello")
+        XCTAssertEqual(message.summary(currentUserID: 8), "Eva Hasija: Hello")
+        let deleted = try JSONDecoder().decode(PreviewMessage.self, from: Data(#"{"user_id":7,"author_name":"Eva Hasija","deleted":1,"body":"secret"}"#.utf8))
+        XCTAssertEqual(deleted.summary(currentUserID: 8), "Eva Hasija: This message was deleted")
+        let file = try JSONDecoder().decode(PreviewMessage.self, from: Data(#"{"user_id":7,"author_name":"Eva Hasija","body":""}"#.utf8))
+        XCTAssertEqual(file.summary(currentUserID: 7), "You: Attachment")
+    }
     func testUTCDateDecoding() {
         XCTAssertNotNil(Timeline.date("2026-09-30 14:00:00"))
         XCTAssertNil(Timeline.date("not a date"))

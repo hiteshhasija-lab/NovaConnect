@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (5). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (6). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -76,3 +76,7 @@ Still required to close Phase 1: two-account send/reply/edit/delete/reaction che
 Reading a native DM now sends the read receipt and clears the separate `is_unread` preference through the existing server APIs. A regression test verifies both requests and the Boolean preference payload. All 14 simulator tests passed; the signed iPhone build succeeded. No server changes are required.
 
 User confirmed build 4 light/dark mode, keyboard, attachments, two-account messaging, replies, edits, deletion and reactions. Unread correction awaits user verification in build 5. Native calling remains pending; the absence of a call button reflects missing media/signaling support, not a hidden existing feature.
+
+## Build 6 — sender names in chat previews
+
+Last-message previews show `You: …` for the signed-in user's messages and the author's name for other messages, in direct and group chats. Reply previews use the reply text rather than the quoted original. Deleted messages retain the author prefix without exposing their former content; attachment-only messages show `Attachment`. Empty conversations retain `No messages yet`. Existing API author fields are used; no server changes are needed. All 15 simulator tests passed.

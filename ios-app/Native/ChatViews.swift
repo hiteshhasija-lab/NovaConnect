@@ -61,7 +61,7 @@ struct ConversationList: View {
                                         }
                                     }
                                     HStack {
-                                        Text(conversation.last_message?.deleted == 1 ? "This message was deleted" : (conversation.last_message?.body ?? "No messages yet"))
+                                        Text(conversation.last_message?.summary(currentUserID: session.user?.id) ?? "No messages yet")
                                             .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                                         if conversation.is_unread == 1 { Circle().fill(.blue).frame(width: 7, height: 7).accessibilityLabel("Unread") }
                                     }

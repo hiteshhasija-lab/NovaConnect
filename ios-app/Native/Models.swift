@@ -22,7 +22,19 @@ struct Conversation: Decodable, Identifiable {
     let is_group: Int?
     var displayName: String { name ?? participants.map(\.full_name).joined(separator: ", ") }
 }
-struct PreviewMessage: Decodable { let body: String?; let created_at: String?; let deleted: Int? }
+struct PreviewMessage: Decodable {
+    let body: String?
+    let created_at: String?
+    let deleted: Int?
+    let user_id: Int?
+    let author_name: String?
+    func summary(currentUserID: Int?) -> String {
+        let sender = user_id != nil && user_id == currentUserID ? "You" : (author_name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Unknown sender")
+        let content = deleted == 1 ? "This message was deleted" : (QuotedBody(body ?? "").body.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Attachment")
+        return "\(sender): \(content)"
+    }
+}
+private extension String { var nonEmpty: String? { isEmpty ? nil : self } }
 struct Reaction: Decodable, Identifiable { var id: String { emoji }; let emoji: String; let count: Int; let mine: Bool }
 struct Attachment: Decodable, Identifiable { let id: Int; let original_name: String; let mime_type: String?; let size: Int? }
 struct Message: Decodable, Identifiable {
