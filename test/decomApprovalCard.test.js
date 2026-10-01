@@ -21,3 +21,14 @@ test('resolved cards do not wire action handlers', () => {
     context.wireDecomApprovalCard({ querySelector() { assert.fail('Resolved card must not wire actions'); } }, { metadata: { status } });
   }
 });
+test('CTASK action says Complete before action and Completed afterward', () => {
+  const first = source.indexOf('  function decomPrecheckTaskCardHtml(meta)');
+  const last = source.indexOf('  function wireDecomPrecheckTaskCard', first);
+  vm.runInContext(source.slice(first, last), context);
+  const pending = context.decomPrecheckTaskCardHtml({ status: 'pending', taskDescription: 'DNS cleanup' });
+  assert.match(pending, />Complete<\/button>/);
+  assert.match(pending, />Skip<\/button>/);
+  assert.doesNotMatch(pending, />Completed<\/button>/);
+  assert.match(context.decomPrecheckTaskCardHtml({ status: 'completed' }), /Completed/);
+  assert.match(context.decomPrecheckTaskCardHtml({ status: 'skipped' }), /Skipped/);
+});

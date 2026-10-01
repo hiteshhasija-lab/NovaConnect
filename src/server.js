@@ -171,6 +171,7 @@ app.use('/', require('./routes/meetings'));
 app.use('/', require('./routes/meet'));
 app.use('/api/decom', require('./routes/decom'));
 app.use('/profile', profileRoutes);
+app.use('/api/profile-photo', require('./routes/profilePhoto').createProfilePhotoRouter({ db: require('./db').db, requireAuth: require('./middleware/auth').requireAuth }));
 app.use('/admin', adminRoutes);
 
 app.use((req, res) => {

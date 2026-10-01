@@ -25,7 +25,7 @@
       <% if (currentUser) { %>
       <div class="dropdown">
         <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <span class="user-avatar"><%= h.initials(currentUser.full_name) %></span>
+          <span class="user-avatar"><%= h.initials(currentUser.full_name) %><img class="profile-photo" src="/api/profile-photo/<%= currentUser.id %>" alt=""></span>
           <span class="user-menu-name"><%= currentUser.full_name %></span>
         </a>
         <ul class="dropdown-menu dropdown-menu-end user-menu">

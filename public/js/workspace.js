@@ -177,7 +177,7 @@
   }
   function avatarHtml(user, size) {
     const style = 'background:' + avatarColor(user.id) + (size ? ';width:' + size + ';height:' + size : '');
-    return '<span class="user-avatar" style="' + style + '">' + initials(user.full_name) + '</span>';
+    return '<span class="user-avatar" style="' + style + '">' + initials(user.full_name) + '<img class="profile-photo" src="/api/profile-photo/' + Number(user.id) + '" alt=""></span>';
   }
   function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
   function api(url, opts) {
@@ -998,7 +998,7 @@
 
   function buildMessageRow(msg, grouped, isThreadReply) {
     const row = el(
-      '<div class="msg-row ' + (grouped ? 'grouped ' : '') + (state.active.type === 'dm' && !isThreadReply ? 'dm-bubble ' : '') + (Number(msg.author.id) === Number(NC.currentUser.id) ? 'msg-own' : 'msg-other') + '" data-id="' + msg.id + '">' +
+      '<div class="msg-row ' + (grouped ? 'grouped ' : '') + (!isThreadReply ? 'dm-bubble ' : '') + (Number(msg.author.id) === Number(NC.currentUser.id) ? 'msg-own' : 'msg-other') + '" data-id="' + msg.id + '">' +
         (grouped ? '<div class="msg-time-inline">' + fmtTime(msg.created_at) + '</div>' : '<div class="msg-avatar-slot msg-avatar-btn" role="button" tabindex="0">' + avatarHtml(msg.author) + '</div>') +
         '<div class="msg-body-col">' +
           (grouped ? '' : '<div class="msg-meta"><span class="msg-author msg-author-btn" role="button" tabindex="0">' + escapeHtml(msg.author.full_name) + '</span><span class="msg-time">' + fmtTime(msg.created_at) + '</span></div>') +
@@ -1263,7 +1263,7 @@
       '<div class="decom-card decom-card-neutral">' +
         '<div class="decom-card-title">' + taskName + ':</div>' +
         '<div class="decom-card-actions mt-2">' +
-          '<button type="button" class="btn btn-sm btn-success decom-task-complete-btn">Completed</button>' +
+          '<button type="button" class="btn btn-sm btn-success decom-task-complete-btn">Complete</button>' +
           '<button type="button" class="btn btn-sm btn-outline-secondary decom-task-skip-btn">Skip</button>' +
         '</div>' +
       '</div>'

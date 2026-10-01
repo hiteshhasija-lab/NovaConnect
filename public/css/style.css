@@ -648,7 +648,7 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 :root[data-density="compact"] .thread-panel .msg-row { padding-top:36px; }
 .msg-row .msg-actions { top:2px;max-width:calc(100% - 16px);flex-wrap:wrap;z-index:2; }
 .msg-row:focus-within .msg-actions { display:flex; }
-/* Direct and group chats use left/right bubbles; channel posts retain their layout. */
+/* Direct, group and channel conversations use left/right bubbles. */
 #messageList .dm-bubble { max-width:100%;background:transparent; }
 #messageList .dm-bubble .msg-body-col { flex:0 1 auto;min-width:0;max-width: min(78%, 850px); }
 #messageList .dm-bubble .msg-content { background:var(--surface-2);padding:10px 14px;border-radius:12px;overflow-wrap:anywhere; }
@@ -717,3 +717,6 @@ a.global-search-result { display: flex; flex-direction: column; align-items: fle
 #composer .composer-row:has(.has-reply) .composer-input { min-height:48px; }
 #composer .composer-row:has(.has-reply) .composer-reply-preview { width:min(100%,640px);box-sizing:border-box; }
 #composer .composer-row:has(.has-reply) #composerSendBtn { border-radius:0;background:transparent;color:var(--brand);border-left:1px solid var(--border); }
+
+.user-avatar { position:relative; overflow:hidden; }
+.user-avatar > .profile-photo { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:inherit; }

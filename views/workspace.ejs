@@ -27,13 +27,13 @@
     <div class="rail-bottom">
       <div class="dropdown dropup">
         <button class="rail-avatar-btn" data-bs-toggle="dropdown" aria-expanded="false" title="<%= currentUser.full_name %>">
-          <span class="user-avatar"><%= h.initials(currentUser.full_name) %></span>
+          <span class="user-avatar"><%= h.initials(currentUser.full_name) %><img class="profile-photo" src="/api/profile-photo/<%= currentUser.id %>" alt=""></span>
           <span class="presence-dot presence-online" id="myPresenceDot"></span>
         </button>
         <div class="dropdown-menu user-menu" id="userMenu">
           <div class="user-menu-panel" id="userMenuMain">
             <div class="user-menu-account">
-              <span class="user-avatar"><%= h.initials(currentUser.full_name) %></span>
+              <span class="user-avatar"><%= h.initials(currentUser.full_name) %><img class="profile-photo" src="/api/profile-photo/<%= currentUser.id %>" alt=""></span>
               <div class="user-menu-account-text">
                 <div class="user-menu-account-name"><%= currentUser.full_name %></div>
                 <div class="user-menu-account-email" id="userMenuEmail"></div>

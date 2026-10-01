@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (13). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (14). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -112,3 +112,11 @@ Chat rows now use explicit 3-point top/bottom list insets without extra vertical
 ## Build 13 — chat-list spacing adjustment
 
 Chat-row top/bottom insets increased slightly from 3 to 5 points per edge. Message spacing inside conversations is unchanged.
+
+## Build 14 — profile pictures (requires companion server deployment)
+
+More → Change profile picture uses the system photo picker, converts the selection to a JPEG up to 1024 pixels per side, and uploads through the authenticated profile-photo endpoint. Native avatars load through the authenticated API session and refresh after the current user uploads. Other users’ changed pictures refresh when avatar views reload.
+
+Web My Profile accepts JPEG/PNG up to 5 MB. Photos are stored under LOCAL_UPLOAD_ROOT/profile-photos (default data/uploads/profile-photos), with one atomically replaced file per user. This directory must be persisted and included in backups; shared deployments must share that volume. This photo storage is local even when chat attachments use S3. No database migration or new dependency. Native channels already share the DM left/right layout.
+
+Build 14 compiled for iPhone; installation is held for the companion server deployment. Upload and photo display need authenticated user acceptance testing after deployment.

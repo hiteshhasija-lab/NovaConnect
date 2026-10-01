@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct PeopleList: View {
     @EnvironmentObject private var session: AppSession
@@ -112,12 +113,17 @@ struct NativeMore: View {
     @State private var feedback: String?
     @State private var error: String?
     @State private var confirmLogout = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var uploadingPhoto = false
     var body: some View {
         NavigationStack {
             Form {
                 if let user = session.user {
                     Section {
                         HStack(spacing: 12) { PersonAvatar(person: user); VStack(alignment: .leading) { Text(user.full_name).font(.headline); Text("@\(user.username)").foregroundStyle(.secondary) } }
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label(uploadingPhoto ? "Uploading picture…" : "Change profile picture", systemImage: "photo")
+                        }.disabled(uploadingPhoto)
                         ConnectionStatus(live: session.live)
                     }
                 }
@@ -157,6 +163,25 @@ struct NativeMore: View {
                     Text("Native calling, push notifications, meeting participation and administrative screens are still in development. This build is not yet ready for TestFlight.").font(.footnote).foregroundStyle(.secondary)
                     Button("Sign out", role: .destructive) { confirmLogout = true }
                     InlineError(text: session.error)
+                }
+            }.onChange(of: selectedPhoto) { _, item in
+                guard let item else { return }
+                uploadingPhoto = true
+                Task {
+                    defer { uploadingPhoto = false; selectedPhoto = nil }
+                    do {
+                        guard let api = session.api, let data = try await item.loadTransferable(type: Data.self),
+                              let original = UIImage(data: data) else { throw APIError(message: "Unable to open this picture.") }
+                        let scale = min(1, 1024 / max(original.size.width, original.size.height))
+                        let size = CGSize(width: original.size.width * scale, height: original.size.height * scale)
+                        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+                        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in original.draw(in: CGRect(origin: .zero, size: size)) }
+                        guard let jpeg = image.jpegData(compressionQuality: 0.85) else { throw APIError(message: "Unable to prepare this picture.") }
+                        let file = try AttachmentCache.write(jpeg, filename: "profile.jpg")
+                        defer { AttachmentCache.remove(file) }
+                        try await api.upload("/api/profile-photo", text: "", file: file)
+                        session.photoRevision += 1; feedback = "Profile picture updated."; error = nil
+                    } catch { self.error = error.localizedDescription }
                 }
             }.navigationTitle("You").onAppear { status = session.user?.status ?? "online" }
                 .onChange(of: session.user?.status) { _, updated in if let updated { status = updated } }
