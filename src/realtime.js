@@ -8,10 +8,15 @@ let io = null;
 let endAllCalls = async () => {}; // set in attach(): ends running calls cleanly on shutdown
 // userId -> Set of live socket ids. A user counts as "online" while this set is non-empty.
 const onlineSockets = new Map();
-// userId -> pending setTimeout for the debounced "went offline" transition, so a quick
-// page refresh (disconnect immediately followed by reconnect) doesn't flash offline.
-const offlineTimers = new Map();
-const OFFLINE_GRACE_MS = 4000;
+const { createPresenceGrace } = require('./presence-grace');
+const presenceGrace = createPresenceGrace({
+  isConnected: id => !!onlineSockets.get(id)?.size,
+  readPreference: async id => (await db.prepare('SELECT presence_preference FROM users WHERE id = ?').get(id))?.presence_preference,
+  write: async (id, status, lastSeen) => {
+    await db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run(status, lastSeen, id);
+    await broadcastPresence(id, status);
+  }
+});
 
 async function roomsForUser(userId) {
   const channels = await db.prepare(`
@@ -130,14 +135,12 @@ function attach(server, sessionMiddleware) {
     const userId = socket.user.id;
 
     (async () => {
-      if (offlineTimers.has(userId)) {
-        clearTimeout(offlineTimers.get(userId));
-        offlineTimers.delete(userId);
-      }
+      const settledPresence = presenceGrace.reconnect(userId);
       const wasOffline = !onlineSockets.has(userId) || onlineSockets.get(userId).size === 0;
       if (!onlineSockets.has(userId)) onlineSockets.set(userId, new Set());
       onlineSockets.get(userId).add(socket.id);
 
+      await settledPresence;
       const { channelRooms, dmRooms } = await roomsForUser(userId);
       channelRooms.forEach(r => socket.join(r));
       dmRooms.forEach(r => socket.join(r));
@@ -171,20 +174,18 @@ function attach(server, sessionMiddleware) {
         .catch((err) => console.error('presence:set failed:', err.message));
     });
 
+    // The native app sends this before closing its idle background socket.
+    // It never changes the user's explicit presence preference.
+    socket.on('presence:background', (_payload, ack) => {
+      socket.backgroundPresence = true;
+      if (typeof ack === 'function') ack({ ok: true });
+    });
     socket.on('disconnect', () => {
       const set = onlineSockets.get(userId);
       if (!set) return;
       set.delete(socket.id);
-      if (set.size === 0) {
-        const timer = setTimeout(() => {
-          offlineTimers.delete(userId);
-          if ((onlineSockets.get(userId) || new Set()).size > 0) return;
-          db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run('offline', nowStr(), userId)
-            .then(() => broadcastPresence(userId, 'offline'))
-            .catch((err) => console.error('offline transition failed:', err.message));
-        }, OFFLINE_GRACE_MS);
-        offlineTimers.set(userId, timer);
-      }
+      if (set.size === 0) presenceGrace.disconnect(userId, socket.backgroundPresence === true,
+        err => console.error('offline transition failed:', err.message));
     });
   });
 

@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (30). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (31). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -208,3 +208,7 @@ Scoped bot:thinking events render a three-dot processing bubble, cleared by the 
 Workflow cards expand vertically at their available width. The permanent-destruction warning explicitly allows unlimited lines with vertical intrinsic sizing so its full text remains visible on narrow screens and at larger text sizes. No workflow actions changed.
 
 Build 30 also restores a live presence badge at the bottom-right of the chat header avatar, including profile photos, within its existing footprint. Existing presence events refresh the contact.
+
+
+## Build 31 — background presence grace
+An idle background transition signals the server before disconnecting, using a brief iOS background task to finish signaling. Server1.0.163 reports Away for two minutes then Offline, retaining the actual disconnect time as last seen. Explicit DND/Appear Offline remain respected; preferences are not overwritten. Other connected sessions keep their presence. Reopening reconnects and restores the chosen preference; pending disconnect writes settle before restoration. Active calls retain their existing background connection. No push delivery or continuous background execution is added. If lifecycle signaling cannot reach the server, normal offline behavior remains. Requires server1.0.163 deployment. All18 server tests and signed device build passed; physical background acceptance remains pending.

@@ -74,8 +74,8 @@ import SwiftUI
             }
             .onChange(of: phase) { _, next in
                 if next != .inactive { session.calls.setForeground(next == .active) }
-                if next == .active, session.user != nil, !session.live.connected, let api = session.api { session.live.start(api) }
-                if next == .background, !session.calls.keepsConnection { session.live.stop() }
+                if next == .active, session.user != nil, (!session.live.connected || !session.calls.keepsConnection), let api = session.api { session.live.start(api) }
+                if next == .background, !session.calls.keepsConnection { session.live.enterBackground() }
             }
         }
     }
@@ -91,7 +91,7 @@ struct CallRoot: View {
     var body: some View {
         NativeTabs().fullScreenCover(isPresented: $calls.visible) { NativeCallView(calls: calls) }
             .onChange(of: calls.keepsConnection) { _, active in
-                if !active, UIApplication.shared.applicationState == .background { live.stop() }
+                if !active, UIApplication.shared.applicationState == .background { live.enterBackground() }
             }
             .onChange(of: live.connected) { _, connected in if !connected { calls.disconnected() } }
     }

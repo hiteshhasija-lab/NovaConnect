@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 // Engine.IO v4 / Socket.IO default namespace, text events only. Media signaling is not implemented here.
 @MainActor final class LiveConnection: ObservableObject {
@@ -84,6 +85,17 @@ import Foundation
         guard connected, let socket else { throw APIError(message: "Wait until the live connection is restored.") }
         let data = try JSONSerialization.data(withJSONObject: ["presence:set", ["status": value]])
         try await socket.send(.string("42" + String(decoding: data, as: UTF8.self)))
+    }
+    // Brief execution time only to deliver the lifecycle event, never a keepalive.
+    func enterBackground() {
+        let token = generation
+        let taskID = UIApplication.shared.beginBackgroundTask(withName: "Presence update")
+        Task {
+            defer { if taskID != .invalid { UIApplication.shared.endBackgroundTask(taskID) } }
+            if connected { _ = try? await request("presence:background") }
+            guard generation == token else { return }
+            stop()
+        }
     }
     func stop() {
         generation = UUID(); failPending()
