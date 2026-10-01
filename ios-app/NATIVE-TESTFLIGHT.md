@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (9). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (10). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -94,3 +94,9 @@ Selecting a presence sends the change immediately; the Update status button is r
 Presence badges sit outside the lower-right avatar edge with reserved layout space and a background ring. Initials scale with avatar size, preventing the compact chat-header profile badge from covering them or adjacent text.
 
 Build 9 also reduces message gaps from 8 to 6 points, preserving text sizes and internal bubble padding.
+
+## Build 10 — non-overlapping presence and 4-point message gaps
+
+Presence now occupies its own fixed-width space beside the avatar, instead of an overlay, preventing overlap with initials or neighboring profile text. Timeline message gaps are 4 points.
+
+The in-app Build section reads CFBundleShortVersionString and CFBundleVersion from the installed bundle, so subsequent builds display their actual version automatically.

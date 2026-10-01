@@ -153,7 +153,7 @@ struct NativeMore: View {
                     Picker("Theme", selection: $appearance) { Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark") }
                 }
                 Section {
-                    LabeledContent("Build", value: "Native preview 0.1")
+                    LabeledContent("Build", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"))")
                     Text("Native calling, push notifications, meeting participation and administrative screens are still in development. This build is not yet ready for TestFlight.").font(.footnote).foregroundStyle(.secondary)
                     Button("Sign out", role: .destructive) { confirmLogout = true }
                     InlineError(text: session.error)

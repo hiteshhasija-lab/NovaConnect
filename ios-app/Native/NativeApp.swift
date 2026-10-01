@@ -136,20 +136,20 @@ struct PersonAvatar: View {
     let person: Person
     var size: CGFloat = 46
     var body: some View {
-        Text(person.initials).font(.system(size: size * 0.34, weight: .bold))
-            .frame(width: size, height: size)
-            .background(Color.blue.opacity(0.12), in: Circle())
-            .overlay(alignment: .bottomTrailing) {
-                Image(systemName: presenceSymbol).font(.system(size: size <= 32 ? 12 : 14, weight: .bold))
-                    .foregroundStyle(presenceColor)
-                    .padding(2).background(.background, in: Circle())
-                    .offset(x: 5, y: 5)
-                    .accessibilityLabel(person.status ?? "Offline")
-            }
-            .padding(.trailing, 5).padding(.bottom, 5)
-            .fixedSize()
-            .accessibilityHidden(true)
+        HStack(alignment: .bottom, spacing: 3) {
+            Text(person.initials).font(.system(size: size * 0.34, weight: .bold))
+                .frame(width: size, height: size)
+                .background(Color.blue.opacity(0.12), in: Circle())
+            Image(systemName: presenceSymbol)
+                .font(.system(size: size <= 32 ? 12 : 14, weight: .bold))
+                .foregroundStyle(presenceColor)
+                .frame(width: size <= 32 ? 14 : 16, height: size <= 32 ? 14 : 16)
+                .accessibilityLabel(person.status ?? "Offline")
+        }
+        .fixedSize()
+        .accessibilityHidden(true)
     }
+
     private var presenceSymbol: String {
         switch person.status {
         case "online": return "checkmark.circle.fill"
