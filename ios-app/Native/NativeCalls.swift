@@ -37,7 +37,7 @@ import AVFoundation
             self.live = live; id = event.payload["id"] as? String; title = event.payload["title"] as? String ?? "Incoming call"
             incoming = true; visible = true; phase = "Incoming audio call"; error = nil
         } else if event.name == "gcall:ended", event.payload["id"] as? String == id { clean(); visible = false }
-        else if event.name == "sfu:new-producer", mediaReady, event.payload["kind"] as? String == "audio", let producer = event.payload["producerId"] as? String { receive(producer) }
+        else if event.name == "sfu:new-producer", mediaReady, event.payload["kind"] as? String == "audio", let producer = event.payload["producerId"] as? String, let peer = event.payload["peerId"] as? String { receive(producer, peer: peer) }
         else if event.name == "gcall:state", let call = event.payload["call"] as? [String: Any], call["id"] as? String == id, !incoming {
             phase = (call["count"] as? Int ?? 0) >= 2 ? "Connecting audio…" : "Calling…"
         } else if event.name == "sfu:producer-closed", let producer = event.payload["producerId"] as? String {
@@ -69,14 +69,14 @@ import AVFoundation
         mediaReady = true
         let resultProducers = try await live.request("sfu:get-producers", ["roomId": roomID])
         for producer in resultProducers["producers"] as? [[String: Any]] ?? [] {
-            if producer["kind"] as? String == "audio", let producerID = producer["producerId"] as? String { receive(producerID) }
+            if producer["kind"] as? String == "audio", let producerID = producer["producerId"] as? String, let peer = producer["peerId"] as? String { receive(producerID, peer: peer) }
         }
         if consuming.isEmpty { phase = "Calling…" }
     }
-    private func receive(_ producer: String) {
+    private func receive(_ producer: String, peer: String) {
         guard !consuming.contains(producer), let media else { return }
         consuming.insert(producer); let generation = token
-        Task { do { try await media.consume(producer); if generation == token { phase = "Audio call" } } catch { if generation == token { await fail(error.localizedDescription) } } }
+        Task { do { try await media.consume(producer, peerID: peer); if generation == token { phase = "Audio call" } } catch { if generation == token { await fail(error.localizedDescription) } } }
     }
     func toggleMute() { muted.toggle(); media?.mute(muted) }
     func toggleSpeaker() { do { try media?.speaker(!speaker); speaker.toggle() } catch { self.error = error.localizedDescription } }

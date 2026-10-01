@@ -47,13 +47,13 @@ final class CallMedia: NSObject, SendTransportDelegate, ReceiveTransportDelegate
             self.producer = try self.send?.createProducer(for: track, encodings: nil, codecOptions: nil, codec: nil, appData: "{}")
         }
     }
-    func consume(_ producerID: String) async throws {
+    func consume(_ producerID: String, peerID: String) async throws {
         let info: (String, Any)? = try await work {
             guard self.consumers[producerID] == nil, let receive = self.receive, let device = self.device else { return nil }
             return (receive.id, try Self.object(device.rtpCapabilities()))
         }
         guard let info else { return }
-        let result = try await signal("sfu:consume", ["roomId": room, "transportId": info.0, "producerId": producerID, "rtpCapabilities": info.1])
+        let result = try await signal("sfu:consume", ["roomId": room, "transportId": info.0, "producerId": producerID, "rtpCapabilities": info.1, "appData": ["sourcePeerId": peerID]])
         guard result["kind"] as? String == "audio", let id = result["id"] as? String, let rtp = result["rtpParameters"] else { return }
         try await work {
             guard let receive = self.receive else { return }

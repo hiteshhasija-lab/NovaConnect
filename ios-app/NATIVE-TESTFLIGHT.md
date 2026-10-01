@@ -3,10 +3,10 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (16). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (17). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
-Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
+Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
 
 ## Implemented initial native scope
 
@@ -134,3 +134,7 @@ Calls end when this preview enters the background or loses its live connection. 
 Dependency: MIT-licensed VLprojects/mediasoup-client-swift 0.13.2 (revision a3206f704fb2f13390c74df45dba692a1c8a5598), with upstream binary Mediasoup and WebRTC frameworks, pinned by Package.resolved and artifact SHA-256 checksums. See https://github.com/VLprojects/mediasoup-client-swift. Review all bundled WebRTC third-party license/privacy requirements before distribution.
 
 Xcode initially stalled while downloading binary artifacts. Official release archives were downloaded directly and their SHA-256 checksums verified against Package.swift, then placed in SwiftPM's artifact cache. Normal project package resolution subsequently succeeded. The temporary verification project is not required for the app.
+
+## Build 17 — audio producer lookup correction
+
+Pass the sender peer ID from both producer announcements and the initial producer list as `appData.sourcePeerId` when consuming audio. The server requires this alongside the producer ID; omitting it caused “Producer not found.” Device build and 18 simulator tests passed. Installed on both phones; two-way audio still requires device testing. No server changes.
