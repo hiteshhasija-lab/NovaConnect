@@ -289,7 +289,7 @@ struct ChatTimeline: View {
                 messages = page.messages; hasMore = page.has_more
             }
             loaded = true; error = nil
-            if active && scope == "dm", let last = messages.last, last.id > lastRead { try await api.send("/api/dm/\(id)/read", body: ["message_id": last.id]); lastRead = last.id }
+            if active && scope == "dm", let last = messages.last, last.id > lastRead { try await api.markConversationRead(id, through: last.id); lastRead = last.id }
         } catch {
             if (error as? APIError)?.statusCode == 403 { messages = []; hasMore = false }
             if !Task.isCancelled { self.error = error.localizedDescription }

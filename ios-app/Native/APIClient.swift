@@ -102,6 +102,10 @@ final class SameOriginDelegate: NSObject, URLSessionTaskDelegate {
     func send(_ path: String, method: String = "POST", body: [String: Any] = [:]) async throws {
         _ = try await data(request(path, method: method, body: body))
     }
+    func markConversationRead(_ id: Int, through messageID: Int) async throws {
+        try await send("/api/dm/\(id)/read", body: ["message_id": messageID])
+        try await send("/api/dm/\(id)/preferences", method: "PATCH", body: ["is_unread": false])
+    }
     func upload(_ path: String, text: String, file: URL) async throws {
         let access = file.startAccessingSecurityScopedResource()
         defer { if access { file.stopAccessingSecurityScopedResource() } }

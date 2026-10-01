@@ -82,6 +82,35 @@ private final class StubProtocol: URLProtocol {
         do { try await client.send("/api/dm/1/read"); XCTFail("Expected unauthorized") } catch {}
         XCTAssertTrue(source === client)
     }
+    func testReadingClearsUnreadPreferenceAfterReceipt() async throws {
+        let receipt = expectation(description: "read receipt")
+        let preference = expectation(description: "unread cleared")
+        StubProtocol.handler = { request in
+            var data = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open(); defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count <= 0 { break }; data.append(contentsOf: buffer.prefix(count))
+                }
+            }
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if request.url?.path == "/api/dm/7/read" {
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(body?["message_id"] as? Int, 42)
+                receipt.fulfill()
+            } else {
+                XCTAssertEqual(request.url?.path, "/api/dm/7/preferences")
+                XCTAssertEqual(request.httpMethod, "PATCH")
+                XCTAssertEqual(body?["is_unread"] as? Bool, false)
+                preference.fulfill()
+            }
+            return (200, Data("{}".utf8))
+        }
+        try await api().markConversationRead(7, through: 42)
+        await fulfillment(of: [receipt, preference], timeout: 1, enforceOrder: true)
+    }
     func testAttachmentFilenameCannotEscapeCache() throws {
         let file = try AttachmentCache.write(Data("test".utf8), filename: "../../outside.txt")
         XCTAssertEqual(file.lastPathComponent, "outside.txt")

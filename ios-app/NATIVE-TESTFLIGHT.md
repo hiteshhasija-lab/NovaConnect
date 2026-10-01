@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (4). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (5). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. No new third-party packages were added. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -70,3 +70,9 @@ Stabilization includes generation-guarded socket reconnection, queued timeline r
 Regression coverage adds overlapping history, reconnect gaps, invalid pagination, forbidden versus expired sessions, and attachment path containment. These are deterministic simulator tests, not two-account production validation.
 
 Still required to close Phase 1: two-account send/reply/edit/delete/reaction checks, real network loss and session expiry, revoked channel access, and physical-device keyboard, long-message, attachment, VoiceOver, large text, and light/dark appearance checks. Drafts are memory-only; app termination does not preserve them. No server deployment, remote push, or TestFlight upload is part of this build.
+
+## Build 5 — unread correction
+
+Reading a native DM now sends the read receipt and clears the separate `is_unread` preference through the existing server APIs. A regression test verifies both requests and the Boolean preference payload. All 14 simulator tests passed; the signed iPhone build succeeded. No server changes are required.
+
+User confirmed build 4 light/dark mode, keyboard, attachments, two-account messaging, replies, edits, deletion and reactions. Unread correction awaits user verification in build 5. Native calling remains pending; the absence of a call button reflects missing media/signaling support, not a hidden existing feature.
