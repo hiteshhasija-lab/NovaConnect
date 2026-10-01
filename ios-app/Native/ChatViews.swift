@@ -175,11 +175,11 @@ struct ChatTimeline: View {
                         Image(systemName: "chevron.left").frame(width: 44, height: 44).novaGlass(in: Circle(), interactive: true)
                     }.accessibilityLabel("Back to chats")
                     if let chatPerson {
-                        PersonAvatar(person: chatPerson, size: 32, showsPresence: false)
+                        PersonAvatar(person: chatPerson, size: 36, showsPresence: false)
                     } else {
                         Text(title.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.blue)
-                            .frame(width: 32, height: 32)
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(.blue)
+                            .frame(width: 36, height: 36)
                             .background(Color.blue.opacity(0.12), in: Circle())
                             .accessibilityHidden(true)
                     }
@@ -191,7 +191,7 @@ struct ChatTimeline: View {
                     }.frame(maxWidth: .infinity, alignment: .leading)
                         .layoutPriority(1).accessibilityElement(children: .combine)
                     if scope == "dm" {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 8) {
                             Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: {
                                 Image(systemName: "phone").frame(width: 44, height: 44)
                                     .novaGlass(in: Circle(), interactive: true)
