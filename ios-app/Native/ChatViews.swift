@@ -167,9 +167,15 @@ struct ChatTimeline: View {
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if scope == "dm" { Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: { Image(systemName: "phone") }.accessibilityLabel("Start audio call") }
-                    if scope == "dm" { Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: { Image(systemName: "video") }.accessibilityLabel("Start video call") }
+                if scope == "dm" {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live) } } label: { Image(systemName: "phone") }
+                            .accessibilityLabel("Start audio call").accessibilityIdentifier("chat.audioCall")
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { Task { await session.calls.start(conversationID: id, title: title, live: session.live, video: true) } } label: { Image(systemName: "video") }
+                            .accessibilityLabel("Start video call").accessibilityIdentifier("chat.videoCall")
+                    }
                 }
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 9) {

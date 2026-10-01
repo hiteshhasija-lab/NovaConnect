@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (20). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (21). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -164,3 +164,7 @@ Added the missing `voip` entry alongside `audio` in UIBackgroundModes. Apple ide
 Separate camera icon beside the audio icon starts video calls in direct/group chats. Incoming video calls use CallKit’s video indication; answering starts with camera off. The caller’s camera starts after microphone/camera permission and media setup. Native WebRTC video tiles show remote streams, names, camera-off placeholders and local preview. Camera on/off, front/back switching, mute, speaker and hang-up are available. Remote screen streams can be viewed; native screen broadcast is not implemented.
 
 Camera capture stops on backgrounding and call end; returning to the app does not automatically re-enable it. Permission denial preserves audio. Existing SFU signaling, memberships and auth remain unchanged, with no server deployment required. Physical two-phone video/audio, camera switching, remote pause, group participants, interruption and background checks remain required. APNs/PushKit, scheduled meeting participation and TestFlight are still separate pending work.
+
+## Build 21 — separate visible call toolbar items
+
+Moved audio and video actions out of a shared ToolbarItem into individual trailing toolbar items. Added accessibility identifiers for both actions. No media or server behavior changed.
