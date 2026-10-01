@@ -207,28 +207,37 @@ import WebRTC
 struct NativeCallView: View {
     @ObservedObject var calls: NativeCalls
     var body: some View {
+        Group {
+            if calls.video, !calls.incoming, calls.error == nil {
+                videoGrid.ignoresSafeArea()
+                    .overlay(alignment: .top) {
+                        VStack(spacing: 2) {
+                            Text(calls.title).font(.headline).lineLimit(2)
+                            Text(calls.phase).font(.caption)
+                            if let message = calls.cameraError { Text(message).font(.caption).foregroundStyle(.red) }
+                        }.padding(10).novaGlass(in: RoundedRectangle(cornerRadius: 16)).padding(8)
+                    }
+                    .overlay(alignment: .bottom) {
+                        HStack(spacing: 12) {
+                            audioControls
+                            cameraControls
+                            Button { Task { await calls.hangUp() } } label: {
+                                Label("Hang up", systemImage: "phone.down.fill")
+                            }.tint(.red)
+                        }.labelStyle(.iconOnly).novaGlassButtons()
+                            .padding(10).novaGlass(in: Capsule()).padding(8)
+                    }
+            } else { standardCall }
+        }.interactiveDismissDisabled()
+    }
+    private var standardCall: some View {
         VStack(spacing: 16) {
             Text(calls.title).font(.title2.bold()).multilineTextAlignment(.center)
             Text(calls.phase).foregroundStyle(.secondary)
             if let error = calls.error { Text(error).foregroundStyle(.red).multilineTextAlignment(.center) }
-            if calls.video, !calls.incoming, calls.error == nil {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], spacing: 12) {
-                        if calls.videoParticipants.isEmpty {
-                            tile(name: "Waiting for participants", track: nil, paused: true)
-                        }
-                        ForEach(calls.videoParticipants) { person in
-                            tile(name: person.name + (person.source == "screen" ? " · Screen" : ""), track: person.track, paused: person.paused)
-                        }
-                        tile(name: calls.cameraOn ? "You" : "You · Camera off", track: calls.localTrack, paused: !calls.cameraOn, mirrored: calls.frontCamera)
-                    }
-                }
-                if let message = calls.cameraError { Text(message).font(.footnote).foregroundStyle(.red) }
-            } else {
-                Spacer()
-                Image(systemName: calls.video ? "video.fill" : "phone.fill").font(.system(size: 48)).foregroundStyle(.blue)
-                Spacer()
-            }
+            Spacer()
+            Image(systemName: calls.video ? "video.fill" : "phone.fill").font(.system(size: 48)).foregroundStyle(.blue)
+            Spacer()
             if calls.incoming {
                 if calls.video { Text("Your camera stays off until you turn it on.").font(.footnote).foregroundStyle(.secondary) }
                 Button("Answer") { Task { await calls.answer() } }.novaGlassButtons(prominent: true)
@@ -251,14 +260,42 @@ struct NativeCallView: View {
             Button { Task { await calls.switchCamera() } } label: { Image(systemName: "arrow.triangle.2.circlepath.camera") }.accessibilityLabel("Switch camera").disabled(!calls.cameraOn || calls.cameraBusy)
         }
     }
-    private func tile(name: String, track: RTCVideoTrack?, paused: Bool, mirrored: Bool = false) -> some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Color.black
-                if let track, !paused { CallVideoTile(track: track, mirrored: mirrored) }
-                else { Image(systemName: "person.crop.circle.fill").font(.system(size: 48)).foregroundStyle(.white.opacity(0.8)) }
-            }.frame(height: 190).clipped()
-            Text(name).font(.caption).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading).padding(10)
-        }.background(Color(.secondarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 12)).accessibilityElement(children: .combine)
+    private var videoGrid: some View {
+        GeometryReader { geometry in
+            let count = max(1, calls.videoParticipants.count) + 1
+            let columns = count == 2 ? 2 : max(2, Int(ceil(sqrt(Double(count) * Double(geometry.size.width / max(1, geometry.size.height))))))
+            let rows = (count + columns - 1) / columns
+            VStack(spacing: 2) {
+                ForEach(0..<rows, id: \.self) { row in
+                    HStack(spacing: 2) {
+                        ForEach((row * columns)..<min(count, (row + 1) * columns), id: \.self) { index in
+                            Group {
+                            if index == count - 1 {
+                                tile(name: calls.cameraOn ? "You" : "You · Camera off", track: calls.localTrack, paused: !calls.cameraOn, mirrored: calls.frontCamera)
+                            } else if calls.videoParticipants.isEmpty {
+                                tile(name: "Waiting for participants", track: nil, paused: true)
+                            } else {
+                                let person = calls.videoParticipants[index]
+                                tile(name: person.name + (person.source == "screen" ? " · Screen" : ""), track: person.track, paused: person.paused, screen: person.source == "screen")
+                            }
+                            }.frame(width: max(1, (geometry.size.width - CGFloat(min(columns, count - row * columns) - 1) * 2) / CGFloat(min(columns, count - row * columns))), height: max(1, (geometry.size.height - CGFloat(rows - 1) * 2) / CGFloat(rows)))
+                        }
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }.frame(width: geometry.size.width, height: geometry.size.height).background(.black)
+        }
+    }
+    private func tile(name: String, track: RTCVideoTrack?, paused: Bool, mirrored: Bool = false, screen: Bool = false) -> some View {
+        ZStack {
+            Color.black
+            if let track, !paused { CallVideoTile(track: track, mirrored: mirrored, fillsTile: !screen) }
+            else { Image(systemName: "person.crop.circle.fill").font(.system(size: 48)).foregroundStyle(.white.opacity(0.8)) }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+            .overlay(alignment: .bottomLeading) {
+                Text(name).font(.caption).lineLimit(2).foregroundStyle(.white)
+                    .padding(6).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+                    .padding(.horizontal, 8).padding(.bottom, 88)
+            }
+            .accessibilityElement(children: .combine)
     }
 }

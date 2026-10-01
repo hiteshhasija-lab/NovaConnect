@@ -49,6 +49,7 @@ struct CallParticipant: Identifiable {
 struct CallVideoTile: UIViewRepresentable {
     let track: RTCVideoTrack
     var mirrored = false
+    var fillsTile = false
     final class Coordinator {
         var track: RTCVideoTrack?
     }
@@ -64,6 +65,7 @@ struct CallVideoTile: UIViewRepresentable {
             context.coordinator.track?.remove(view)
             track.add(view); context.coordinator.track = track
         }
+        view.videoContentMode = fillsTile ? .scaleAspectFill : .scaleAspectFit
         view.transform = mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity
     }
     static func dismantleUIView(_ view: RTCMTLVideoView, coordinator: Coordinator) {

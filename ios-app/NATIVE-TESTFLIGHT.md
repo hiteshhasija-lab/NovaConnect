@@ -3,7 +3,7 @@
 ## Targets
 
 - `NovaConnect`: original WKWebView client, unchanged and still available.
-- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (31). This separate ID avoids replacing the working phone installation during development.
+- `NovaConnectNative`: SwiftUI application, bundle `com.novaconnect.native`, version 0.1.0 (32). This separate ID avoids replacing the working phone installation during development.
 - `NovaConnectNativeTests`: native contracts/security/formatting tests.
 
 Generate the project from `project.yml` with XcodeGen. Native audio calls use the MIT-licensed mediasoup-client-swift 0.13.2 package and its WebRTC framework. The native target links no WebKit code and uses NavigationStack, TabView, native forms, Lists, file importer, Quick Look, and URLSession.
@@ -212,3 +212,7 @@ Build 30 also restores a live presence badge at the bottom-right of the chat hea
 
 ## Build 31 — background presence grace
 An idle background transition signals the server before disconnecting, using a brief iOS background task to finish signaling. Server1.0.163 reports Away for two minutes then Offline, retaining the actual disconnect time as last seen. Explicit DND/Appear Offline remain respected; preferences are not overwritten. Other connected sessions keep their presence. Reopening reconnects and restores the chosen preference; pending disconnect writes settle before restoration. Active calls retain their existing background connection. No push delivery or continuous background execution is added. If lifecycle signaling cannot reach the server, normal offline behavior remains. Requires server1.0.163 deployment. All18 server tests and signed device build passed; physical background acceptance remains pending.
+
+
+## Build 32 — full-screen video grid
+Replaces fixed190pt scrolling cards with edge-to-edge equal-height rows; two participants are side by side, more adapt to available screen proportions. Camera video fills/crops tiles; screen sharing retains aspect fit. Controls and call details overlay video; incoming and audio call controls unchanged. Physical multi-phone video/layout acceptance pending.
