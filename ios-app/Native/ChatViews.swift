@@ -68,7 +68,7 @@ struct ConversationList: View {
                                 }
                             }
                         }.listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
+                            .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                     }
                 }.listStyle(.plain)
                     .overlay { if !loaded && error == nil { ProgressView() } }

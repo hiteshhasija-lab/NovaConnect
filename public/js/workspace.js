@@ -1134,10 +1134,7 @@
   }
 
   function decomApprovalCardHtml(meta) {
-    if (meta.status !== 'pending') {
-      const label = meta.status === 'approved' ? 'Approved' : 'Rejected';
-      return '<div class="decom-card decom-card-' + meta.status + '"><i class="bi ' + (meta.status === 'approved' ? 'bi-check-circle-fill' : 'bi-x-circle-fill') + '"></i> ' + label + '</div>';
-    }
+    const resolved = meta.status !== 'pending';
     // plannedStart carries a UTC-Z ISO instant (see decomFlow.js) — formatted here, client-side,
     // so each viewer sees it in their own local timezone rather than the server's, same reasoning
     // as NovaDesk's own <time>+foot.ejs mechanism for record timestamps.
@@ -1158,8 +1155,8 @@
           row('Assigned To', meta.assignedTo) +
         '</div>' +
         '<div class="decom-card-actions">' +
-          '<button type="button" class="btn btn-sm btn-success decom-approve-btn">Approve</button>' +
-          '<button type="button" class="btn btn-sm btn-outline-danger decom-reject-btn">Reject</button>' +
+          '<button type="button" class="btn btn-sm btn-success decom-approve-btn"' + (resolved ? ' disabled' : '') + '>' + (meta.status === 'approved' ? 'Approved' : 'Approve') + '</button>' +
+          '<button type="button" class="btn btn-sm btn-outline-danger decom-reject-btn"' + (resolved ? ' disabled' : '') + '>' + (meta.status === 'rejected' ? 'Rejected' : 'Reject') + '</button>' +
           (meta.novadeskChangeUrl ? '<a href="' + escapeHtml(meta.novadeskChangeUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">View Change</a>' : '') +
         '</div>' +
       '</div>'
@@ -1167,6 +1164,7 @@
   }
 
   function wireDecomApprovalCard(box, msg) {
+    if (msg.metadata.status !== 'pending') return;
     const card = box.querySelector('.decom-card-pending');
     if (!card) return;
     const setBusy = (busy) => card.querySelectorAll('button').forEach(b => { b.disabled = busy; });
