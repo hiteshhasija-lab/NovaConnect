@@ -1,6 +1,6 @@
 // Serializes disconnect writes with reconnects so a late database write cannot
 // overwrite a newly connected user's presence. Does not alter their preference.
-function createPresenceGrace({ isConnected, readPreference, write, schedule = setTimeout, cancel = clearTimeout, now = () => new Date().toISOString() }) {
+function createPresenceGrace({ isConnected, write, schedule = setTimeout, cancel = clearTimeout, now = () => new Date().toISOString() }) {
   const states = new Map();
   const queues = new Map();
   function enqueue(id, work) {
@@ -21,17 +21,13 @@ function createPresenceGrace({ isConnected, readPreference, write, schedule = se
     const state = { lastSeen: now() };
     states.set(id, state);
     const valid = () => states.get(id) === state && !isConnected(id);
-    if (background) enqueue(id, async () => {
-      const preference = await readPreference(id);
-      if (valid()) await write(id, ['dnd', 'offline'].includes(preference) ? preference : 'away', state.lastSeen);
-    }).catch(onError);
     state.timer = schedule(() => {
       enqueue(id, async () => {
         if (!valid()) return;
         await write(id, 'offline', state.lastSeen);
         if (states.get(id) === state) states.delete(id);
       }).catch(onError);
-    }, background ? 120000 : 4000);
+    }, background ? 0 : 4000);
   }
   return { reconnect, disconnect };
 }

@@ -11,7 +11,6 @@ const onlineSockets = new Map();
 const { createPresenceGrace } = require('./presence-grace');
 const presenceGrace = createPresenceGrace({
   isConnected: id => !!onlineSockets.get(id)?.size,
-  readPreference: async id => (await db.prepare('SELECT presence_preference FROM users WHERE id = ?').get(id))?.presence_preference,
   write: async (id, status, lastSeen) => {
     await db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run(status, lastSeen, id);
     await broadcastPresence(id, status);

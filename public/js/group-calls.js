@@ -341,6 +341,7 @@
     // Gallery / Large gallery (gallery.js): lays out the call's tiles while nothing else has the stage.
     // Your own tile floats in the corner (callSelfTile) and isn't part of it.
     const gallery = createGallery({
+      fillFrame: true,
       grid,
       tiles: () => [...grid.querySelectorAll(':scope > .nc-video-tile')],
       active: () => !!current?.joined && !['nc-call-presenting', 'nc-call-focus', 'nc-call-together', 'nc-call-compact'].some(k => panel.classList.contains(k)),

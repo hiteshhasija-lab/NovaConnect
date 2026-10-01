@@ -195,8 +195,8 @@
   .nc-call-panel { right: 16px; left: 16px; width: auto; bottom: 72px; max-height: 50vh; }
   .nc-toolbar-group.nc-toolbar-participants { margin-left: 0; width: 100%; justify-content: flex-end; }
 }
-/* Your own camera in a group call, mirrored like the 1:1 preview */
-.nc-video-tile video.nc-video-local { transform: scaleX(-1); }
+/* Keep the web self-preview in its original camera orientation. */
+.nc-video-tile video.nc-video-local { transform: none; }
 
 /* View controls: maximize to fill the window, or go full screen */
 .nc-call-view { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
@@ -286,7 +286,7 @@
    the stage like a shared screen, the rest are the side strip above. */
 .nc-focus-stage { position: relative; background: #000; }
 .nc-focus-stage .nc-video-tile { border: 0; border-radius: 0; height: 100%; }
-.nc-focus-stage .nc-video-tile video { min-height: 240px; object-fit: contain; background: #000; }
+.nc-focus-stage .nc-video-tile video { min-height: 240px; object-fit: cover; background: #000; }
 .nc-call-max .nc-focus-stage, .nc-call:fullscreen .nc-focus-stage { flex: 1; min-height: 0; }
 .nc-call-max .nc-focus-stage .nc-video-tile video, .nc-call:fullscreen .nc-focus-stage .nc-video-tile video { height: 100%; aspect-ratio: auto; }
 /* The pin button on a tile (call-extras.js decorate): shows on hover, stays while pinned. */
@@ -437,3 +437,6 @@
 .nc-call-video .nc-call-grid .nc-gallery-more { border-radius: 0; }
 .meet-videos .nc-gallery-more { border-radius: 10px; }
 #meetViewBtn { white-space: nowrap; }
+
+/* Camera frames fill the panel without distortion; shared screens retain contain. */
+.nc-call-video:not(.nc-call-presenting) .nc-call-grid .nc-video-tile video { object-fit:cover; }

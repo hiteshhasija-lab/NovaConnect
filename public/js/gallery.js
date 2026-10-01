@@ -15,7 +15,7 @@
   const CAPS = { gallery: 9, large: 49 };
   const KEY = 'nc.galleryView';
 
-  window.createGallery = function ({ grid, tiles, active, fixedHeight = () => false, minTile = 150, tileHeight = w => w * 9 / 16, onViewChange = () => {} }) {
+  window.createGallery = function ({ grid, tiles, active, fixedHeight = () => false, minTile = 150, fillFrame = false, tileHeight = w => w * 9 / 16, onViewChange = () => {} }) {
     let view = (() => { try { return localStorage.getItem(KEY) === 'large' ? 'large' : 'gallery'; } catch { return 'gallery'; } })();
     let more = null, signature = '', scheduled = 0;
 
@@ -31,7 +31,8 @@
       scheduled = 0;
       if (!active()) { if (signature) clear(); return; }
       const list = tiles();
-      const box = grid.getBoundingClientRect();
+      // client dimensions are CSS pixels; bounding rectangles include the panel zoom.
+      const box = { width: grid.clientWidth, height: grid.clientHeight };
       const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
       const key = [view, Math.round(box.width), fixedHeight() ? Math.round(box.height) : 0, ...list.map(t => t.dataset.peerId + (videoOn(t) ? 'v' : '') + (speaking(t) ? 's' : ''))].join('|');
       if (key === signature) return;
@@ -71,8 +72,8 @@
         w = (W - gap * (cols - 1)) / cols;
       }
       w = Math.floor(Math.max(minTile * 0.6, w));
-      grid.style.gridTemplateColumns = 'repeat(' + cols + ', ' + w + 'px)';
-      grid.style.gridAutoRows = fixedHeight() ? Math.floor(tileHeight(w)) + 'px' : '';
+      grid.style.gridTemplateColumns = fillFrame ? 'repeat(' + cols + ', minmax(0, 1fr))' : 'repeat(' + cols + ', ' + w + 'px)';
+      grid.style.gridAutoRows = fixedHeight() ? (fillFrame ? 'minmax(0, 1fr)' : Math.floor(tileHeight(w)) + 'px') : '';
       grid.style.justifyContent = 'center'; grid.style.alignContent = 'center';
     }
     // The widest tile whose height (tileHeight) fits h.
