@@ -9,6 +9,17 @@ import AVFoundation
     @Published var muted = false
     @Published var speaker = false
     @Published var error: String?
+    @Published private(set) var active = false
+    @Published private(set) var pendingEndRequests = 0
+    var keepsConnection: Bool { active || pendingEndRequests > 0 }
+    private let system: SystemCalling
+    init(system: SystemCalling? = nil) {
+        self.system = system ?? SystemCalls()
+        self.system.answer = { [weak self] in await self?.performAnswer() ?? false }
+        self.system.end = { [weak self] in await self?.endCall() }
+        self.system.mute = { [weak self] value in self?.muted = value; self?.media?.mute(value) }
+        self.system.reset = { [weak self] in Task { if self?.active == true { await self?.fail("The system ended the call.") } } }
+    }
     private var id: String?
     private var token = UUID()
     private var media: CallMedia?
@@ -18,10 +29,12 @@ import AVFoundation
     private var mediaReady = false
     func start(conversationID: Int, title: String, live: LiveConnection) async {
         guard !visible else { return }
-        self.live = live; self.title = title; visible = true; phase = "Starting…"; error = nil
+        self.live = live; self.title = title; visible = true; active = true; phase = "Starting…"; error = nil
         let generation = token
         do {
             guard await AVAudioApplication.requestRecordPermission() else { throw APIError(message: "Allow microphone access in iPhone Settings to make calls.") }
+            guard generation == token else { return }
+            try await system.outgoing(title: title)
             guard generation == token else { return }
             let response = try await live.request("gcall:start", ["conversationId": conversationID, "mode": "audio"])
             guard let callID = response["id"] as? String else { throw APIError(message: "Invalid call response.") }
@@ -33,25 +46,37 @@ import AVFoundation
         } catch { if generation == token { await fail(error.localizedDescription) } }
     }
     func event(_ event: LiveEvent, live: LiveConnection) {
-        if event.name == "gcall:incoming", !visible, event.payload["mode"] as? String == "audio" {
-            self.live = live; id = event.payload["id"] as? String; title = event.payload["title"] as? String ?? "Incoming call"
-            incoming = true; visible = true; phase = "Incoming audio call"; error = nil
+        if event.name == "gcall:incoming", !visible, event.payload["mode"] as? String == "audio", let callID = event.payload["id"] as? String, !callID.isEmpty {
+            self.live = live; id = callID; title = event.payload["title"] as? String ?? "Incoming call"
+            incoming = true; visible = true; active = true; phase = "Incoming audio call"; error = nil
+            let generation = token
+            Task {
+                guard generation == token else { return }
+                do { try await system.incoming(title: title) }
+                catch { if generation == token { await fail("Unable to display the incoming call: " + error.localizedDescription) } }
+            }
         } else if event.name == "gcall:ended", event.payload["id"] as? String == id { clean(); visible = false }
         else if event.name == "sfu:new-producer", mediaReady, event.payload["kind"] as? String == "audio", let producer = event.payload["producerId"] as? String, let peer = event.payload["peerId"] as? String { receive(producer, peer: peer) }
         else if event.name == "gcall:state", let call = event.payload["call"] as? [String: Any], call["id"] as? String == id, !incoming {
-            phase = (call["count"] as? Int ?? 0) >= 2 ? "Connecting audio…" : "Calling…"
+            phase = !consuming.isEmpty ? "Audio call" : ((call["count"] as? Int ?? 0) >= 2 ? "Connecting audio…" : "Calling…")
         } else if event.name == "sfu:producer-closed", let producer = event.payload["producerId"] as? String {
             media?.remove(producer); consuming.remove(producer)
         }
         else if event.name == "gcall:ring-stop", event.payload["id"] as? String == id, incoming { clean(); visible = false }
     }
     func answer() async {
+        do { try await system.requestAnswer() }
+        catch { if active { await fail(error.localizedDescription) } }
+    }
+    private func performAnswer() async -> Bool {
+        guard active, incoming else { return false }
         let generation = token
         do {
             guard await AVAudioApplication.requestRecordPermission() else { throw APIError(message: "Microphone access is required. Enable it in Settings.") }
-            guard generation == token else { return }
+            guard generation == token else { return false }
             incoming = false; phase = "Connecting…"; try await join(generation)
-        } catch { if generation == token { await fail(error.localizedDescription) } }
+            return generation == token
+        } catch { if generation == token { await fail(error.localizedDescription) }; return false }
     }
     private func join(_ generation: UUID) async throws {
         guard let id, let live else { return }
@@ -66,6 +91,7 @@ import AVFoundation
         media = engine
         try await engine.start(room: roomID, capabilities: capabilities)
         guard generation == token else { engine.close(); return }
+        engine.mute(muted)
         mediaReady = true
         let resultProducers = try await live.request("sfu:get-producers", ["roomId": roomID])
         for producer in resultProducers["producers"] as? [[String: Any]] ?? [] {
@@ -76,18 +102,31 @@ import AVFoundation
     private func receive(_ producer: String, peer: String) {
         guard !consuming.contains(producer), let media else { return }
         consuming.insert(producer); let generation = token
-        Task { do { try await media.consume(producer, peerID: peer); if generation == token { phase = "Audio call" } } catch { if generation == token { await fail(error.localizedDescription) } } }
+        Task { do { try await media.consume(producer, peerID: peer); if generation == token { phase = "Audio call"; system.connected() } } catch { if generation == token { await fail(error.localizedDescription) } } }
     }
-    func toggleMute() { muted.toggle(); media?.mute(muted) }
+    func toggleMute() {
+        Task { do { try await system.requestMute(!muted) } catch { self.error = error.localizedDescription } }
+    }
     func toggleSpeaker() { do { try media?.speaker(!speaker); speaker.toggle() } catch { self.error = error.localizedDescription } }
     func hangUp() async {
-        let oldID = id; let connection = live; let wasIncoming = incoming
-        clean(); visible = false
-        if let oldID { _ = try? await connection?.request(wasIncoming ? "gcall:decline" : "gcall:leave", ["id": oldID]) }
+        guard active else { visible = false; error = nil; return }
+        do { try await system.requestEnd() }
+        catch { await endCall() }
     }
-    func disconnected() { guard visible else { return }; clean(); error = "The call ended because the connection was lost."; phase = "Call ended" }
-    private func fail(_ message: String) async { await hangUp(); error = message; phase = "Unable to connect"; visible = true }
-    private func clean() { token = UUID(); media?.close(); media = nil; id = nil; room = nil; mediaReady = false; consuming.removeAll(); incoming = false; muted = false; speaker = false }
+    private func endCall() async {
+        let oldID = id; let connection = live; let wasIncoming = incoming
+        if oldID != nil { pendingEndRequests += 1 }
+        clean(); visible = false
+        if let oldID {
+            Task {
+                _ = try? await connection?.request(wasIncoming ? "gcall:decline" : "gcall:leave", ["id": oldID])
+                pendingEndRequests -= 1
+            }
+        }
+    }
+    func disconnected() { guard active else { return }; system.finish(failed: true); clean(); error = "The call ended because the connection was lost."; phase = "Call ended" }
+    private func fail(_ message: String) async { system.finish(failed: true); await endCall(); error = message; phase = "Unable to connect"; visible = true }
+    private func clean() { system.finish(failed: false); active = false; token = UUID(); media?.close(); media = nil; id = nil; room = nil; mediaReady = false; consuming.removeAll(); incoming = false; muted = false; speaker = false }
 }
 
 struct NativeCallView: View {

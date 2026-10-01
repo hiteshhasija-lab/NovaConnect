@@ -33,9 +33,7 @@ final class CallMedia: NSObject, SendTransportDelegate, ReceiveTransportDelegate
               let recvID = incoming["id"] as? String, let recvICE = incoming["iceParameters"], let recvCandidates = incoming["iceCandidates"], let recvDTLS = incoming["dtlsParameters"] else { throw APIError(message: "Invalid audio transport response.") }
         try await work {
             guard !self.closed else { throw APIError(message: "Call closed.") }
-            let audio = AVAudioSession.sharedInstance()
-            try audio.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
-            try audio.setActive(true)
+            // SystemCalls owns audio activation through CallKit.
             let device = Device(pcFactory: self.factory); self.device = device
             try device.load(with: Self.json(capabilities))
             guard try device.canProduce(.audio) else { throw APIError(message: "Audio is not supported by this call server.") }
@@ -69,7 +67,6 @@ final class CallMedia: NSObject, SendTransportDelegate, ReceiveTransportDelegate
         self.track?.isEnabled = false; self.producer?.close(); self.producer = nil
         self.consumers.values.forEach { $0.close() }; self.consumers.removeAll()
         self.send?.close(); self.receive?.close(); self.send = nil; self.receive = nil; self.track = nil; self.device = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     } }
     func onConnect(transport: Transport, dtlsParameters: String) {
         Task { do { _ = try await signal("sfu:connect-transport", ["roomId": room, "transportId": transport.id, "dtlsParameters": Self.object(dtlsParameters)]) } catch { failed(error.localizedDescription) } }

@@ -20,6 +20,7 @@
 		6972434330DD91A947F03BD4 /* ChatViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5CCFF53BD7F613C3409E58 /* ChatViews.swift */; };
 		6B364667FDE6E2B33313F02F /* NativeCalls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EB8BF934E680062E2A8A306 /* NativeCalls.swift */; };
 		7487EF7A8C6D71949A79F550 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CE85314EBAA698DC93CAD1 /* WebView.swift */; };
+		79CB5F66A4273749073250A6 /* SystemCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C83A41C1E8A2E56E960F2D8E /* SystemCallTests.swift */; };
 		7E87C141C78919468F4F8C27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 362575A534DEA60B869216E4 /* Assets.xcassets */; };
 		9EC0FD8190AC6BAFAB715AB6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A087DE0D21024F09CAD43EB /* PrivacyInfo.xcprivacy */; };
 		AD901985CCD64A31743D21F3 /* DirectoryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AE57AF60B08F4C57A702204 /* DirectoryViews.swift */; };
@@ -29,6 +30,7 @@
 		B9454AB6ED1EE8C5B37058CF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 362575A534DEA60B869216E4 /* Assets.xcassets */; };
 		BCBD6205B70DFEB640ED10A6 /* NativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9AB3E1FDD903740A6A7A67E /* NativeTests.swift */; };
 		CE488D40EF40FB60AD0FF628 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCF5ED369CC35B21B9E32AF /* Models.swift */; };
+		F66624F74DF1C439E4458B80 /* SystemCalls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA5F914720E9DFF8001E3CC /* SystemCalls.swift */; };
 		F8C523D104423CE7B95116F7 /* Mediasoup in Frameworks */ = {isa = PBXBuildFile; productRef = 0F56FFB3EBF4096799DA4B7A /* Mediasoup */; };
 		FBFA06B76FF9D26E62FF8ED6 /* LabCA.der in Resources */ = {isa = PBXBuildFile; fileRef = 8A6D52D34224F9085FD0450C /* LabCA.der */; };
 /* End PBXBuildFile section */
@@ -44,6 +46,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0CA5F914720E9DFF8001E3CC /* SystemCalls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCalls.swift; sourceTree = "<group>"; };
 		2DB60155367AF5AA99F583B1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		33003A350FD2941CD2A999D8 /* LiveConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveConnection.swift; sourceTree = "<group>"; };
 		362575A534DEA60B869216E4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -65,6 +68,7 @@
 		BBF3F37050139ACCAF44678C /* Mediasoup-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Mediasoup-LICENSE.txt"; sourceTree = "<group>"; };
 		C1ABE149FA30E5B44418795A /* NativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeApp.swift; sourceTree = "<group>"; };
 		C7CE85314EBAA698DC93CAD1 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
+		C83A41C1E8A2E56E960F2D8E /* SystemCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCallTests.swift; sourceTree = "<group>"; };
 		CFA2B14E4C0D5680F52B3C68 /* NovaConnectLabCA.der */ = {isa = PBXFileReference; path = NovaConnectLabCA.der; sourceTree = "<group>"; };
 		DBBA81EFB8BA6CC243ED2B8E /* ReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReliabilityTests.swift; sourceTree = "<group>"; };
 		EF7D3473DB84CE81DF952005 /* CallMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallMedia.swift; sourceTree = "<group>"; };
@@ -122,6 +126,7 @@
 			children = (
 				A9AB3E1FDD903740A6A7A67E /* NativeTests.swift */,
 				DBBA81EFB8BA6CC243ED2B8E /* ReliabilityTests.swift */,
+				C83A41C1E8A2E56E960F2D8E /* SystemCallTests.swift */,
 				316E0C93159847050576CEAC /* Fixtures */,
 			);
 			path = NativeTests;
@@ -154,6 +159,7 @@
 				CFA2B14E4C0D5680F52B3C68 /* NovaConnectLabCA.der */,
 				7A087DE0D21024F09CAD43EB /* PrivacyInfo.xcprivacy */,
 				F57FC946D8B62668276BE09D /* SessionVault.swift */,
+				0CA5F914720E9DFF8001E3CC /* SystemCalls.swift */,
 			);
 			path = Native;
 			sourceTree = "<group>";
@@ -308,6 +314,7 @@
 			files = (
 				BCBD6205B70DFEB640ED10A6 /* NativeTests.swift in Sources */,
 				B52F6277B7785D7AD1F18B30 /* ReliabilityTests.swift in Sources */,
+				79CB5F66A4273749073250A6 /* SystemCallTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -325,6 +332,7 @@
 				3E5FE43021D4C84FC54D5BFA /* NativeApp.swift in Sources */,
 				6B364667FDE6E2B33313F02F /* NativeCalls.swift in Sources */,
 				5C8A6F64ED06929C016F3F27 /* SessionVault.swift in Sources */,
+				F66624F74DF1C439E4458B80 /* SystemCalls.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -423,7 +431,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				INFOPLIST_FILE = Native/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -529,7 +537,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				INFOPLIST_FILE = Native/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

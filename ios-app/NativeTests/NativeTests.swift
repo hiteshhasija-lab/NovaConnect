@@ -57,7 +57,7 @@ import Security
         XCTAssertEqual(SocketAcknowledgement.parse(#"433[{"ok":false,"error":"Offline"}]"#)?.payload["ok"] as? Bool, false)
     }
     func testIncomingAudioCallEndsOnlyForMatchingCall() async {
-        let calls = NativeCalls(), live = LiveConnection()
+        let calls = NativeCalls(system: FakeSystemCalls()), live = LiveConnection()
         calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": "a", "title": "Eva", "mode": "audio"]), live: live)
         XCTAssertTrue(calls.visible); XCTAssertTrue(calls.incoming)
         XCTAssertEqual(calls.title, "Eva")
@@ -67,7 +67,7 @@ import Security
         XCTAssertFalse(calls.visible); XCTAssertFalse(calls.incoming)
     }
     func testCallDisconnectClearsIncomingControls() {
-        let calls = NativeCalls(), live = LiveConnection()
+        let calls = NativeCalls(system: FakeSystemCalls()), live = LiveConnection()
         calls.event(LiveEvent(name: "gcall:incoming", payload: ["id": "a", "mode": "audio"]), live: live)
         calls.disconnected()
         XCTAssertFalse(calls.incoming)
