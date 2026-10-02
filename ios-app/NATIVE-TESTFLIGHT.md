@@ -234,3 +234,7 @@ No server changes are required. All 32 native unit/reliability tests passed and 
 Replaced the system tab overflow behavior with a compact seven-item bottom navigation bar: Activity, Chat, Calendar, Calls, Teams, People and More. Every destination remains directly visible on iPhone; Calls is never moved into More. Equal-width items use 17pt symbols, compact labels and reduced spacing. The bar hides while a conversation is open so the composer retains its full area.
 
 Calls opens a native searchable launcher built from the user’s existing direct and group chats. Each row shows the chat identity and live presence where applicable, with separate audio and video actions using the existing authenticated native call flow. It does not fabricate a separate call-history service; completed and missed call records remain in their conversations as before.
+
+## Build 36 — clearer bottom navigation
+
+Increased bottom navigation symbols from 17pt to 19pt and labels from 9.5pt to 10.5pt. Unselected destinations now use medium-weight primary text at stronger contrast; the selected destination uses a bold blue symbol and semibold label. The seven equal-width destinations remain visible without moving Calls or any other section into More.

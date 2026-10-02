@@ -187,12 +187,12 @@ struct CompactBottomNavigation: View {
                 Button {
                     selection = destination
                 } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: destination.symbol).font(.system(size: 17, weight: selection == destination ? .semibold : .regular))
-                            .frame(height: 20)
-                        Text(destination.label).font(.system(size: 9.5, weight: selection == destination ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
-                    }.foregroundStyle(selection == destination ? Color.blue : Color.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 45).contentShape(Rectangle())
+                    VStack(spacing: 3) {
+                        Image(systemName: destination.symbol).font(.system(size: 19, weight: selection == destination ? .bold : .medium))
+                            .frame(height: 22)
+                        Text(destination.label).font(.system(size: 10.5, weight: selection == destination ? .semibold : .medium)).lineLimit(1).minimumScaleFactor(0.78)
+                    }.foregroundStyle(selection == destination ? Color.blue : Color.primary.opacity(0.76))
+                        .frame(maxWidth: .infinity, minHeight: 49).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(destination.label)
                     .accessibilityAddTraits(selection == destination ? .isSelected : [])
             }
