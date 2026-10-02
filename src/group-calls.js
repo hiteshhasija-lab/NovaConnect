@@ -280,7 +280,7 @@ function createGroupCalls(io, db, roomUserMap, { ringMs = 30000 } = {}) {
     try {
       const keys = await redis.keys(REDIS_PREFIX + '*');
       for (const key of keys) {
-        let rec = null; try { rec = JSON.parse(await redis.get(key)); } catch {}
+        let rec = null; try { rec = JSON.parse(await redis.get(key)); } catch { /* Ignore corrupt recovery records. */ }
         if (rec && !calls.has(rec.id)) {
           await postOutcome(rec, 'Interrupted', { endedAt: rec.lastSeenAt || Date.now(), interrupted: true }).catch(() => {});
           await redis.del(key);
@@ -293,7 +293,7 @@ function createGroupCalls(io, db, roomUserMap, { ringMs = 30000 } = {}) {
         AND body LIKE '📹 Started a % meeting in this channel.%'`).all();
       let fixed = 0;
       for (const row of stale) {
-        let meta = null; try { meta = row.metadata ? JSON.parse(row.metadata) : null; } catch {}
+        let meta = null; try { meta = row.metadata ? JSON.parse(row.metadata) : null; } catch { /* Treat malformed metadata as absent. */ }
         if (meta && meta.call && meta.call !== 'started') continue;
         if (meta?.callId && calls.has(meta.callId)) continue; // started since this process came up
         await db.prepare('UPDATE messages SET body = ?, metadata = ?, updated_at = ? WHERE id = ?')
