@@ -226,7 +226,10 @@
 
 /* Video layout, Teams-style (panel class nc-call-video, set by group-calls.js while
    in a call): the video runs edge to edge and the header and controls float over it. */
-.nc-call.nc-call-video { padding: 0; overflow: hidden; }
+.nc-call.nc-call-video {
+  padding: 0; overflow: hidden; border: 0; border-radius: 0;
+  background: #000; box-shadow: none;
+}
 .nc-call-video .nc-call-header {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3; margin: 0; padding: 14px 18px 30px;
   background: linear-gradient(rgba(8, 11, 24, .85), transparent); pointer-events: none;
