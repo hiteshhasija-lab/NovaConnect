@@ -104,6 +104,72 @@ struct ChannelList: View {
     }
 }
 
+struct CallDirectory: View {
+    @EnvironmentObject private var session: AppSession
+    @State private var conversations: [Conversation] = []
+    @State private var query = ""
+    @State private var error: String?
+    @State private var loaded = false
+    private var filtered: [Conversation] {
+        conversations.filter { $0.is_hidden != 1 && (query.isEmpty || $0.displayName.localizedCaseInsensitiveContains(query)) }
+            .sorted { ($0.last_message?.created_at ?? "") > ($1.last_message?.created_at ?? "") }
+    }
+    var body: some View {
+        NavigationStack {
+            List {
+                ConnectionStatus(live: session.live)
+                InlineError(text: error)
+                Section("Start a call") {
+                    ForEach(filtered) { conversation in
+                        HStack(spacing: 11) {
+                            if conversation.is_group == 1 {
+                                Image(systemName: "person.2.fill").foregroundStyle(.blue)
+                                    .frame(width: 42, height: 42).background(Color.blue.opacity(0.1), in: Circle())
+                            } else if let person = conversation.participants.first {
+                                PersonAvatar(person: person, size: 42, overlaysPresence: true)
+                            }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(conversation.displayName).font(.body.weight(.medium)).lineLimit(2)
+                                if let person = conversation.is_group == 1 ? nil : conversation.participants.first {
+                                    Text(person.chatPresence).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                } else { Text("Group chat").font(.caption).foregroundStyle(.secondary) }
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 8) {
+                                Button { Task { await start(conversation, video: false) } } label: {
+                                    Image(systemName: "phone.fill").frame(width: 36, height: 36).novaGlass(in: Circle(), interactive: true)
+                                }.accessibilityLabel("Audio call \(conversation.displayName)")
+                                Button { Task { await start(conversation, video: true) } } label: {
+                                    Image(systemName: "video.fill").frame(width: 36, height: 36).novaGlass(in: Circle(), interactive: true)
+                                }.accessibilityLabel("Video call \(conversation.displayName)")
+                            }.buttonStyle(.plain).tint(.blue).fixedSize()
+                                .disabled(session.calls.keepsConnection || session.meetings.keepsConnection || !session.live.connected)
+                        }.padding(.vertical, 4)
+                    }
+                }
+                if loaded && filtered.isEmpty {
+                    ContentUnavailableView("No calls available", systemImage: "phone", description: Text(query.isEmpty ? "Start a chat with someone before calling them." : "No chats match your search."))
+                }
+            }.listStyle(.plain).navigationTitle("Calls").navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $query, prompt: "Search people and groups")
+                .overlay { if !loaded && error == nil { ProgressView() } }
+                .task { await load() }.refreshable { await load() }
+                .onReceive(NotificationCenter.default.publisher(for: .liveUpdate).filter { notification in
+                    guard let event = notification.object as? LiveEvent else { return true }
+                    return ["presence:update", "message:new", "gcall:state"].contains(event.name)
+                }.debounce(for: .milliseconds(350), scheduler: RunLoop.main)) { _ in Task { await load() } }
+        }
+    }
+    private func load() async {
+        guard let api = session.api else { return }
+        do { conversations = try await api.get("/api/dm"); error = nil; loaded = true }
+        catch { self.error = error.localizedDescription; loaded = true }
+    }
+    private func start(_ conversation: Conversation, video: Bool) async {
+        guard !session.meetings.keepsConnection else { error = "Leave the meeting before starting a call."; return }
+        await session.calls.start(conversationID: conversation.id, title: conversation.displayName, live: session.live, video: video)
+    }
+}
+
 struct NativeMore: View {
     @EnvironmentObject private var session: AppSession
     @AppStorage("native.appearance") private var appearance = "system"

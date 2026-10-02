@@ -145,17 +145,59 @@ struct NativeLogin: View {
 }
 
 struct NativeTabs: View {
-    @State private var selection = 1
+    @State private var selection: NativeDestination = .chat
+    @StateObject private var navigation = NativeNavigationState()
     var body: some View {
-        TabView(selection: $selection) {
-            NavigationStack { ActivityView() }.tabItem { Label("Activity", systemImage: "bell") }.tag(0)
-            ConversationList().tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
-            NavigationStack { MeetingsView(title: "Calendar") }.tabItem { Label("Calendar", systemImage: "calendar") }.tag(5)
-            TeamList().tabItem { Label("Teams", systemImage: "person.3") }.tag(2)
-            PeopleList().tabItem { Label("People", systemImage: "person.crop.rectangle") }.tag(3)
-            NativeMore().tabItem { Label("More", systemImage: "ellipsis") }.tag(4)
+        Group {
+            switch selection {
+            case .activity: NavigationStack { ActivityView() }
+            case .chat: ConversationList()
+            case .calendar: NavigationStack { MeetingsView(title: "Calendar") }
+            case .calls: CallDirectory()
+            case .teams: TeamList()
+            case .people: PeopleList()
+            case .more: NativeMore()
+            }
         }
+        .environmentObject(navigation)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !navigation.barHidden { CompactBottomNavigation(selection: $selection) }
+        }
+    }
+}
 
+enum NativeDestination: String, CaseIterable, Identifiable {
+    case activity, chat, calendar, calls, teams, people, more
+    var id: String { rawValue }
+    var label: String {
+        switch self { case .activity: "Activity"; case .chat: "Chat"; case .calendar: "Calendar"; case .calls: "Calls"; case .teams: "Teams"; case .people: "People"; case .more: "More" }
+    }
+    var symbol: String {
+        switch self { case .activity: "bell"; case .chat: "bubble.left.and.bubble.right"; case .calendar: "calendar"; case .calls: "phone"; case .teams: "person.3"; case .people: "person.crop.rectangle"; case .more: "ellipsis" }
+    }
+}
+
+@MainActor final class NativeNavigationState: ObservableObject { @Published var barHidden = false }
+
+struct CompactBottomNavigation: View {
+    @Binding var selection: NativeDestination
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(NativeDestination.allCases) { destination in
+                Button {
+                    selection = destination
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: destination.symbol).font(.system(size: 17, weight: selection == destination ? .semibold : .regular))
+                            .frame(height: 20)
+                        Text(destination.label).font(.system(size: 9.5, weight: selection == destination ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
+                    }.foregroundStyle(selection == destination ? Color.blue : Color.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 45).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel(destination.label)
+                    .accessibilityAddTraits(selection == destination ? .isSelected : [])
+            }
+        }.padding(.horizontal, 2).padding(.top, 3)
+            .background(.bar).overlay(alignment: .top) { Divider() }
     }
 }
 

@@ -102,6 +102,12 @@ import Security
         XCTAssertEqual(meetings.first?.meet_code, "0123456789abcdef01234567")
         XCTAssertEqual(meetings.first?.timezone, "America/Chicago")
     }
+    func testCompactNavigationKeepsCallsVisible() {
+        XCTAssertEqual(NativeDestination.allCases.count, 7)
+        XCTAssertTrue(NativeDestination.allCases.contains(.calls))
+        XCTAssertEqual(NativeDestination.calls.label, "Calls")
+        XCTAssertEqual(NativeDestination.allCases.last, .more)
+    }
     func testLabTrustRejectsWrongHostAndExpiredCertificate() throws {
         let bundle = Bundle(for: NativeTests.self)
         let leaf = try XCTUnwrap(SecCertificateCreateWithData(nil, Data(contentsOf: XCTUnwrap(bundle.url(forResource: "LabServer", withExtension: "der"))) as CFData))

@@ -228,3 +228,9 @@ Calendar now schedules meetings through the existing authenticated API with atte
 Meeting links use the existing SFU and lobby protocol. Attendees wait for the organizer; organizers get a native lobby list with Admit and Deny actions. Once admitted, participants have native microphone, speaker, camera, camera-switching and leave controls with participant video tiles. Camera starts off and requires an explicit action. Meeting media retains the live connection while active and stops camera capture in the background. Meeting chat, recording, captions, reactions, screen sharing and breakout controls remain web-only pending native implementation.
 
 No server changes are required. All 32 native unit/reliability tests passed and the signed build was installed on both registered development iPhones. Physical two-account scheduling, lobby admission and media acceptance remain to be completed by the users.
+
+## Build 35 — visible Calls navigation
+
+Replaced the system tab overflow behavior with a compact seven-item bottom navigation bar: Activity, Chat, Calendar, Calls, Teams, People and More. Every destination remains directly visible on iPhone; Calls is never moved into More. Equal-width items use 17pt symbols, compact labels and reduced spacing. The bar hides while a conversation is open so the composer retains its full area.
+
+Calls opens a native searchable launcher built from the user’s existing direct and group chats. Each row shows the chat identity and live presence where applicable, with separate audio and video actions using the existing authenticated native call flow. It does not fabricate a separate call-history service; completed and missed call records remain in their conversations as before.

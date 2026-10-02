@@ -106,6 +106,7 @@ struct ConversationList: View {
 
 struct ChatTimeline: View {
     @EnvironmentObject private var session: AppSession
+    @EnvironmentObject private var navigation: NativeNavigationState
     @Environment(\.dismiss) private var dismiss
     let scope: String
     let id: Int
@@ -220,7 +221,8 @@ struct ChatTimeline: View {
             }
             .task { active = true; draft = session.drafts[draftKey] ?? ""; await load() }
             .onChange(of: draft) { _, value in if editing == nil { session.drafts[draftKey] = value } }
-            .onDisappear { active = false; thinkingTimer?.cancel(); botThinking = false; AttachmentCache.remove(previewURL) }
+            .onAppear { navigation.barHidden = true }
+            .onDisappear { navigation.barHidden = false; active = false; thinkingTimer?.cancel(); botThinking = false; AttachmentCache.remove(previewURL) }
             .onChange(of: session.live.connected) { _, connected in if !connected { thinkingTimer?.cancel(); botThinking = false } }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
                 guard let event = notification.object as? LiveEvent, event.name == "bot:thinking",
