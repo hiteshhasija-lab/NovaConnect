@@ -69,16 +69,21 @@
     }
     const initials = name => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
 
+    function drawAvatar(src, seat, k, w, h) {
+      const r = Math.min(w, h) * 0.22, cx = seat.x * k + w / 2, cy = seat.y * k + h * 0.48;
+      g.fillStyle = '#0755d9'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff'; g.font = '600 ' + Math.round(r * 0.8) + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(initials(src.name), cx, cy + 1);
+    }
+
     // The person in a seat: their video with the green keyed out (partial alpha at the edges, and green
-    // spill removed), cropped to the middle of the frame.
+    // spill removed), cropped to the middle of the frame. Until a real cutout reaches this viewer, use
+    // an avatar instead of leaking the sender's old blurred/full rectangular background into the scene.
     function drawPerson(src, seat, k) {
       const w = Math.max(8, Math.round(seat.w * k)), h = Math.max(8, Math.round(seat.h * k));
       const v = src.video;
       if (src.camOff || !v || !v.videoWidth) {
-        const r = Math.min(w, h) * 0.22, cx = seat.x * k + w / 2, cy = seat.y * k + h * 0.48;
-        g.fillStyle = '#0755d9'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
-        g.fillStyle = '#fff'; g.font = '600 ' + Math.round(r * 0.8) + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(initials(src.name), cx, cy + 1);
+        drawAvatar(src, seat, k, w, h);
         return;
       }
       let sc = seatCanvases.get(src.id);
@@ -90,21 +95,9 @@
       sc.g.clearRect(0, 0, w, h);
       sc.g.drawImage(v, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, w, h);
       const img = sc.g.getImageData(0, 0, w, h), d = img.data;
-      let keyed = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], gr = d[i + 1], b = d[i + 2], m = r > b ? r : b, diff = gr - m;
-        if (gr > 90 && diff > 60) { d[i + 3] = 0; keyed++; }
-        else if (gr > 60 && diff > 20) { d[i + 3] = Math.min(d[i + 3], 255 * (1 - (diff - 20) / 40)); d[i + 1] = m; }
-        else if (diff > 8) d[i + 1] = m + 8; // green spill on hair and shoulders
-      }
+      const keyed = window.NovaTogetherKey?.keyFrame(d, w, h);
+      if (!keyed?.ready) { drawAvatar(src, seat, k, w, h); return; }
       sc.g.putImageData(img, 0, 0);
-      // Not cut out (their browser can't): show them as a small framed picture in the seat instead.
-      if (keyed < d.length / 4 * 0.05) {
-        const fw = w * 0.8, fh = h * 0.62, fx = seat.x * k + (w - fw) / 2, fy = seat.y * k + h * 0.12;
-        g.save(); g.beginPath(); g.roundRect ? g.roundRect(fx, fy, fw, fh, 10 * k) : g.rect(fx, fy, fw, fh); g.clip();
-        g.drawImage(sc.c, fx, fy, fw, fh); g.restore();
-        return;
-      }
       g.drawImage(sc.c, seat.x * k, seat.y * k);
     }
     function drawName(src, seat, k) {
