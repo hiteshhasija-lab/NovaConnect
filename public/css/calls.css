@@ -35,9 +35,10 @@
 .nc-video-tile {
   position: relative; background: #0c1020; border-radius: 12px;
   overflow: hidden; border: 1px solid #41618b;
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; aspect-ratio: 16 / 9;
 }
-.nc-video-tile video { width: 100%; height: auto; aspect-ratio: 16/9; object-fit: cover; }
+.nc-video-tile video { width: 100%; height: 100%; aspect-ratio: 16/9; object-fit: cover; }
+.nc-call.nc-call-fit .nc-video-tile video { object-fit: contain; }
 .nc-video-overlay {
   position: absolute; bottom: 0; left: 0; right: 0;
   padding: 12px; pointer-events: none;
@@ -221,7 +222,7 @@
   flex: 1; min-height: 0; overflow: auto;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch;
 }
-.nc-call-max .nc-call-grid .nc-video-tile video, .nc-call:fullscreen .nc-call-grid .nc-video-tile video { height: 100%; max-height: none; aspect-ratio: auto; }
+.nc-call-max .nc-call-grid .nc-video-tile video, .nc-call:fullscreen .nc-call-grid .nc-video-tile video { height: 100%; max-height: none; aspect-ratio: 16 / 9; }
 .nc-call video { cursor: zoom-in; }
 
 
@@ -279,16 +280,16 @@
 .nc-call.nc-call-presenting .nc-video-tile .nc-avatar span, .nc-call-focus .nc-call-grid .nc-avatar span { width: 36px; height: 36px; font-size: .9rem; }
 .nc-call.nc-call-presenting .nc-video-name, .nc-call-focus .nc-call-grid .nc-video-name { font-size: .75rem; }
 .nc-call-max .nc-share-stage, .nc-call:fullscreen .nc-share-stage { flex: 1; min-height: 0; }
-.nc-call-max .nc-share-stage video, .nc-call:fullscreen .nc-share-stage video { height: 100%; aspect-ratio: auto; }
+.nc-call-max .nc-share-stage video, .nc-call:fullscreen .nc-share-stage video { height: 100%; aspect-ratio: 16 / 9; }
 .nc-call.nc-call-max:is(.nc-call-presenting, .nc-call-focus) .nc-call-grid, .nc-call:is(.nc-call-presenting, .nc-call-focus):fullscreen .nc-call-grid { width: clamp(160px, 15vw, 240px); }
 
 /* Pin / spotlight (group-calls.js arrangeTiles, panel class nc-call-focus): that person's tile fills
    the stage like a shared screen, the rest are the side strip above. */
 .nc-focus-stage { position: relative; background: #000; }
-.nc-focus-stage .nc-video-tile { border: 0; border-radius: 0; height: 100%; }
+.nc-focus-stage .nc-video-tile { border: 0; border-radius: 0; width: 100%; max-height: 100%; margin: auto; }
 .nc-focus-stage .nc-video-tile video { min-height: 240px; object-fit: cover; background: #000; }
 .nc-call-max .nc-focus-stage, .nc-call:fullscreen .nc-focus-stage { flex: 1; min-height: 0; }
-.nc-call-max .nc-focus-stage .nc-video-tile video, .nc-call:fullscreen .nc-focus-stage .nc-video-tile video { height: 100%; aspect-ratio: auto; }
+.nc-call-max .nc-focus-stage .nc-video-tile video, .nc-call:fullscreen .nc-focus-stage .nc-video-tile video { height: 100%; aspect-ratio: 16 / 9; }
 /* The pin button on a tile (call-extras.js decorate): shows on hover, stays while pinned. */
 .nc-tile-pin {
   position: absolute; top: 8px; right: 8px; z-index: 3; width: 30px; height: 30px; border: 0; border-radius: 50%;

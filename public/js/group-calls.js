@@ -48,6 +48,7 @@
       $('callRecord').hidden = !c.joined;
       $('callWhiteboard').hidden = !c.joined;
       $('callView').hidden = !c.joined;
+      $('callFrame').hidden = !c.joined;
       $('callTogether').hidden = !c.joined || !together.canToggle;
       (ringing ? $('callAccept') : $('callHangup')).focus();
     }
@@ -219,7 +220,7 @@
       clearInterval(recTimer); $('callRecBanner').hidden = true; $('callRecord').hidden = true;
       $('callShareStage').hidden = true; $('callShareVideo').srcObject = null; $('callBoardStage').hidden = true; $('callWhiteboard').hidden = true;
       $('callTogetherStage').hidden = true; $('callTogether').hidden = true; panel.classList.remove('nc-call-together');
-      $('callView').hidden = true; gallery.clear();
+      $('callView').hidden = true; $('callFrame').hidden = true; gallery.clear();
       grid.hidden = true; panel.hidden = true;
       if (lastFocus?.isConnected) lastFocus.focus();
       if (message) notify(new Error(message));
@@ -341,7 +342,6 @@
     // Gallery / Large gallery (gallery.js): lays out the call's tiles while nothing else has the stage.
     // Your own tile floats in the corner (callSelfTile) and isn't part of it.
     const gallery = createGallery({
-      fillFrame: true,
       grid,
       tiles: () => [...grid.querySelectorAll(':scope > .nc-video-tile')],
       active: () => !!current?.joined && !['nc-call-presenting', 'nc-call-focus', 'nc-call-together', 'nc-call-compact'].some(k => panel.classList.contains(k)),
@@ -356,6 +356,19 @@
     }
     paintView();
     $('callView').addEventListener('click', () => { if (current?.joined) gallery.toggle(); });
+    let fitFrame = (() => { try { return localStorage.getItem('nc.callFrame') === 'fit'; } catch { return false; } })();
+    function paintFrame() {
+      panel.classList.toggle('nc-call-fit', fitFrame);
+      $('callFrame').setAttribute('aria-pressed', String(fitFrame));
+      $('callFrame').title = fitFrame ? 'Fill frame' : 'Fit to frame';
+      $('callFrame').setAttribute('aria-label', $('callFrame').title);
+    }
+    paintFrame();
+    $('callFrame').addEventListener('click', () => {
+      fitFrame = !fitFrame;
+      try { localStorage.setItem('nc.callFrame', fitFrame ? 'fit' : 'fill'); } catch { /* current call still updates */ }
+      paintFrame(); gallery.refresh();
+    });
 
     // Recording (anyone in the call, as in Teams). Everyone sees the banner; when it stops, the video
     // is composed on the server and posted into this chat/channel as a file (meet:recording-ready).
