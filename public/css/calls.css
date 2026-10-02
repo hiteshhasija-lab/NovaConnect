@@ -37,8 +37,7 @@
   overflow: hidden; border: 1px solid #41618b;
   display: flex; flex-direction: column; aspect-ratio: 16 / 9;
 }
-.nc-video-tile video { width: 100%; height: 100%; aspect-ratio: 16/9; object-fit: cover; }
-.nc-call.nc-call-fit .nc-video-tile video { object-fit: contain; }
+.nc-video-tile video { width: 100%; height: 100%; aspect-ratio: 16/9; object-fit: cover; transform: scaleX(-1); }
 .nc-video-overlay {
   position: absolute; bottom: 0; left: 0; right: 0;
   padding: 12px; pointer-events: none;
@@ -197,7 +196,7 @@
   .nc-toolbar-group.nc-toolbar-participants { margin-left: 0; width: 100%; justify-content: flex-end; }
 }
 /* Keep the web self-preview in its original camera orientation. */
-.nc-video-tile video.nc-video-local { transform: none; }
+.nc-video-tile video.nc-video-local { transform: scaleX(-1); }
 
 /* View controls: maximize to fill the window, or go full screen */
 .nc-call-view { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
