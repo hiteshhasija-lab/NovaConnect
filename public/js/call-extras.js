@@ -9,10 +9,8 @@
   // and, optionally, where reactions should float while a screen is being presented.
   // extraPanels: more [button, panel] pairs (e.g. device settings) that open/close with the others.
   //
-  // Pin and spotlight (Teams "Pin for me" / "Spotlight for everyone"): a pin is yours alone; a
-  // spotlight comes from the server (sfu:spotlight) and is the same for everyone. Your pin wins over
-  // the spotlight for you. onFocus(peerId | null) tells the page whose video to show large; the page
-  // calls decorate(tile, peerId) for each tile it creates, which adds the tile's pin button.
+  // Spotlight comes from the server (sfu:spotlight) and is the same for everyone.
+  // onFocus(peerId | null) tells the page whose video to show large.
   //
   // Live captions: els.captionsBtn turns them on for you, els.captionsBox shows them; micTrack()
   // is your microphone track (null when not in a call), and the page calls micChanged() when you
@@ -26,7 +24,7 @@
     let ctx = null;                // { roomId, peerId, userId, hand } while in a call
     const seen = new Set();        // chat messages already shown (history and live can overlap)
     let unreadChat = 0, refreshTimer = null;
-    let pinned = null, spotlight = null, canSpotlight = false, lastFocus;
+    let spotlight = null, canSpotlight = false, lastFocus;
     const initials = name => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
     const ours = roomId => ctx && roomId === ctx.roomId;
 
@@ -50,18 +48,10 @@
     function applyFocus() {
       tiles().forEach(t => {
         const id = t.dataset.peerId;
-        t.classList.toggle('nc-pinned', id === pinned);
         t.classList.toggle('nc-spotlit', !!spotlight && (id === spotlight || (id === 'local' && spotlight === ctx?.peerId)));
-        const pin = t.querySelector('.nc-tile-pin');
-        if (pin) { const on = id === pinned; pin.setAttribute('aria-pressed', String(on)); pin.title = on ? 'Unpin' : 'Pin for me'; pin.setAttribute('aria-label', pin.title); }
       });
-      const focus = ctx ? (pinned || spotlight) : null;
+      const focus = ctx ? spotlight : null;
       if (focus !== lastFocus) { lastFocus = focus; onFocus(focus); }
-    }
-    function togglePin(peerId) {
-      if (!ctx || peerId === ctx.peerId) return;
-      pinned = pinned === peerId ? null : peerId;
-      applyFocus(); refresh();
     }
     function setSpotlight(peerId) {
       if (!ctx) return;
@@ -166,7 +156,6 @@
         onRoomState(state);
         if (!!captions !== captionsWanted) { captionsWanted = !!captions; updateTranscriber(); }
         spotlight = spot || null; canSpotlight = !!may;
-        if (pinned && !list.some(p => p.peerId === pinned)) pinned = null;
         applyFocus();
         // Speaker changes are only announced as they happen; this catches someone joining mid-talk.
         if (speaker && !tiles().some(t => t.classList.contains('nc-speaking'))) tileFor(speaker)?.classList.add('nc-speaking');
@@ -183,10 +172,9 @@
           st.append(p.micOff ? icon('bi-mic-mute-fill', 'Muted') : icon('bi-mic-fill', 'Microphone on'));
           st.append(p.camOff ? icon('bi-camera-video-off-fill', 'Camera off') : icon('bi-camera-video-fill', 'Camera on'));
           info.append(name, st); row.append(av, info);
-          // Pin (for you) and spotlight (for everyone, if you may): a small action per person.
+          // Spotlight is shared with everyone and available only to authorized participants.
           const act = document.createElement('div'); act.className = 'nc-participant-actions';
           const action = (label, pressed, run) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'nc-participant-action'; b.textContent = label; b.setAttribute('aria-pressed', String(pressed)); b.setAttribute('aria-label', label + ': ' + p.fullName); b.onclick = run; return b; };
-          if (p.peerId !== mine.peerId) act.append(action(p.peerId === pinned ? 'Unpin' : 'Pin', p.peerId === pinned, () => togglePin(p.peerId)));
           if (canSpotlight) act.append(action(p.peerId === spotlight ? 'Stop spotlight' : 'Spotlight', p.peerId === spotlight, () => setSpotlight(p.peerId === spotlight ? null : p.peerId)));
           if (act.childElementCount) row.append(act);
           return row;
@@ -265,10 +253,9 @@
       else if (!spotlight && was) notice('Spotlight ended');
       applyFocus(); refresh();
     });
-    // Someone left: drop your pin on them (the spotlight comes back cleared with the next refresh).
+    // Someone left: clear their spotlight locally while the refreshed room state arrives.
     socket.on('sfu:peer-left', ({ peerId }) => {
       if (!ctx) return;
-      if (pinned === peerId) pinned = null;
       if (spotlight === peerId) spotlight = null;
       applyFocus();
     });
@@ -278,7 +265,7 @@
       // Call once you are in the room (you know your own peerId there).
       start({ roomId, peerId, userId = null }) {
         const mine = ctx = { roomId, peerId, userId, hand: false };
-        pinned = spotlight = null; canSpotlight = false; lastFocus = undefined; applyFocus();
+        spotlight = null; canSpotlight = false; lastFocus = undefined; applyFocus();
         captionsOn = captionsWanted = false; toldUnavailable = false; recBroken = !Recognition; paintCaptionsBtn(); clearCaptions();
         buttons.forEach(b => { b.hidden = false; });
         setHand(false);
@@ -294,7 +281,7 @@
       },
       stop() {
         ctx = null; clearTimeout(refreshTimer); seen.clear();
-        pinned = spotlight = null; applyFocus();
+        spotlight = null; applyFocus();
         stopTranscribing(); captionsOn = captionsWanted = false; paintCaptionsBtn(); clearCaptions();
         for (const [btn, panel] of panels) { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
         buttons.forEach(b => { b.hidden = true; });
@@ -304,16 +291,8 @@
       },
       refresh,
       notice,
-      // A new tile: give it the pin button (not your own tile) and its pin/spotlight marks.
-      decorate(tile, peerId) {
-        if (!tile || tile.querySelector('.nc-tile-pin') || peerId === 'local' || (ctx && peerId === ctx.peerId)) { applyFocus(); return; }
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'nc-tile-pin';
-        b.innerHTML = '<i class="bi bi-pin-angle-fill" aria-hidden="true"></i>';
-        b.addEventListener('click', e => { e.stopPropagation(); togglePin(peerId); });
-        b.addEventListener('dblclick', e => e.stopPropagation());
-        tile.appendChild(b);
-        applyFocus();
-      },
+      // A new tile: apply its spotlight state.
+      decorate() { applyFocus(); },
       // A tile went away or was replaced: re-check what's shown large.
       retile: applyFocus,
       // You muted, unmuted or switched microphone: start/stop transcribing your speech.
