@@ -55,7 +55,24 @@ struct Channel: Decodable, Identifiable { let id: Int; let name: String; let des
 struct TeamDetail: Decodable { let channels: [Channel] }
 struct IDResponse: Decodable { let id: Int }
 struct OKResponse: Decodable { let ok: Bool? }
-struct Meeting: Decodable, Identifiable { let id: Int; let title: String; let start_at: String; let end_at: String }
+struct Meeting: Decodable, Identifiable {
+    let id: Int
+    let title: String
+    let start_at: String
+    let end_at: String
+    let timezone: String?
+    let meet_code: String?
+}
+struct MeetingCreated: Decodable { let id: Int; let count: Int }
+
+enum MeetingCode {
+    static func parse(_ value: String) -> String? {
+        let input = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if input.range(of: "^[a-f0-9]{24}$", options: .regularExpression) != nil { return input }
+        guard let match = input.range(of: "[a-f0-9]{24}", options: .regularExpression) else { return nil }
+        return String(input[match])
+    }
+}
 struct Activity: Decodable, Identifiable { let id: Int; let body: String; let actor_name: String?; let is_read: Int? }
 struct Activities: Decodable { let notifications: [Activity] }
 struct AIMessage: Decodable, Identifiable { let id: Int; let role: String; let body: String }

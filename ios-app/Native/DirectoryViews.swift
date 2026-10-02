@@ -161,7 +161,7 @@ struct NativeMore: View {
                 }
                 Section {
                     LabeledContent("Build", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"))")
-                    Text("Foreground audio calling is a development preview. Background ringing, video, push notifications, meeting participation and administrative screens are still in development. This build is not ready for TestFlight.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Native calling and meeting participation are development previews. Background ringing, push notifications and administrative screens are still in development. This build is not ready for TestFlight.").font(.footnote).foregroundStyle(.secondary)
                     Button("Sign out", role: .destructive) { confirmLogout = true }
                     InlineError(text: session.error)
                 }
@@ -196,17 +196,155 @@ struct MeetingsView: View {
     @State private var meetings: [Meeting] = []
     @State private var error: String?
     @State private var loaded = false
+    @State private var showSchedule = false
+    @State private var showJoin = false
     var body: some View {
         List {
             InlineError(text: error)
-            ForEach(meetings) { meeting in VStack(alignment: .leading, spacing: 8) { Text(meeting.title).font(.headline); Text(Timeline.label(meeting.start_at)).font(.subheadline).foregroundStyle(.secondary) } }
+            Section {
+                Button { showSchedule = true } label: { Label("Schedule a meeting", systemImage: "calendar.badge.plus") }.novaGlassButtons(prominent: true)
+                Button { showJoin = true } label: { Label("Join with a meeting ID", systemImage: "number") }.novaGlassButtons()
+            }
+            Section("Upcoming") {
+                ForEach(meetings) { meeting in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(meeting.title).font(.headline)
+                        Label(MeetingDates.range(meeting), systemImage: "clock").font(.subheadline).foregroundStyle(.secondary)
+                        if let code = meeting.meet_code {
+                            Button("Join meeting") { Task { await session.meetings.join(code, fallbackTitle: meeting.title, live: session.live, callActive: session.calls.keepsConnection) } }
+                                .novaGlassButtons(prominent: true).disabled(session.meetings.keepsConnection || session.calls.keepsConnection)
+                        }
+                    }.padding(.vertical, 5)
+                }
+            }
             if loaded && meetings.isEmpty { ContentUnavailableView("No upcoming meetings", systemImage: "calendar") }
-            Section { Text("This preview displays your schedule. Native meeting participation is not available yet.").font(.footnote).foregroundStyle(.secondary) }
-        }.navigationTitle(title).task { await load() }.refreshable { await load() }
+            Section { ConnectionStatus(live: session.live) }
+        }.navigationTitle(title).navigationBarTitleDisplayMode(.inline).task { await load() }.refreshable { await load() }
+            .sheet(isPresented: $showSchedule) { ScheduleMeetingSheet { await load() } }
+            .sheet(isPresented: $showJoin) { JoinMeetingSheet() }
     }
     private func load() async {
         do { if let api = session.api { meetings = try await api.get("/api/meet/scheduled"); loaded = true; error = nil } }
         catch { self.error = error.localizedDescription }
+    }
+}
+
+enum MeetingDates {
+    private static let localInput: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "yyyy-MM-dd'T'HH:mm"; return f
+    }()
+    static func local(_ date: Date) -> String { localInput.string(from: date) }
+    static func range(_ meeting: Meeting) -> String {
+        guard let start = Timeline.date(meeting.start_at), let end = Timeline.date(meeting.end_at) else { return Timeline.label(meeting.start_at) }
+        return start.formatted(date: .abbreviated, time: .shortened) + " – " + end.formatted(date: start.formatted(date: .numeric, time: .omitted) == end.formatted(date: .numeric, time: .omitted) ? .omitted : .abbreviated, time: .shortened)
+    }
+}
+
+struct JoinMeetingSheet: View {
+    @EnvironmentObject private var session: AppSession
+    @Environment(\.dismiss) private var dismiss
+    @State private var value = ""
+    @State private var error: String?
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Meeting ID or link") {
+                    TextField("Paste a meeting ID or link", text: $value).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Text("You may paste the 24-character meeting ID or the complete NovaConnect meeting link.").font(.footnote).foregroundStyle(.secondary)
+                }
+                InlineError(text: error)
+                Button("Join meeting") {
+                    guard MeetingCode.parse(value) != nil else { error = "Enter a valid meeting ID or link."; return }
+                    dismiss(); Task { await session.meetings.join(value, live: session.live, callActive: session.calls.keepsConnection) }
+                }.novaGlassButtons(prominent: true).disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || session.calls.keepsConnection || session.meetings.keepsConnection)
+            }.navigationTitle("Join a meeting").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+}
+
+struct ScheduleMeetingSheet: View {
+    @EnvironmentObject private var session: AppSession
+    @Environment(\.dismiss) private var dismiss
+    let saved: () async -> Void
+    @State private var title = ""
+    @State private var start = Date().addingTimeInterval(1800)
+    @State private var end = Date().addingTimeInterval(5400)
+    @State private var details = ""
+    @State private var location = ""
+    @State private var allDay = false
+    @State private var requestRSVP = true
+    @State private var showAs = "busy"
+    @State private var recurrence = "none"
+    @State private var count = 4
+    @State private var query = ""
+    @State private var results: [Person] = []
+    @State private var selected: [Person] = []
+    @State private var busy = false
+    @State private var error: String?
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Meeting") {
+                    TextField("Title", text: $title)
+                    DatePicker("Starts", selection: $start, displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
+                    DatePicker("Ends", selection: $end, in: start..., displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
+                    Toggle("All day", isOn: $allDay)
+                    TextField("Location (optional)", text: $location)
+                    TextField("Details (optional)", text: $details, axis: .vertical).lineLimit(3...8)
+                }
+                Section("Attendees") {
+                    ForEach(selected) { person in
+                        HStack { PersonAvatar(person: person, size: 34); Text(person.full_name); Spacer(); Button { selected.removeAll { $0.id == person.id } } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).accessibilityLabel("Remove \(person.full_name)") }
+                    }
+                    TextField("Search people", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    ForEach(results.filter { person in !selected.contains(where: { $0.id == person.id }) }.prefix(8)) { person in
+                        Button { selected.append(person); query = ""; results = [] } label: { HStack { PersonAvatar(person: person, size: 34); VStack(alignment: .leading) { Text(person.full_name).foregroundStyle(.primary); Text("@\(person.username)").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "plus.circle") } }
+                    }
+                }
+                Section("Options") {
+                    Picker("Repeat", selection: $recurrence) { Text("Does not repeat").tag("none"); Text("Daily").tag("daily"); Text("Weekly").tag("weekly"); Text("Monthly").tag("monthly") }
+                    if recurrence != "none" { Stepper("\(count) occurrences", value: $count, in: 1...52) }
+                    Toggle("Request responses", isOn: $requestRSVP)
+                    Picker("Show as", selection: $showAs) { Text("Busy").tag("busy"); Text("Free").tag("free") }
+                    LabeledContent("Time zone", value: TimeZone.current.identifier).font(.footnote)
+                }
+                InlineError(text: error)
+            }.navigationTitle("New meeting").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button(busy ? "Scheduling…" : "Schedule") { Task { await schedule() } }.disabled(busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selected.isEmpty || end <= start) }
+                }
+                .task(id: query) { await search() }
+        }
+    }
+    private func search() async {
+        guard let api = session.api else { return }
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { results = []; return }
+            let people: [Person] = try await api.get("/api/users/search", query: [URLQueryItem(name: "q", value: text)])
+            if query.trimmingCharacters(in: .whitespacesAndNewlines) == text { results = people.filter { $0.id != session.user?.id } }
+        } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+    }
+    private func schedule() async {
+        guard let api = session.api else { return }
+        busy = true; error = nil; defer { busy = false }
+        let calendar = Calendar.current
+        let startValue = allDay ? calendar.startOfDay(for: start) : start
+        let rawEnd = allDay ? calendar.startOfDay(for: end) : end
+        let endValue = allDay && rawEnd <= startValue ? calendar.date(byAdding: .day, value: 1, to: startValue)! : rawEnd
+        do {
+            let _: MeetingCreated = try await api.get("/api/meetings", method: "POST", body: [
+                "title": title.trimmingCharacters(in: .whitespacesAndNewlines), "attendee_ids": selected.map(\.id),
+                "timezone": TimeZone.current.identifier, "start_local": MeetingDates.local(startValue), "end_local": MeetingDates.local(endValue),
+                "all_day": allDay, "recurrence": recurrence, "count": recurrence == "none" ? 1 : count,
+                "request_rsvp": requestRSVP, "show_as": showAs, "location": location, "details": details,
+                "conversation_id": NSNull()
+            ])
+            await saved(); dismiss()
+        } catch { self.error = error.localizedDescription }
     }
 }
 struct ActivityView: View {

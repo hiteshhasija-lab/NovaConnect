@@ -89,6 +89,19 @@ import Security
         XCTAssertNotNil(Timeline.date("2026-09-30 14:00:00"))
         XCTAssertNil(Timeline.date("not a date"))
     }
+    func testMeetingCodeAcceptsIDAndNovaConnectLink() {
+        let code = "0123456789abcdef01234567"
+        XCTAssertEqual(MeetingCode.parse(code), code)
+        XCTAssertEqual(MeetingCode.parse("https://novaconnect.lab.sps/app/meet/\(code)"), code)
+        XCTAssertEqual(MeetingCode.parse("  \(code.uppercased())  "), code)
+        XCTAssertNil(MeetingCode.parse("short-code"))
+    }
+    func testScheduledMeetingContractIncludesJoinCode() throws {
+        let data = Data(#"[{"id":9,"title":"Operations review","start_at":"2026-10-02 15:00:00","end_at":"2026-10-02 15:30:00","timezone":"America/Chicago","meet_code":"0123456789abcdef01234567"}]"#.utf8)
+        let meetings = try JSONDecoder().decode([Meeting].self, from: data)
+        XCTAssertEqual(meetings.first?.meet_code, "0123456789abcdef01234567")
+        XCTAssertEqual(meetings.first?.timezone, "America/Chicago")
+    }
     func testLabTrustRejectsWrongHostAndExpiredCertificate() throws {
         let bundle = Bundle(for: NativeTests.self)
         let leaf = try XCTUnwrap(SecCertificateCreateWithData(nil, Data(contentsOf: XCTUnwrap(bundle.url(forResource: "LabServer", withExtension: "der"))) as CFData))

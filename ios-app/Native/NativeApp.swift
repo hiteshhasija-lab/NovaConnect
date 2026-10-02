@@ -10,6 +10,7 @@ import SwiftUI
     var api: APIClient?
     let live = LiveConnection()
     let calls = NativeCalls()
+    let meetings = NativeMeetings()
     var drafts: [String: String] = [:]
     func login(username: String, password: String) async {
         guard let url = APIClient.serverURL(server) else { error = "Enter an HTTPS server address without a path."; return }
@@ -44,7 +45,7 @@ import SwiftUI
         expire()
     }
     func expire() {
-        calls.disconnected(); live.stop(); if let api { SessionVault.delete(api.baseURL); api.clearCookies() }; api = nil; user = nil; drafts.removeAll(); AttachmentCache.clear()
+        calls.disconnected(); meetings.disconnected(); live.stop(); if let api { SessionVault.delete(api.baseURL); api.clearCookies() }; api = nil; user = nil; drafts.removeAll(); AttachmentCache.clear()
     }
 }
 
@@ -67,15 +68,15 @@ import SwiftUI
                 if let source = notification.object as? APIClient, source === session.api { session.expire() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .liveUpdate)) { notification in
-                if let event = notification.object as? LiveEvent { session.calls.event(event, live: session.live) }
+                if let event = notification.object as? LiveEvent { session.calls.event(event, live: session.live); session.meetings.event(event, live: session.live) }
                 if let event = notification.object as? LiveEvent, event.name == "presence:update",
                    let id = event.payload["userId"] as? Int, id == session.user?.id,
                    let status = event.payload["status"] as? String { session.user?.status = status }
             }
             .onChange(of: phase) { _, next in
-                if next != .inactive { session.calls.setForeground(next == .active) }
-                if next == .active, session.user != nil, (!session.live.connected || !session.calls.keepsConnection), let api = session.api { session.live.start(api) }
-                if next == .background, !session.calls.keepsConnection { session.live.enterBackground() }
+                if next != .inactive { session.calls.setForeground(next == .active); session.meetings.setForeground(next == .active) }
+                if next == .active, session.user != nil, !session.live.connected, let api = session.api { session.live.start(api) }
+                if next == .background, !session.calls.keepsConnection, !session.meetings.keepsConnection { session.live.enterBackground() }
             }
         }
     }
@@ -83,17 +84,22 @@ import SwiftUI
 
 struct NativeRoot: View {
     @EnvironmentObject private var session: AppSession
-    var body: some View { CallRoot(calls: session.calls, live: session.live) }
+    var body: some View { CallRoot(calls: session.calls, meetings: session.meetings, live: session.live) }
 }
 struct CallRoot: View {
     @ObservedObject var calls: NativeCalls
+    @ObservedObject var meetings: NativeMeetings
     @ObservedObject var live: LiveConnection
     var body: some View {
         NativeTabs().fullScreenCover(isPresented: $calls.visible) { NativeCallView(calls: calls) }
+            .fullScreenCover(isPresented: $meetings.visible) { NativeMeetingView(meetings: meetings) }
             .onChange(of: calls.keepsConnection) { _, active in
-                if !active, UIApplication.shared.applicationState == .background { live.enterBackground() }
+                if !active, !meetings.keepsConnection, UIApplication.shared.applicationState == .background { live.enterBackground() }
             }
-            .onChange(of: live.connected) { _, connected in if !connected { calls.disconnected() } }
+            .onChange(of: meetings.keepsConnection) { _, active in
+                if !active, !calls.keepsConnection, UIApplication.shared.applicationState == .background { live.enterBackground() }
+            }
+            .onChange(of: live.connected) { _, connected in if !connected { calls.disconnected(); meetings.disconnected() } }
     }
 }
 

@@ -220,3 +220,11 @@ Replaces fixed190pt scrolling cards with edge-to-edge equal-height rows; two par
 
 ## Build 33 — message alignment and inset self-video
 Own messages right, incoming left in shared DM/channel timeline; colors retained. One remote video fills screen, local camera in bottom-right inset clear of call controls. Multi-stream group calls retain adaptive grid. Signed build/device installation and physical acceptance tracked separately.
+
+## Build 34 — native meeting scheduling and joining
+
+Calendar now schedules meetings through the existing authenticated API with attendee search, local-time conversion, title, location, details, all-day, RSVP, Busy/Free and daily/weekly/monthly recurrence options. Upcoming invitations show their time range and a native Join action. Join by ID accepts either the 24-character meeting ID or a full NovaConnect meeting link.
+
+Meeting links use the existing SFU and lobby protocol. Attendees wait for the organizer; organizers get a native lobby list with Admit and Deny actions. Once admitted, participants have native microphone, speaker, camera, camera-switching and leave controls with participant video tiles. Camera starts off and requires an explicit action. Meeting media retains the live connection while active and stops camera capture in the background. Meeting chat, recording, captions, reactions, screen sharing and breakout controls remain web-only pending native implementation.
+
+No server changes are required. All 32 native unit/reliability tests passed and the signed build was installed on both registered development iPhones. Physical two-account scheduling, lobby admission and media acceptance remain to be completed by the users.

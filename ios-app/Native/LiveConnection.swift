@@ -86,6 +86,11 @@ import UIKit
         let data = try JSONSerialization.data(withJSONObject: ["presence:set", ["status": value]])
         try await socket.send(.string("42" + String(decoding: data, as: UTF8.self)))
     }
+    func emit(_ event: String, _ payload: [String: Any] = [:]) async throws {
+        guard connected, let socket else { throw APIError(message: "The live connection is unavailable.") }
+        let data = try JSONSerialization.data(withJSONObject: [event, payload])
+        try await socket.send(.string("42" + String(decoding: data, as: UTF8.self)))
+    }
     // Brief execution time only to deliver the lifecycle event, never a keepalive.
     func enterBackground() {
         let token = generation
