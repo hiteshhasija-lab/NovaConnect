@@ -23,7 +23,7 @@ exports.up = async (pgm) => {
     name: { type: 'text', notNull: true },
     description: { type: 'text' },
     icon: { type: 'text', notNull: true, default: 'bi-people-fill' },
-    created_by: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    created_by: { type: 'integer', references: 'users' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
     require_approval: { type: 'integer', notNull: true, default: 0 },
   });
@@ -35,7 +35,7 @@ exports.up = async (pgm) => {
     user_id: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
-  pgm.addConstraint('team_join_requests', 'unique_team_user', 'UNIQUE(team_id, user_id)');
+  pgm.addConstraint('team_join_requests', 'team_join_requests_team_id_user_id_key', 'UNIQUE(team_id, user_id)');
 
   // Team members
   pgm.createTable('team_members', {
@@ -45,7 +45,7 @@ exports.up = async (pgm) => {
     role: { type: 'text', notNull: true, default: 'member' },
     joined_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
-  pgm.addConstraint('team_members', 'unique_team_user', 'UNIQUE(team_id, user_id)');
+  pgm.addConstraint('team_members', 'team_members_team_id_user_id_key', 'UNIQUE(team_id, user_id)');
 
   // Channels
   pgm.createTable('channels', {
@@ -54,10 +54,10 @@ exports.up = async (pgm) => {
     name: { type: 'text', notNull: true },
     description: { type: 'text' },
     is_private: { type: 'integer', notNull: true, default: 0 },
-    created_by: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    created_by: { type: 'integer', references: 'users' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
-  pgm.addConstraint('channels', 'unique_team_name', 'UNIQUE(team_id, name)');
+  pgm.addConstraint('channels', 'channels_team_id_name_key', 'UNIQUE(team_id, name)');
 
   // Channel members
   pgm.createTable('channel_members', {
@@ -67,14 +67,14 @@ exports.up = async (pgm) => {
     joined_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
     role: { type: 'text', notNull: true, default: 'member' },
   });
-  pgm.addConstraint('channel_members', 'unique_channel_user', 'UNIQUE(channel_id, user_id)');
+  pgm.addConstraint('channel_members', 'channel_members_channel_id_user_id_key', 'UNIQUE(channel_id, user_id)');
 
   // DM conversations
   pgm.createTable('dm_conversations', {
     id: 'id',
     is_group: { type: 'integer', notNull: true, default: 0 },
     name: { type: 'text' },
-    created_by: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    created_by: { type: 'integer', references: 'users' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
 
@@ -90,13 +90,13 @@ exports.up = async (pgm) => {
     is_unread: { type: 'integer', notNull: true, default: 0 },
     is_hidden: { type: 'integer', notNull: true, default: 0 },
   });
-  pgm.addConstraint('dm_participants', 'unique_convo_user', 'UNIQUE(conversation_id, user_id)');
+  pgm.addConstraint('dm_participants', 'dm_participants_conversation_id_user_id_key', 'UNIQUE(conversation_id, user_id)');
 
   // Chat reports
   pgm.createTable('chat_reports', {
     id: 'id',
     conversation_id: { type: 'integer', notNull: true, references: 'dm_conversations', onDelete: 'CASCADE' },
-    reported_by: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
+    reported_by: { type: 'integer', notNull: true, references: 'users' },
     category: { type: 'text', notNull: true },
     reason: { type: 'text', notNull: true },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
@@ -107,7 +107,7 @@ exports.up = async (pgm) => {
     id: 'id',
     channel_id: { type: 'integer', references: 'channels', onDelete: 'CASCADE' },
     conversation_id: { type: 'integer', references: 'dm_conversations', onDelete: 'CASCADE' },
-    user_id: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    user_id: { type: 'integer', references: 'users' },
     body: { type: 'text', notNull: true, default: '' },
     parent_message_id: { type: 'integer', references: 'messages', onDelete: 'CASCADE' },
     edited: { type: 'integer', notNull: true, default: 0 },
@@ -116,7 +116,7 @@ exports.up = async (pgm) => {
     updated_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
     metadata: { type: 'text' },
     pinned_at: { type: 'text' },
-    pinned_by: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    pinned_by: { type: 'integer', references: 'users' },
   });
 
   // Scheduled messages
@@ -139,7 +139,7 @@ exports.up = async (pgm) => {
     blocked_id: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
-  pgm.addConstraint('blocked_users', 'unique_blocker_blocked', 'UNIQUE(blocker_id, blocked_id)');
+  pgm.addConstraint('blocked_users', 'blocked_users_blocker_id_blocked_id_key', 'UNIQUE(blocker_id, blocked_id)');
 
   // Message reactions
   pgm.createTable('message_reactions', {
@@ -149,7 +149,7 @@ exports.up = async (pgm) => {
     emoji: { type: 'text', notNull: true },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
-  pgm.addConstraint('message_reactions', 'unique_message_user_emoji', 'UNIQUE(message_id, user_id, emoji)');
+  pgm.addConstraint('message_reactions', 'message_reactions_message_id_user_id_emoji_key', 'UNIQUE(message_id, user_id, emoji)');
 
   // Attachments
   pgm.createTable('attachments', {
@@ -159,33 +159,17 @@ exports.up = async (pgm) => {
     original_name: { type: 'text', notNull: true },
     mime_type: { type: 'text' },
     size: { type: 'integer' },
-    uploaded_by: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    uploaded_by: { type: 'integer', references: 'users' },
     storage_driver: { type: 'text', notNull: true, default: 'local' },
     storage_key: { type: 'text' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
-  });
-
-  // Notifications
-  pgm.createTable('notifications', {
-    id: 'id',
-    user_id: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
-    type: { type: 'text', notNull: true },
-    actor_id: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
-    channel_id: { type: 'integer', references: 'channels', onDelete: 'CASCADE' },
-    conversation_id: { type: 'integer', references: 'dm_conversations', onDelete: 'CASCADE' },
-    message_id: { type: 'integer', references: 'messages', onDelete: 'CASCADE' },
-    body: { type: 'text' },
-    is_read: { type: 'integer', notNull: true, default: 0 },
-    created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
-    team_id: { type: 'integer', references: 'teams', onDelete: 'CASCADE' },
-    meeting_id: { type: 'integer', references: 'meetings', onDelete: 'CASCADE' },
   });
 
   // Meet links
   pgm.createTable('meet_links', {
     code: { type: 'text', primaryKey: true },
     title: { type: 'text', notNull: true },
-    created_by: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
+    created_by: { type: 'integer', notNull: true, references: 'users' },
     active: { type: 'integer', notNull: true, default: 1 },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
@@ -204,19 +188,35 @@ exports.up = async (pgm) => {
     all_day: { type: 'integer', notNull: true, default: 0 },
     request_rsvp: { type: 'integer', notNull: true, default: 1 },
     show_as: { type: 'text', notNull: true, default: 'busy' },
-    conversation_id: { type: 'integer', references: 'dm_conversations', onDelete: 'SET NULL' },
-    created_by: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
+    conversation_id: { type: 'integer', references: 'dm_conversations' },
+    created_by: { type: 'integer', notNull: true, references: 'users' },
     series_id: { type: 'text', notNull: true },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
-    meet_code: { type: 'text', references: 'meet_links', onDelete: 'SET NULL' },
+    meet_code: { type: 'text', references: 'meet_links' },
   });
 
   // Meeting attendees
   pgm.createTable('meeting_attendees', {
     meeting_id: { type: 'integer', notNull: true, references: 'meetings', onDelete: 'CASCADE' },
-    user_id: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
+    user_id: { type: 'integer', notNull: true, references: 'users' },
     response: { type: 'text', notNull: true, default: 'pending' },
-  }, { primaryKey: ['meeting_id', 'user_id'] });
+  }, { constraints: { primaryKey: ['meeting_id', 'user_id'] } });
+
+  // Notifications
+  pgm.createTable('notifications', {
+    id: 'id',
+    user_id: { type: 'integer', notNull: true, references: 'users', onDelete: 'CASCADE' },
+    type: { type: 'text', notNull: true },
+    actor_id: { type: 'integer', references: 'users' },
+    channel_id: { type: 'integer', references: 'channels', onDelete: 'CASCADE' },
+    conversation_id: { type: 'integer', references: 'dm_conversations', onDelete: 'CASCADE' },
+    message_id: { type: 'integer', references: 'messages', onDelete: 'CASCADE' },
+    body: { type: 'text' },
+    is_read: { type: 'integer', notNull: true, default: 0 },
+    created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
+    team_id: { type: 'integer', references: 'teams', onDelete: 'CASCADE' },
+    meeting_id: { type: 'integer', references: 'meetings', onDelete: 'CASCADE' },
+  });
 
   // AI messages
   pgm.createTable('ai_messages', {
@@ -237,7 +237,7 @@ exports.up = async (pgm) => {
     start_at: { type: 'text', notNull: true },
     end_at: { type: 'text', notNull: true },
     all_day: { type: 'integer', notNull: true, default: 0 },
-    created_by: { type: 'integer', references: 'users', onDelete: 'SET NULL' },
+    created_by: { type: 'integer', references: 'users' },
     created_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
     updated_at: { type: 'text', notNull: true, default: pgm.func("to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')") },
   });
