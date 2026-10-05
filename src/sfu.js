@@ -141,7 +141,7 @@ function deleteRoom(roomId) {
   if (!room) return false;
 
   // Close all peer transports
-  for (const [peerId, peer] of room.peers) {
+  for (const peer of room.peers.values()) {
     for (const transport of peer.transports.values()) {
       transport.close();
     }
@@ -153,7 +153,7 @@ function deleteRoom(roomId) {
   return true;
 }
 
-async function createTransport(room, peerId, direction) {
+async function createTransport(room, peerId, _direction) {
   const roomObj = getRoom(room);
   if (!roomObj) throw new Error('Room not found');
 

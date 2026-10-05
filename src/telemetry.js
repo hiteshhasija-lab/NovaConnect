@@ -7,7 +7,6 @@ const { diag, DiagConsoleLogger, DiagLogLevel, trace } = require('@opentelemetry
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { Resource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { PgInstrumentation } = require('@opentelemetry/instrumentation-pg');

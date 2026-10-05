@@ -205,7 +205,8 @@ app.use((req, res) => {
   res.status(404).render('error', { title: 'Not Found', message: 'Page not found.' });
 });
 
-app.use((err, req, res, next) => {
+// Four parameters: that's how Express recognises an error handler, so _next stays.
+app.use((err, req, res, _next) => {
   console.error(err);
   if (req.path.startsWith('/api/')) return res.status(500).json({ error: err.message || 'Something went wrong.' });
   res.status(500).render('error', { title: 'Server Error', message: 'Something went wrong.' });

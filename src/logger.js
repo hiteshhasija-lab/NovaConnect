@@ -39,9 +39,8 @@ function createChildLogger(bindings) {
   return baseLogger.child(bindings);
 }
 
-function createRequestLogger(req, res) {
+function createRequestLogger(req, _res) {
   const requestId = req.headers?.['x-request-id'] || req.id || require('crypto').randomUUID();
-  const tracer = getTracer('novaconnect');
 
   return baseLogger.child({
     request_id: requestId,
