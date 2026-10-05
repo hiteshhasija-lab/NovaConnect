@@ -13,10 +13,12 @@
 #   4. prints the post-deploy checklist (server HEAD = origin, version in the container,
 #      :stable = :<version> = running image, MEDIASOUP_ANNOUNCED_IP set, recent log errors,
 #      login page status) and updates STABLE-RELEASE.json.
-# Only for overlay releases (src/ views/ public/). A change to dependencies or Containerfile.base
-# needs the base image rebuilt first. A schema change must be applied (additively, so the running
-# version keeps working) before releasing, then released with NOVACONNECT_DB_MIGRATION set to the
-# migration's name — recorded as "databaseChanges": true in the manifest, notes and STABLE-RELEASE.
+# Only for overlay releases (src/ views/ public/ migrations/). A change to dependencies or
+# Containerfile.base needs the base image rebuilt first. Since 1.0.175 the app applies pending
+# migrations itself at startup (src/migrate.js), so a release that adds one just ships it: set
+# NOVACONNECT_DB_MIGRATION to the migration's name so it's recorded as "databaseChanges": true in
+# the manifest, notes and STABLE-RELEASE (take a database backup first). Keep migrations additive,
+# so the previous version still runs if the release rolls back.
 #
 # Settings (environment): NOVACONNECT_SSH_KEY (default ~/.ssh/nuvrion_lab), NOVACONNECT_SSH_USER
 # (default hiteshhasija), NOVACONNECT_HOSTS (default "10.0.0.102 10.0.0.101" — the first that
@@ -58,11 +60,11 @@ v, c, reason, changes, migration = sys.argv[1:6]
 m = {"version": v, "artifact": f"NovaConnect-Overlay-{v}.tar.gz", "gitCommit": c,
   "product": "NovaConnect", "databaseChanges": bool(migration), "source": "hiteshhasija-lab/NovaConnect",
   "reason": reason, "changes": json.loads(changes)}
-if migration: m["databaseMigration"] = migration + " (additive; applied before this release)"
+if migration: m["databaseMigration"] = migration + " (additive; applied automatically at startup)"
 print(json.dumps(m, indent=2))
 EOF
 )
-if [ -n "$MIGRATION" ]; then DBNOTE="Database migration $MIGRATION (additive, applied beforehand)."; else DBNOTE="No database changes."; fi
+if [ -n "$MIGRATION" ]; then DBNOTE="Database migration $MIGRATION (additive, applied automatically at startup)."; else DBNOTE="No database changes."; fi
 NOTESFILE=$(printf '# NovaConnect %s\n\n- %s %s\n' "$V" "$NOTES" "$DBNOTE")
 
 # The remote script's arguments go through the remote shell, so quote them for it.
@@ -74,7 +76,7 @@ D=~/novaconnect-upgrades/releases/NovaConnect-v\$V
 echo "latest release before: \$(ls ~/novaconnect-upgrades/releases | sort -V | tail -1)"
 cd ~/novaconnect && git pull -q --ff-only && test "\$(git rev-parse --short HEAD)" = "\$C"
 mkdir -p \$D
-git archive --format=tar.gz -o \$D/NovaConnect-Overlay-\$V.tar.gz \$C Containerfile.overlay public src views
+git archive --format=tar.gz -o \$D/NovaConnect-Overlay-\$V.tar.gz \$C Containerfile.overlay public src views migrations
 cat > \$D/release-manifest.json <<'JSON'
 $MANIFEST
 JSON

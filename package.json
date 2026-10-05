@@ -1,6 +1,6 @@
 {
   "name": "novaconnect",
-  "version": "1.0.174",
+  "version": "1.0.175",
   "description": "NovaConnect: a team chat and collaboration app (channels, DMs, presence, threads, file sharing)",
   "main": "src/server.js",
   "scripts": {
@@ -47,6 +47,7 @@
     "meilisearch": "^0.32.0",
     "method-override": "^3.0.0",
     "multer": "^2.4.0",
+    "node-pg-migrate": "^7.5.0",
     "pg": "^8.23.0",
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
@@ -56,8 +57,7 @@
   "devDependencies": {
     "esbuild": "^0.28.2",
     "eslint": "^8.56.0",
-    "mediasoup-client": "^3.24.1",
-    "node-pg-migrate": "^7.5.0"
+    "mediasoup-client": "^3.24.1"
   },
   "engines": {
     "node": ">=22.5.0"

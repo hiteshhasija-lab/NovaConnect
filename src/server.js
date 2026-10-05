@@ -188,7 +188,8 @@ app.use((err, req, res, next) => {
 const server = http.createServer(app);
 realtime.attach(server, sessionMiddleware);
 
-initDb()
+require('./migrate').runMigrations(logger)
+  .then(() => initDb())
   .then(() => {
     require('./scheduler').start();
     const servers = [];

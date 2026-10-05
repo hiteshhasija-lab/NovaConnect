@@ -8,15 +8,18 @@ const { types: pgTypes } = require('pg');
 pgTypes.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10))); // int8/bigint
 pgTypes.setTypeParser(1700, (val) => (val === null ? null : parseFloat(val))); // numeric
 
+// Shared with migrate.js, which applies pending migrations before anything else starts.
+const pgConnection = {
+  host: process.env.PGHOST || 'NOVAAPP01',
+  port: process.env.PGPORT || 5432,
+  user: process.env.PGUSER || 'novadesk',
+  password: process.env.PGPASSWORD || 'novadesk_dev_pw',
+  database: process.env.PGDATABASE || 'novaconnect'
+};
+
 const knexInstance = require('knex')({
   client: 'pg',
-  connection: {
-    host: process.env.PGHOST || 'NOVAAPP01',
-    port: process.env.PGPORT || 5432,
-    user: process.env.PGUSER || 'novadesk',
-    password: process.env.PGPASSWORD || 'novadesk_dev_pw',
-    database: process.env.PGDATABASE || 'novaconnect'
-  },
+  connection: pgConnection,
   pool: { min: 0, max: 10 }
 });
 
@@ -173,4 +176,4 @@ async function initDb() {
   reindexAll().then(() => console.log('Search reindex complete')).catch(e => console.error('Search reindex failed:', e.message));
 }
 
-module.exports = { db, initDb, nowStr, offsetStr };
+module.exports = { db, initDb, nowStr, offsetStr, pgConnection };

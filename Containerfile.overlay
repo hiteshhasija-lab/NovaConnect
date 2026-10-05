@@ -6,6 +6,8 @@ ARG RELEASE_VERSION
 COPY src/ ./src/
 COPY views/ ./views/
 COPY public/ ./public/
+# Applied by src/migrate.js at startup.
+COPY migrations/ ./migrations/
 
 ENV NOVACONNECT_RELEASE_VERSION=${RELEASE_VERSION}
 LABEL org.opencontainers.image.version=${RELEASE_VERSION}
