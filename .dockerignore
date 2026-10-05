@@ -1,0 +1,16 @@
+# Build context for Containerfile / Containerfile.base (podman and docker both read this file).
+.git
+.github
+node_modules
+data
+certs
+.env
+*.log
+.DS_Store
+electron-app
+ios-app
+Windows PC App
+test
+*.docx
+~$*
+create_docx.py

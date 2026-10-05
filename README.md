@@ -8,16 +8,21 @@ A team chat and collaboration app — the "chat core" of a Microsoft Teams–sty
 - Postgres via `knex`, session auth with bcrypt-hashed passwords (same pattern as NovaDesk ITSM)
 - Socket.IO for real-time messaging, typing indicators, and presence — sharing the Express session, so a socket is authenticated the same way as an HTTP request
 
-## Run it
+## Run it (development)
+
+Needs Node.js 22, Postgres 16 and Redis on this machine (Meilisearch optional, for search).
 
 ```bash
 npm install
-npm run dev
+PGPASSWORD=… SEED_DEMO=true npm run dev
 ```
 
-Then open http://localhost:3000. The database is created and seeded automatically on first run with demo users, two teams, channels, and a DM.
+Then open http://localhost:3000. On first start NovaConnect creates its tables (migrations apply
+themselves) and, with `SEED_DEMO=true`, a demo workspace: sample users, two teams, channels and a DM.
+Database settings: `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` (defaults
+`localhost`, `5432`, `novaconnect`, none, `novaconnect`).
 
-## Demo logins
+## Demo logins (`SEED_DEMO=true` only)
 
 | Username | Password   | Role   |
 |----------|------------|--------|
@@ -26,6 +31,49 @@ Then open http://localhost:3000. The database is created and seeded automaticall
 | bsmith   | member123  | member |
 | mchen    | member123  | member |
 | rpatel   | member123  | member |
+
+Never use the demo workspace on a real install: everyone knows these passwords.
+
+## Fresh install (server)
+
+One server running NovaConnect, Postgres, Redis and Meilisearch with Docker Compose or Podman
+Compose (`compose.yaml`). Nothing here is specific to the NOVAAPP01 lab.
+
+**You need:** Docker with the compose plugin, or Podman with `podman compose`; the server's IP
+address (or a DNS name) that users' browsers reach; a TLS certificate for that name or IP.
+
+1. **Get the code:** `git clone https://github.com/hiteshhasija-lab/NovaConnect.git && cd NovaConnect`
+2. **Settings:** `cp .env.example .env`, then fill in every value under "Required". Generate each
+   secret with `openssl rand -hex 32`. Set `MEDIASOUP_ANNOUNCED_IP` to the server's IP as browsers
+   reach it, and `ADMIN_USERNAME` / `ADMIN_PASSWORD` for the first admin account.
+3. **Certificate:** put the private key and certificate in `certs/key.pem` and `certs/cert.pem`.
+   Browsers only allow camera and microphone on https, so calls need this. For a lab, `mkcert`
+   makes one (`mkcert -key-file certs/key.pem -cert-file certs/cert.pem <ip-or-name>`), and each
+   device must trust mkcert's root certificate. Without a certificate the app runs on http only.
+4. **Firewall:** open TCP 80 and 443 (or `NOVACONNECT_HTTP_PORT` / `NOVACONNECT_HTTPS_PORT`) and
+   **UDP 40000–49999** (call and meeting media).
+5. **Start:** `docker compose up -d --build` (or `podman compose up -d --build`). The first build
+   takes a few minutes. Then open `https://<server>` and sign in as the admin.
+
+On first start NovaConnect creates its database tables and the admin account. The NovaDesk
+integration, AI features and S3 storage stay off until their settings are filled in.
+
+**Upgrading:** `git pull` then `docker compose up -d --build`. New database migrations apply
+themselves when NovaConnect starts; back up first (below). If one fails, NovaConnect stops instead
+of running on a half-updated database, and `docker compose logs novaconnect` says why.
+
+**Backups:** the database is the `pgdata` volume, uploads and recordings the `uploads` volume.
+For example: `docker compose exec postgres pg_dump -U novaconnect -Fc novaconnect > novaconnect.dump`.
+
+**Host notes**
+- *Rootless Podman:* binding ports 80/443 needs `sysctl net.ipv4.ip_unprivileged_port_start=0`
+  (or use ports above 1024). Reserve the media range so nothing else takes a port from it
+  (`net.ipv4.ip_local_reserved_ports=40000-49999`), or the pod can fail to start after a reboot.
+- *Docker:* publishing 10,000 UDP ports through Docker's userland proxy is slow and heavy; set
+  `"userland-proxy": false` in `/etc/docker/daemon.json`.
+- *SELinux (RHEL, Fedora):* `compose.yaml` mounts `certs/` with `:z` so the container can read it.
+  Don't mount this whole folder into other containers with `:Z`: that relabels it for one container
+  and locks the others out of their data.
 
 ## What's here (chat core)
 
@@ -46,7 +94,7 @@ This is the messaging core, not a full Teams parity build — no group audio/vid
 
 - Deep-links work: `/app/channel/:id` and `/app/dm/:id` are shareable URLs into a specific conversation.
 - Presence tracks live socket connections; chat unread, favorite, mute and hidden preferences are persisted per participant. There is no per-message read receipt UI.
-- This is a self-contained local app — reset by deleting the `data/` folder (uploaded files) and dropping the `novaconnect` Postgres database.
+- Development reset: delete the `data/` folder (uploaded files) and drop the `novaconnect` Postgres database; the next start recreates the tables.
 
 
 ## Calls and meetings
