@@ -190,13 +190,13 @@ realtime.attach(server, sessionMiddleware);
 
 require('./migrate').runMigrations(logger)
   .then(() => initDb())
-  .then(() => {
+  .then(({ seeded } = {}) => {
     require('./scheduler').start();
     const servers = [];
 
     servers.push(server.listen(PORT, HOST, () => {
       logger.info(`NovaConnect running at http://${HOST}:${PORT}`);
-      logger.info('Seed logins: admin/admin123 (admin), jdoe/member123, bsmith/member123, mchen/member123, rpatel/member123');
+      if (seeded === 'demo') logger.warn('Demo workspace created (SEED_DEMO=true): admin/admin123 (admin), jdoe/member123, bsmith/member123, mchen/member123, rpatel/member123. Not for real use.');
     }));
 
     if (fs.existsSync(TLS_KEY_PATH) && fs.existsSync(TLS_CERT_PATH)) {

@@ -2,19 +2,18 @@ const { db, nowStr } = require('./db');
 const { emitToChannel, emitToConversation } = require('./realtime');
 const { hydrateOne } = require('./messageUtils');
 
-// host.containers.internal, not NovaDesk's raw pod IP (10.0.0.101): that IP also happens to
-// carry this host's default gateway (enp10s0), which hits an asymmetric pasta hairpin-NAT
-// edge case — peer-pod-to-peer-pod calls targeting the gateway-carrying interface get
-// ECONNREFUSED, while the same call to a non-gateway peer IP (10.0.0.102) works fine, and a
-// plain "reach the host" call via host.containers.internal works fine in both directions.
-// Confirmed empirically 2026-09-21; do not swap this back to a raw peer IP.
-const NOVADESK_BASE_URL = process.env.NOVADESK_BASE_URL || 'http://host.containers.internal';
+// The NovaDesk decommission integration is on only where NovaDesk is configured:
+//   NOVADESK_BASE_URL     NovaDesk's address as reached from this server (on NOVAAPP01:
+//                         http://host.containers.internal — NovaDesk's own IP, 10.0.0.101, carries
+//                         the host's default gateway and pod-to-pod calls to it get ECONNREFUSED;
+//                         confirmed 2026-09-21, do not swap it for the raw IP)
+//   SYNC_API_KEY          shared secret both apps send as a Bearer token
+//   NOVADESK_PUBLIC_URL   optional: NovaDesk's address in users' browsers, for the approval card's
+//                         "View Change" button (on NOVAAPP01: https://NovaDesk.lab.sps); no button if unset
+// Without NOVADESK_BASE_URL, "decommission <host>" messages are ordinary messages (#24, 2026-10-04).
+const NOVADESK_BASE_URL = (process.env.NOVADESK_BASE_URL || '').trim().replace(/\/+$/, '');
 const SYNC_API_KEY = process.env.SYNC_API_KEY || '';
-
-// Browser-facing NovaDesk URL for the approval card's "View Change" link — different from
-// NOVADESK_BASE_URL above, which is the internal pod-to-pod address and unreachable/untrusted
-// from a user's own browser. Matches the DNS SAN on NovaDesk's own mkcert certificate.
-const NOVADESK_PUBLIC_URL = process.env.NOVADESK_PUBLIC_URL || 'https://NovaDesk.lab.sps';
+const NOVADESK_PUBLIC_URL = (process.env.NOVADESK_PUBLIC_URL || '').trim().replace(/\/+$/, '');
 
 // Mirrors NovaDesk's own CI_TYPE_LABELS/ENVIRONMENT_LABELS (src/helpers.js) just enough to build
 // the approval card's "Production Server" style subtitle — small and stable enough that
@@ -38,6 +37,7 @@ function titleCase(s) {
 // separate podman pods on the same host), and teaching Node in this container to trust
 // the mkcert CA used for the browser-facing side is unneeded complexity for it.
 async function callNovaDesk(path, body) {
+  if (!NOVADESK_BASE_URL) throw new Error('The NovaDesk integration is not configured (NOVADESK_BASE_URL).');
   const res = await fetch(`${NOVADESK_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SYNC_API_KEY}` },
@@ -103,6 +103,7 @@ function setThinking(targets, thinking) {
 // Fire-and-forget from the message-post route — never let this throw upstream, since a
 // NovaDesk hiccup here must not affect the human's own message send.
 async function handleDecomTrigger(target, userId, text) {
+  if (!NOVADESK_BASE_URL) return; // integration not configured
   try {
     const intent = extractDecomIntent(text);
     if (!intent) return;
@@ -171,7 +172,7 @@ async function handleDecomTrigger(target, userId, text) {
         requestedBy: user ? user.full_name : 'Unknown',
         assignmentGroup: change.assignment_group,
         assignedTo: assignee ? assignee.full_name : 'Unassigned',
-        novadeskChangeUrl: `${NOVADESK_PUBLIC_URL}/changes/${change.id}`,
+        novadeskChangeUrl: NOVADESK_PUBLIC_URL ? `${NOVADESK_PUBLIC_URL}/changes/${change.id}` : null,
         status: 'pending'
       }
     );

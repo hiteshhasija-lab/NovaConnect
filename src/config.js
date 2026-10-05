@@ -14,9 +14,23 @@ const EnvSchema = z.object({
   // Database (required in production, optional in dev with defaults)
   PGHOST: IS_PRODUCTION ? z.string().min(1) : z.string().default('localhost'),
   PGPORT: z.coerce.number().int().positive().default(5432),
-  PGUSER: IS_PRODUCTION ? z.string().min(1) : z.string().default('novadesk'),
-  PGPASSWORD: IS_PRODUCTION ? z.string().min(1) : z.string().default('novadesk_dev_pw'),
+  PGUSER: IS_PRODUCTION ? z.string().min(1) : z.string().default('novaconnect'),
+  PGPASSWORD: IS_PRODUCTION ? z.string().min(1) : z.string().optional(),
   PGDATABASE: IS_PRODUCTION ? z.string().min(1) : z.string().default('novaconnect'),
+
+  // First start on an empty database (db.js seedIfEmpty): a demo workspace, or one admin account.
+  SEED_DEMO: z.enum(['true', 'false']).default('false'),
+  ADMIN_USERNAME: z.string().trim().min(1).max(64).optional(),
+  ADMIN_PASSWORD: z.string().min(8, 'ADMIN_PASSWORD must be at least 8 characters').optional(),
+  ADMIN_FULL_NAME: z.string().optional(),
+  ADMIN_EMAIL: z.string().email().optional().or(z.literal('')),
+  // Apply pending migrations at startup (src/migrate.js); 'false' to run them some other way.
+  MIGRATE_ON_START: z.enum(['true', 'false']).default('true'),
+
+  // NovaDesk decommission integration (decomFlow.js): off unless NOVADESK_BASE_URL is set.
+  NOVADESK_BASE_URL: z.string().url().optional().or(z.literal('')),
+  NOVADESK_PUBLIC_URL: z.string().url().optional().or(z.literal('')),
+  SYNC_API_KEY: z.string().optional(),
 
   // Session (required in production, dev default)
   SESSION_SECRET: IS_PRODUCTION

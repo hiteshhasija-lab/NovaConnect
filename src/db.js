@@ -9,11 +9,12 @@ pgTypes.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10))); /
 pgTypes.setTypeParser(1700, (val) => (val === null ? null : parseFloat(val))); // numeric
 
 // Shared with migrate.js, which applies pending migrations before anything else starts.
+// Plain defaults for a local install; a deployment sets PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE.
 const pgConnection = {
-  host: process.env.PGHOST || 'NOVAAPP01',
+  host: process.env.PGHOST || 'localhost',
   port: process.env.PGPORT || 5432,
-  user: process.env.PGUSER || 'novadesk',
-  password: process.env.PGPASSWORD || 'novadesk_dev_pw',
+  user: process.env.PGUSER || 'novaconnect',
+  password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE || 'novaconnect'
 };
 
@@ -63,10 +64,37 @@ const db = { transaction: fn => knexInstance.transaction(fn), prepare, raw: (sql
 
 const TS_DEFAULT = "DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))";
 
+// A brand-new database (no users yet) gets its first account(s) here, once:
+//   SEED_DEMO=true                      the demo workspace below (sample users, teams, chats —
+//                                       for demos and testing only: well-known passwords)
+//   ADMIN_USERNAME + ADMIN_PASSWORD     a single admin account (ADMIN_FULL_NAME, ADMIN_EMAIL optional)
+// With neither, nobody can sign in until one is set and the app restarted; a warning says so.
+// Returns what it did: 'demo', 'admin' or null.
 async function seedIfEmpty() {
   const userCount = (await db.prepare('SELECT COUNT(*) AS c FROM users').get()).c;
-  if (Number(userCount) > 0) return;
+  if (Number(userCount) > 0) return null;
 
+  if (process.env.SEED_DEMO === 'true') {
+    await seedDemoData();
+    console.warn('SEED_DEMO=true: created the demo workspace (demo accounts have well-known passwords).');
+    return 'demo';
+  }
+  const username = (process.env.ADMIN_USERNAME || '').trim();
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!username || !password) {
+    console.warn('No user accounts yet: set ADMIN_USERNAME and ADMIN_PASSWORD (or SEED_DEMO=true) and restart to create the first admin.');
+    return null;
+  }
+  await db.prepare(`
+    INSERT INTO users (username, password_hash, full_name, email, role, title, status)
+    VALUES (?, ?, ?, ?, 'admin', 'Administrator', 'offline')
+  `).run(username, bcrypt.hashSync(password, 10), (process.env.ADMIN_FULL_NAME || '').trim() || username, (process.env.ADMIN_EMAIL || '').trim() || null);
+  console.log(`Created the first admin account "${username}" from ADMIN_USERNAME/ADMIN_PASSWORD.`);
+  return 'admin';
+}
+
+// The demo workspace (SEED_DEMO=true on an empty database only).
+async function seedDemoData() {
   const insertUser = db.prepare(`
     INSERT INTO users (username, password_hash, full_name, email, role, title, status, status_message)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
@@ -169,11 +197,14 @@ async function ensureDecomWorkflowSetup() {
 }
 
 async function initDb() {
-  await seedIfEmpty();
-  await ensureDecomWorkflowSetup();
+  const seeded = await seedIfEmpty();
+  // The NovaDesk decommission integration (bot user, IT Operations team, #server-decom) only
+  // exists where NovaDesk is configured.
+  if (process.env.NOVADESK_BASE_URL) await ensureDecomWorkflowSetup();
   const { ensureIndex, reindexAll } = require('./search');
   await ensureIndex().catch(e => console.error('Search index init failed:', e.message));
   reindexAll().then(() => console.log('Search reindex complete')).catch(e => console.error('Search reindex failed:', e.message));
+  return { seeded };
 }
 
 module.exports = { db, initDb, nowStr, offsetStr, pgConnection };
