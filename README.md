@@ -39,7 +39,7 @@ Never use the demo workspace on a real install: everyone knows these passwords.
 One server running NovaConnect, Postgres, Redis and Meilisearch with Docker Compose or Podman
 Compose (`compose.yaml`). Nothing here is specific to the NOVAAPP01 lab.
 
-**You need:** Docker with the compose plugin, or Podman with `podman compose`; the server's IP
+**You need:** git, and Docker with the compose plugin or Podman with `podman compose`; the server's IP
 address (or a DNS name) that users' browsers reach; a TLS certificate for that name or IP.
 
 1. **Get the code:** `git clone https://github.com/hiteshhasija-lab/NovaConnect.git && cd NovaConnect`
@@ -47,13 +47,13 @@ address (or a DNS name) that users' browsers reach; a TLS certificate for that n
    secret with `openssl rand -hex 32`. Set `MEDIASOUP_ANNOUNCED_IP` to the server's IP as browsers
    reach it, and `ADMIN_USERNAME` / `ADMIN_PASSWORD` for the first admin account. On a server with
    several IP addresses, set `NOVACONNECT_BIND_IP` to the one NovaConnect should use (otherwise it
-   takes ports 80, 443 and 40000–49999 on all of them).
+   takes ports 80, 443 and 40000–40499 on all of them).
 3. **Certificate:** put the private key and certificate in `certs/key.pem` and `certs/cert.pem`.
    Browsers only allow camera and microphone on https, so calls need this. For a lab, `mkcert`
    makes one (`mkcert -key-file certs/key.pem -cert-file certs/cert.pem <ip-or-name>`), and each
    device must trust mkcert's root certificate. Without a certificate the app runs on http only.
 4. **Firewall:** open TCP 80 and 443 (or `NOVACONNECT_HTTP_PORT` / `NOVACONNECT_HTTPS_PORT`) and
-   **UDP 40000–49999** (call and meeting media).
+   **UDP 40000–40499** (call and meeting media; `MEDIASOUP_RTC_MIN_PORT` / `MEDIASOUP_RTC_MAX_PORT`).
 5. **Start:** `docker compose up -d --build` (or `podman compose up -d --build`). The first build
    takes a few minutes. Then open `https://<server>` and sign in as the admin.
 
@@ -73,8 +73,10 @@ For example: `docker compose exec postgres pg_dump -U novaconnect -Fc novaconnec
   then `sudo dnf install podman-compose`).
 - *Rootless Podman:* binding ports 80/443 needs `sysctl net.ipv4.ip_unprivileged_port_start=0`
   (or use ports above 1024). Reserve the media range so nothing else takes a port from it
-  (`net.ipv4.ip_local_reserved_ports=40000-49999`), or the pod can fail to start after a reboot.
-- *Docker:* publishing 10,000 UDP ports through Docker's userland proxy is slow and heavy; set
+  (`net.ipv4.ip_local_reserved_ports=40000-40499`), or the pod can fail to start after a reboot.
+  The compose network (netavark with nftables) can't publish a UDP range much bigger than 500
+  ports ("netlink: Message too long"), which is why the media range defaults to 500 ports here.
+- *Docker:* publishing many UDP ports through Docker's userland proxy is slow and heavy; set
   `"userland-proxy": false` in `/etc/docker/daemon.json`.
 - *SELinux (RHEL, Fedora):* `compose.yaml` mounts `certs/` with `:z` so the container can read it.
   Don't mount this whole folder into other containers with `:Z`: that relabels it for one container

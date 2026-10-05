@@ -78,7 +78,13 @@ const EnvSchema = z.object({
   MEDIASOUP_ANNOUNCED_IP: z.string().optional(),
   // How many mediasoup worker processes (one core each) to run; default: one per CPU core (sfu.js).
   MEDIASOUP_WORKERS: z.coerce.number().int().min(1).max(8).optional(),
-}).passthrough();
+  // UDP port range for call/meeting media (sfu.js), split between the workers.
+  MEDIASOUP_RTC_MIN_PORT: z.coerce.number().int().min(1024).max(65535).default(40000),
+  MEDIASOUP_RTC_MAX_PORT: z.coerce.number().int().min(1024).max(65535).default(49999),
+}).passthrough().refine(c => c.MEDIASOUP_RTC_MAX_PORT - c.MEDIASOUP_RTC_MIN_PORT + 1 >= 16 * (c.MEDIASOUP_WORKERS || 8), {
+  message: 'MEDIASOUP_RTC_MIN_PORT..MEDIASOUP_RTC_MAX_PORT must span at least 16 ports per media worker',
+  path: ['MEDIASOUP_RTC_MAX_PORT'],
+});
 
 let validatedConfig = null;
 

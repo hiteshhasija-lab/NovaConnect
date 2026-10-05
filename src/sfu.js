@@ -11,7 +11,11 @@ const MEDIASOUP_WORKER_SETTINGS = {
   logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
 };
 // The media UDP ports the pod publishes; each worker gets its own slice of them.
-const RTC_PORT_MIN = 40000, RTC_PORT_MAX = 49999;
+// UDP ports for call/meeting media, split evenly between the workers. Default 40000-49999 (the
+// NOVAAPP01 lab's pasta networking forwards the whole range). Configurable because a compose
+// bridge network (netavark + nftables) can't publish ranges much past 500 ports ("Message too
+// long"), so the compose kit uses 40000-40499 — about 250 people in calls at once.
+const RTC_PORT_MIN = cfg.MEDIASOUP_RTC_MIN_PORT, RTC_PORT_MAX = cfg.MEDIASOUP_RTC_MAX_PORT;
 
 const MEDIASOUP_ROUTER_OPTIONS = {
   mediaCodecs: [
