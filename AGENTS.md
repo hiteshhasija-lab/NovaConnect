@@ -7,3 +7,13 @@ Preserve approved font sizes unless the user asks to change them. Multi-line row
 The app-wide density rollout was reverted by the user. Keep subsequent menu-matching adjustments scoped to People and the channel header unless explicitly asked otherwise. Their typography and icon sizes match the rendered menu (13.552px text and 17.71px icons); preserve responsive wrapping.
 
 Use the blue/cyan logo-matched theme from `public/css/theme-blue-cyan.css` for future UI work. Reuse brand variables instead of hard-coded purple accents. People rail icon and label must match the standard rail sizing.
+
+## Clean-install rules (user-approved, 2026-10-05)
+NovaConnect must install from scratch on any server (README "Fresh install", `compose.yaml`) with every future change, not only work on the NOVAAPP01 lab. CI's fresh-install job checks startup, migrations, the first admin's sign-in and a restart on every push; it does not exercise every feature, so follow these rules:
+
+- **Database changes only as migration files** in `migrations/` (`npm run migrate:create <name>`). They apply themselves at startup (`src/migrate.js`). Never change the lab schema by hand with `psql`, and never create or alter tables from app code. Keep migrations additive, so the previous version still runs if a release rolls back.
+- **New settings** go in `src/config.js` (validated, with a sensible default or a clear error) and in `.env.example` with a comment. Required settings belong under "Required" there.
+- **New services** (another container, e.g. a worker or a cache) go in `compose.yaml`, with the README updated.
+- **New outside sources** (a CDN script or stylesheet, fonts, iframes, websocket or API hosts, media) must be added to the production Content-Security-Policy in `src/server.js` (`CSP_DIRECTIVES`). The lab runs in development mode and sends no CSP, so a missing source only breaks real production installs.
+- **Nothing lab-specific as a default:** no `NOVAAPP01`, `10.0.0.x`, `*.lab.sps` or lab passwords in code defaults. Lab values belong in the lab's systemd units.
+- **Releases:** `scripts/release.sh` refuses a commit whose CI run (`.github/workflows/ci-cd.yml`) isn't green. Fix CI rather than bypassing it; `NOVACONNECT_SKIP_CI=1` is for emergencies only and must be mentioned in the release reason.

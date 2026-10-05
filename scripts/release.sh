@@ -4,7 +4,8 @@
 #   scripts/release.sh <version> "<reason>" "<release-notes line>" "<change>" ["<change>" ...]
 #
 # Releases the commit at local HEAD, which must already be pushed to origin/main, with
-# src/version.js and package.json both at <version>. On the server it:
+# src/version.js and package.json both at <version>, and whose GitHub CI run must be green (it
+# waits for a run in progress; NOVACONNECT_SKIP_CI=1 overrides, emergencies only). On the server it:
 #   1. fast-forwards ~/novaconnect to that commit and checks it matches;
 #   2. builds releases/NovaConnect-v<version>/ — overlay tarball (git archive of the commit),
 #      release-manifest.json, RELEASE-NOTES.md, SHA256SUMS.txt;
@@ -25,7 +26,8 @@
 #
 # Settings (environment): NOVACONNECT_SSH_KEY (default ~/.ssh/nuvrion_lab), NOVACONNECT_SSH_USER
 # (default hiteshhasija), NOVACONNECT_HOSTS (default "10.0.0.102 10.0.0.101" — the first that
-# answers a ping; .101 is the same VM, for when this machine's route to .102 drops out).
+# answers a ping; .101 is the same VM, for when this machine's route to .102 drops out),
+# NOVACONNECT_GITHUB_REPO (default hiteshhasija-lab/NovaConnect), NOVACONNECT_SKIP_CI.
 set -euo pipefail
 
 if [ $# -lt 4 ]; then
@@ -48,6 +50,29 @@ C=$(git rev-parse --short HEAD)
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "Local HEAD ($C) is not origin/main — push first (or check out the commit you mean to release)." >&2; exit 1; }
 grep -q "module.exports = '$V';" src/version.js || { echo "src/version.js is not at $V." >&2; exit 1; }
 [ "$(node -p "require('./package.json').version")" = "$V" ] || { echo "package.json is not at $V." >&2; exit 1; }
+
+# --- CI must be green for exactly this commit (lint, unit tests, fresh install from compose.yaml).
+# Waits for a run that's still going; NOVACONNECT_SKIP_CI=1 overrides it (emergencies only). ---
+GH_REPO=${NOVACONNECT_GITHUB_REPO:-hiteshhasija-lab/NovaConnect}
+FULL=$(git rev-parse HEAD)
+if [ "${NOVACONNECT_SKIP_CI:-}" = 1 ]; then
+  echo "WARNING: NOVACONNECT_SKIP_CI=1 - releasing $C without checking CI. Say so in the release reason." >&2
+else
+  command -v gh >/dev/null || { echo "The GitHub CLI (gh) is needed to check CI for $C (or set NOVACONNECT_SKIP_CI=1)." >&2; exit 1; }
+  RUN=""
+  for i in $(seq 1 20); do   # a just-pushed commit's run can take a few seconds to appear
+    RUN=$(gh run list -R "$GH_REPO" --workflow ci-cd.yml --commit "$FULL" --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+    [ -n "$RUN" ] && break; sleep 6
+  done
+  [ -n "$RUN" ] || { echo "No CI run found for $C on $GH_REPO - is it pushed? Not releasing." >&2; exit 1; }
+  echo "Checking CI run $RUN for $C (waits if it's still running)..."
+  if ! gh run watch "$RUN" -R "$GH_REPO" --exit-status --interval 15 >/dev/null 2>&1; then
+    CONCLUSION=$(gh run view "$RUN" -R "$GH_REPO" --json conclusion --jq .conclusion 2>/dev/null || echo unknown)
+    echo "CI for $C is not green (${CONCLUSION:-unknown}): https://github.com/$GH_REPO/actions/runs/$RUN - fix it before releasing." >&2
+    exit 1
+  fi
+  echo "CI green for $C."
+fi
 
 H=""
 for candidate in $HOSTS; do
