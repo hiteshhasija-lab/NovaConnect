@@ -86,7 +86,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   // Six months, this host only: no includeSubDomains/preload, which would bind every subdomain of
   // a deployment's domain to https (and preload can't be undone quickly).
-  hsts: cfg.NODE_ENV === 'production' ? { maxAge: 15552000 } : false,
+  hsts: cfg.NODE_ENV === 'production' ? { maxAge: 15552000, includeSubDomains: false } : false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 

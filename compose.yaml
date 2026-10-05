@@ -5,8 +5,9 @@
 #   docker compose up -d --build  (or: podman compose up -d --build)
 #
 # On first start NovaConnect creates its database tables itself (src/migrate.js) and the first admin
-# account from ADMIN_USERNAME / ADMIN_PASSWORD. Upgrading later: pull the new code and run the same
-# `up -d --build`; new migrations apply themselves at startup.
+# account from ADMIN_USERNAME / ADMIN_PASSWORD. Upgrading later: pull the new code, then
+# `up -d --build --force-recreate novaconnect` (podman-compose keeps the old container without
+# --force-recreate); new migrations apply themselves at startup.
 name: novaconnect
 
 services:

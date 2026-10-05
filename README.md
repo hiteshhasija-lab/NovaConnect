@@ -60,9 +60,12 @@ address (or a DNS name) that users' browsers reach; a TLS certificate for that n
 On first start NovaConnect creates its database tables and the admin account. The NovaDesk
 integration, AI features and S3 storage stay off until their settings are filled in.
 
-**Upgrading:** `git pull` then `docker compose up -d --build`. New database migrations apply
-themselves when NovaConnect starts; back up first (below). If one fails, NovaConnect stops instead
-of running on a half-updated database, and `docker compose logs novaconnect` says why.
+**Upgrading:** `git pull`, then `docker compose up -d --build --force-recreate novaconnect` (or
+`podman compose …` with the same options). `--force-recreate` matters on Podman: podman-compose
+rebuilds the image but leaves the running container on the old one without it. The database,
+Redis and Meilisearch keep their data. New database migrations apply themselves when NovaConnect
+starts; back up first (below). If one fails, NovaConnect stops instead of running on a
+half-updated database, and `docker compose logs novaconnect` says why.
 
 **Backups:** the database is the `pgdata` volume, uploads and recordings the `uploads` volume.
 For example: `docker compose exec postgres pg_dump -U novaconnect -Fc novaconnect > novaconnect.dump`.
