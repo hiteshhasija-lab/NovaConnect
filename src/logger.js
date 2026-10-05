@@ -17,7 +17,7 @@ const baseLogger = pino({
   timestamp: pino.stdTimeFunctions.isoTime,
   base: {
     service: 'novaconnect',
-    version: process.env.NOVACONNECT_RELEASE_VERSION || process.env.npm_package_version || 'dev',
+    version: process.env.NOVACONNECT_RELEASE_VERSION || require('./version'),
     environment: NODE_ENV,
     hostname: require('os').hostname(),
     pid: process.pid,

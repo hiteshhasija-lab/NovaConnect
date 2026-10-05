@@ -123,9 +123,6 @@ function attach(server, sessionMiddleware) {
     }
     return kind;
   };
-  // Nobody is in a call right after a (re)start: clear call statuses left from before it.
-  db.prepare(`UPDATE users SET status = 'offline' WHERE status IN ('incall', 'inmeeting', 'presenting')`).run()
-    .catch(err => console.error('call presence reset failed:', err.message));
   endAllCalls = reason => groupCalls.endAll(reason);
   const meet = require('./meet-signaling').createMeetSignaling(io, db, roomUserMap, { scopeForRoom: roomId => groupCalls.scopeForRoom(roomId) });
   io.on('connection', (socket) => {
@@ -233,4 +230,13 @@ async function shutdownRealtime(reason) {
   if (io) io.disconnectSockets(true);
 }
 
-module.exports = { attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };
+
+// Nobody is in a call right after a (re)start: clear call statuses left from before it. Called by
+// server.js once the database is ready (on a fresh install the tables don't exist until the
+// migrations have run, so this can't run when the sockets are attached).
+function resetCallPresence() {
+  return db.prepare(`UPDATE users SET status = 'offline' WHERE status IN ('incall', 'inmeeting', 'presenting')`).run()
+    .catch(err => console.error('call presence reset failed:', err.message));
+}
+
+module.exports = { resetCallPresence, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };

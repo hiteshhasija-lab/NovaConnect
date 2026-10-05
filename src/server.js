@@ -57,10 +57,36 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
 
 // Helmet for security headers (must be early)
+// Content-Security-Policy for production (development sends none). Helmet's default policy
+// (script-src 'self' only) blocked the app's CDN libraries and inline scripts — found by the
+// first production-mode install (#24 step 5, 2026-10-04) — so this lists what NovaConnect really
+// loads: Bootstrap and its icons (cdn.jsdelivr.net), Socket.IO's client (cdn.socket.io), a few
+// inline scripts and handlers, WebAssembly + blob: workers for background blur (MediaPipe,
+// served from here), any https image (GIFs, avatars), blob: media and websocket connections.
+// No upgrade-insecure-requests, so an install without a certificate still works over http.
+const CSP_DIRECTIVES = {
+  defaultSrc: ["'self'"],
+  scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", 'https://cdn.jsdelivr.net', 'https://cdn.socket.io'],
+  scriptSrcAttr: ["'unsafe-inline'"],
+  styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+  fontSrc: ["'self'", 'data:', 'https://cdn.jsdelivr.net'],
+  imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+  mediaSrc: ["'self'", 'blob:', 'data:'],
+  connectSrc: ["'self'", 'ws:', 'wss:'],
+  workerSrc: ["'self'", 'blob:'],
+  frameSrc: ["'self'"],
+  frameAncestors: ["'self'"],
+  objectSrc: ["'none'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"],
+  upgradeInsecureRequests: null,
+};
 app.use(helmet({
-  contentSecurityPolicy: cfg.NODE_ENV === 'production' ? undefined : false,
+  contentSecurityPolicy: cfg.NODE_ENV === 'production' ? { useDefaults: false, directives: CSP_DIRECTIVES } : false,
   crossOriginEmbedderPolicy: false,
-  hsts: cfg.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+  // Six months, this host only: no includeSubDomains/preload, which would bind every subdomain of
+  // a deployment's domain to https (and preload can't be undone quickly).
+  hsts: cfg.NODE_ENV === 'production' ? { maxAge: 15552000 } : false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 
@@ -190,7 +216,8 @@ realtime.attach(server, sessionMiddleware);
 
 require('./migrate').runMigrations(logger)
   .then(() => initDb())
-  .then(({ seeded } = {}) => {
+  .then(async ({ seeded } = {}) => {
+    await realtime.resetCallPresence();
     require('./scheduler').start();
     const servers = [];
 

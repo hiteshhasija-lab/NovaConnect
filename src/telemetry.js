@@ -17,7 +17,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http')
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const SERVICE_NAME = 'novaconnect';
-const SERVICE_VERSION = process.env.NOVACONNECT_RELEASE_VERSION || process.env.npm_package_version || 'dev';
+const SERVICE_VERSION = process.env.NOVACONNECT_RELEASE_VERSION || require('./version');
 const OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = cfg.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || '';
 const NODE_ENV = cfg.NODE_ENV;
 
