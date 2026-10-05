@@ -45,7 +45,9 @@ address (or a DNS name) that users' browsers reach; a TLS certificate for that n
 1. **Get the code:** `git clone https://github.com/hiteshhasija-lab/NovaConnect.git && cd NovaConnect`
 2. **Settings:** `cp .env.example .env`, then fill in every value under "Required". Generate each
    secret with `openssl rand -hex 32`. Set `MEDIASOUP_ANNOUNCED_IP` to the server's IP as browsers
-   reach it, and `ADMIN_USERNAME` / `ADMIN_PASSWORD` for the first admin account.
+   reach it, and `ADMIN_USERNAME` / `ADMIN_PASSWORD` for the first admin account. On a server with
+   several IP addresses, set `NOVACONNECT_BIND_IP` to the one NovaConnect should use (otherwise it
+   takes ports 80, 443 and 40000–49999 on all of them).
 3. **Certificate:** put the private key and certificate in `certs/key.pem` and `certs/cert.pem`.
    Browsers only allow camera and microphone on https, so calls need this. For a lab, `mkcert`
    makes one (`mkcert -key-file certs/key.pem -cert-file certs/cert.pem <ip-or-name>`), and each
@@ -66,6 +68,9 @@ of running on a half-updated database, and `docker compose logs novaconnect` say
 For example: `docker compose exec postgres pg_dump -U novaconnect -Fc novaconnect > novaconnect.dump`.
 
 **Host notes**
+- *Podman Compose on RHEL:* `podman compose` needs a provider; `podman-compose` is in EPEL
+  (`sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm`,
+  then `sudo dnf install podman-compose`).
 - *Rootless Podman:* binding ports 80/443 needs `sysctl net.ipv4.ip_unprivileged_port_start=0`
   (or use ports above 1024). Reserve the media range so nothing else takes a port from it
   (`net.ipv4.ip_local_reserved_ports=40000-49999`), or the pod can fail to start after a reboot.

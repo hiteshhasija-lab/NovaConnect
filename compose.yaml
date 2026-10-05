@@ -24,12 +24,14 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       MEILI_HOST: http://meilisearch:7700
+    # NOVACONNECT_BIND_IP: listen on one of the server's addresses only (for a server with several
+    # IPs, like one per app); default all of them.
     ports:
-      - "${NOVACONNECT_HTTP_PORT:-80}:8080"
-      - "${NOVACONNECT_HTTPS_PORT:-443}:8443"
+      - "${NOVACONNECT_BIND_IP:-0.0.0.0}:${NOVACONNECT_HTTP_PORT:-80}:8080"
+      - "${NOVACONNECT_BIND_IP:-0.0.0.0}:${NOVACONNECT_HTTPS_PORT:-443}:8443"
       # Call and meeting media (mediasoup). Browsers send audio/video straight to these ports on
       # MEDIASOUP_ANNOUNCED_IP, so they must be open in the server's firewall too.
-      - "40000-49999:40000-49999/udp"
+      - "${NOVACONNECT_BIND_IP:-0.0.0.0}:40000-49999:40000-49999/udp"
     volumes:
       # TLS certificate: browsers only allow camera/microphone on https. ':z' lets the container
       # read it on SELinux hosts (RHEL, Fedora); other hosts ignore it.
