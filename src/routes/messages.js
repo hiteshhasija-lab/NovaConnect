@@ -7,7 +7,7 @@ const { emitToChannel, emitToConversation, emitToUser } = require('../realtime')
 const { upload, uploadFile, STORAGE_DRIVER } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
-const { getPublicUrl, deleteFile, LOCAL_UPLOAD_ROOT } = require('../storage');
+const { getPublicUrl, LOCAL_UPLOAD_ROOT } = require('../storage');
 
 const router = createAsyncRouter();
 router.use(requireAuth);

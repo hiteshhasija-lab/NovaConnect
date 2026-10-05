@@ -5,7 +5,7 @@ const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToConversation, emitToUser, resyncUserRooms } = require('../realtime');
 const { upload, uploadFile } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
-const { indexMessage, removeMessage } = require('../search');
+const { indexMessage } = require('../search');
 
 const router = createAsyncRouter();
 router.use(requireAuth);

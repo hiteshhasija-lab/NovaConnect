@@ -150,8 +150,6 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
   function attach(socket) {
     let roomCode = null;
     let meetingId = null;
-    let inLobby = false;
-    let isAdmitted = false;
     setRoomOf.set(socket.id, room => { roomCode = room; });  // breakout moves (moveSocket)
     socket.on('disconnect', () => setRoomOf.delete(socket.id));
 
@@ -180,8 +178,6 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       endBreakoutsIfEmpty(mainOf(roomCode));
       roomCode = null;
       meetingId = null;
-      inLobby = false;
-      isAdmitted = false;
     }
 
     // Moves a lobby entry into the meeting: it starts receiving room broadcasts only now.
@@ -244,8 +240,6 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       if (roomCode) leave();
       roomCode = roomId;
       meetingId = code;
-      inLobby = true;
-      isAdmitted = false;
 
       roomUserMap.set(socket.id, {
         roomId, peerId, userId: u.id, fullName: u.full_name, ownerId: link.created_by, inLobby: true, waiting: false,
@@ -271,8 +265,6 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
 
       if (mapping.ownerId === u.id) {
         admitSocket(socket.id, mapping);
-        inLobby = false;
-        isAdmitted = true;
         return { admitted: true };
       }
 
@@ -659,7 +651,7 @@ function createMeetSignaling(io, db, roomUserMap, { scopeForRoom = () => null } 
       return {};
     });
 
-    handle('sfu:leave', async ({ roomId }, u) => {
+    handle('sfu:leave', async ({ roomId }, _u) => {
       if (roomId === roomCode) leave();
       return { success: true };
     });

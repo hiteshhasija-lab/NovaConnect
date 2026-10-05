@@ -1,5 +1,5 @@
 const createAsyncRouter = require('../asyncRouter');
-const { db, nowStr } = require('../db');
+const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { resyncUserRooms, emitToUser } = require('../realtime');
 

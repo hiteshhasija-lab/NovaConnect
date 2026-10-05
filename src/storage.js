@@ -9,13 +9,13 @@ const MAX_FILE_SIZE = Number(process.env.MAX_FILE_SIZE) || 100 * 1024 * 1024;
 const BLOCKED_EXTENSIONS = new Set(['.exe', '.sh', '.bat', '.cmd', '.com', '.msi', '.ps1', '.vbs', '.js', '.jar', '.app']);
 
 let s3Client = null;
-let s3Bucket = process.env.S3_BUCKET || '';
-let s3Region = process.env.S3_REGION || 'us-east-1';
-let s3Endpoint = process.env.S3_ENDPOINT || '';
-let s3AccessKeyId = process.env.S3_ACCESS_KEY_ID || '';
-let s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY || '';
-let s3CdnUrl = process.env.S3_CDN_URL || '';
-let s3ForcePathStyle = process.env.S3_FORCE_PATH_STYLE === 'true';
+const s3Bucket = process.env.S3_BUCKET || '';
+const s3Region = process.env.S3_REGION || 'us-east-1';
+const s3Endpoint = process.env.S3_ENDPOINT || '';
+const s3AccessKeyId = process.env.S3_ACCESS_KEY_ID || '';
+const s3SecretAccessKey = process.env.S3_SECRET_ACCESS_KEY || '';
+const s3CdnUrl = process.env.S3_CDN_URL || '';
+const s3ForcePathStyle = process.env.S3_FORCE_PATH_STYLE === 'true';
 
 function getS3Client() {
   if (!s3Client) {

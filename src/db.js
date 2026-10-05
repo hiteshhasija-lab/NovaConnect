@@ -62,8 +62,6 @@ function prepare(sql) {
 
 const db = { transaction: fn => knexInstance.transaction(fn), prepare, raw: (sql, params) => knexInstance.raw(sql, params) };
 
-const TS_DEFAULT = "DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))";
-
 // A brand-new database (no users yet) gets its first account(s) here, once:
 //   SEED_DEMO=true                      the demo workspace below (sample users, teams, chats —
 //                                       for demos and testing only: well-known passwords)
@@ -165,7 +163,7 @@ async function seedDemoData() {
   const dmId = dm.lastInsertRowid;
   await insertParticipant.run(dmId, ids.admin);
   await insertParticipant.run(dmId, ids.jdoe);
-  await insertDmMessage.run(dmId, ids.admin, "Hey Jane — can you review the on-call rotation doc when you get a sec?", offsetStr(0, -6), offsetStr(0, -6));
+  await insertDmMessage.run(dmId, ids.admin, 'Hey Jane — can you review the on-call rotation doc when you get a sec?', offsetStr(0, -6), offsetStr(0, -6));
 }
 
 // Idempotent — runs on every boot (unlike seedIfEmpty, which only fires on a brand-new

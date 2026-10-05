@@ -5,7 +5,7 @@ const { resyncUserRooms, emitToUser } = require('../realtime');
 router.use(requireAuth);
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 async function context(trx, kind, id, userId, lock = false) {
-  let channel = kind === 'channels' ? await trx('channels').where({ id }).first() : null;
+  const channel = kind === 'channels' ? await trx('channels').where({ id }).first() : null;
   if (kind === 'channels' && !channel) fail(404, 'Channel not found.');
   const teamId = channel ? channel.team_id : id;
   let query = trx('teams').where({ id: teamId });

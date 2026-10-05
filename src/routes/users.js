@@ -48,11 +48,11 @@ router.delete('/api/users/:id/block', async (req, res) => {
 function computeStatusExpiry(clearAfter) {
   const now = new Date();
   switch (clearAfter) {
-    case 'today': { const d = new Date(now); d.setUTCHours(23, 59, 59, 999); return d; }
-    case '1h': return new Date(now.getTime() + 60 * 60000);
-    case '4h': return new Date(now.getTime() + 4 * 60 * 60000);
-    case 'week': return new Date(now.getTime() + 7 * 86400000);
-    default: return null;
+  case 'today': { const d = new Date(now); d.setUTCHours(23, 59, 59, 999); return d; }
+  case '1h': return new Date(now.getTime() + 60 * 60000);
+  case '4h': return new Date(now.getTime() + 4 * 60 * 60000);
+  case 'week': return new Date(now.getTime() + 7 * 86400000);
+  default: return null;
   }
 }
 

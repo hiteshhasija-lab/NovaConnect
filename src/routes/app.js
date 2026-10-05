@@ -113,9 +113,9 @@ router.get('/dm/:id', async (req, res) => {
 });
 
 router.get('/meet/:code', async(req,res)=>{
- const link=await db.prepare('SELECT code,title FROM meet_links WHERE code=? AND active=1').get(req.params.code);
- if(!link)return res.status(404).render('error',{title:'Meeting unavailable',message:'This meeting link does not exist.'});
- res.render('meet-room',{title:link.title,link,layout:!req.xhr});
+  const link=await db.prepare('SELECT code,title FROM meet_links WHERE code=? AND active=1').get(req.params.code);
+  if(!link)return res.status(404).render('error',{title:'Meeting unavailable',message:'This meeting link does not exist.'});
+  res.render('meet-room',{title:link.title,link,layout:!req.xhr});
 });
 
 module.exports = router;

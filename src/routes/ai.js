@@ -70,7 +70,7 @@ router.post('/api/ai/messages', async (req, res) => {
       replyText = await callGemini(history);
     } catch (e) {
       console.error('Gemini call failed:', e.message);
-      replyText = "I couldn't reach Gemini just now (" + e.message + "). Try again in a moment.";
+      replyText = "I couldn't reach Gemini just now (" + e.message + '). Try again in a moment.';
     }
   } else {
     replyText = placeholderReply();
