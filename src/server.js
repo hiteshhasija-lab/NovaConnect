@@ -80,9 +80,15 @@ const CSP_DIRECTIVES = {
   baseUri: ["'self'"],
   formAction: ["'self'"],
   upgradeInsecureRequests: null,
+  // Browsers report violations here (see /csp-report below).
+  reportUri: ['/csp-report'],
 };
 app.use(helmet({
-  contentSecurityPolicy: cfg.NODE_ENV === 'production' ? { useDefaults: false, directives: CSP_DIRECTIVES } : false,
+  // CSP_REPORT_ONLY=true sends Content-Security-Policy-Report-Only: browsers report what the policy
+  // would block without blocking it — how an existing install moves to production mode safely.
+  contentSecurityPolicy: cfg.NODE_ENV === 'production'
+    ? { useDefaults: false, directives: CSP_DIRECTIVES, reportOnly: cfg.CSP_REPORT_ONLY === 'true' }
+    : false,
   crossOriginEmbedderPolicy: false,
   // Six months, this host only: no includeSubDomains/preload, which would bind every subdomain of
   // a deployment's domain to https (and preload can't be undone quickly).
@@ -164,6 +170,39 @@ app.use((req, res, next) => {
 // this first, ahead of all of them, is simpler and safer than auditing/fixing every other
 // router's mount path individually.
 app.use('/api/integrations', globalLimiter, integrationsInRoutes);
+
+// CSP violation reports from browsers (the policy's report-uri). Sent without a session, so it sits
+// before the session and auth like the integration routes. Each distinct violation is logged at most
+// once an hour, as a warning: in report-only mode that's what the policy *would* block, enforced it's
+// what it did block. Only the report's fields are logged, trimmed; nothing else is kept.
+const cspSeen = new Map(); // violation key -> when it was last logged
+app.post('/csp-report', globalLimiter,
+  express.json({ type: ['application/csp-report', 'application/reports+json'], limit: '16kb' }),
+  (req, res) => {
+    const body = req.body;
+    const reports = Array.isArray(body) ? body.map((r) => r && r.body) : [body && body['csp-report']];
+    for (const r of reports.filter((x) => x && typeof x === 'object')) {
+      const field = (...names) => { for (const n of names) if (r[n] != null && r[n] !== '') return String(r[n]); return ''; };
+      const directive = field('effective-directive', 'effectiveDirective', 'violated-directive').slice(0, 100);
+      const blocked = (field('blocked-uri', 'blockedURL') || 'inline').slice(0, 300);
+      const page = field('document-uri', 'documentURL').slice(0, 300);
+      const key = `${directive} ${blocked} ${page}`;
+      const now = Date.now();
+      if (now - (cspSeen.get(key) || 0) < 60 * 60 * 1000) continue;
+      if (cspSeen.size > 1000) cspSeen.clear();
+      cspSeen.set(key, now);
+      logger.warn({
+        csp: {
+          directive, blocked, page,
+          source: field('source-file', 'sourceFile').slice(0, 300) || null,
+          line: field('line-number', 'lineNumber') || null,
+          sample: field('script-sample', 'sample').slice(0, 80) || null,
+          reportOnly: field('disposition') === 'report',
+        },
+      }, 'CSP violation report');
+    }
+    res.status(204).end();
+  });
 
 const sessionMiddleware = session({
   store: new RedisStore({ client: redis, prefix: 'nc:sess:' }),

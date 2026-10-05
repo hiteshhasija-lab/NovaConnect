@@ -29,6 +29,9 @@ const EnvSchema = z.object({
 
   // NovaDesk decommission integration (decomFlow.js): off unless NOVADESK_BASE_URL is set.
   NOVADESK_BASE_URL: z.string().url().optional().or(z.literal('')),
+
+  // Production only: send the Content-Security-Policy as report-only (browsers report, don't block).
+  CSP_REPORT_ONLY: z.enum(['true', 'false']).default('false'),
   NOVADESK_PUBLIC_URL: z.string().url().optional().or(z.literal('')),
   SYNC_API_KEY: z.string().optional(),
 

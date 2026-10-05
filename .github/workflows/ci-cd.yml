@@ -84,6 +84,13 @@ jobs:
         run: |
           curl -sI http://localhost:8080/login | tee headers.txt
           grep -qi '^content-security-policy:.*cdn.jsdelivr.net' headers.txt
+          grep -qi '^content-security-policy:.*report-uri /csp-report' headers.txt
+          # The report endpoint accepts a browser-style report and logs it.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/csp-report' \
+            -d '{"csp-report":{"document-uri":"http://localhost:8080/ci","effective-directive":"script-src-elem","blocked-uri":"https://ci-check.invalid/x.js","disposition":"enforce"}}' \
+            http://localhost:8080/csp-report)
+          echo "csp-report: HTTP $code"; test "$code" = 204
+          sleep 1; docker compose logs novaconnect | grep -q 'ci-check.invalid'
 
       - name: Browser check (production CSP, no blocked scripts or JavaScript errors)
         run: |
