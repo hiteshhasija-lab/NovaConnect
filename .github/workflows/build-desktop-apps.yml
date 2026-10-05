@@ -18,14 +18,14 @@ jobs:
       run:
         working-directory: electron-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm install
       - name: Build Windows installer
         run: npm run dist:win -- "-c.extraMetadata.novaconnectDefaultServerUrl=${{ vars.NOVACONNECT_DEFAULT_SERVER_URL }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: NovaConnect-Windows-Installer
           path: electron-app/dist/*.exe
@@ -36,14 +36,14 @@ jobs:
       run:
         working-directory: electron-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm install
       - name: Build macOS DMGs (Apple Silicon + Intel)
         run: npm run dist:mac -- "-c.extraMetadata.novaconnectDefaultServerUrl=${{ vars.NOVACONNECT_DEFAULT_SERVER_URL }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: NovaConnect-macOS-DMGs
           path: electron-app/dist/*.dmg
