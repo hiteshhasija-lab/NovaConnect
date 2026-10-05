@@ -85,6 +85,19 @@ jobs:
           curl -sI http://localhost:8080/login | tee headers.txt
           grep -qi '^content-security-policy:.*cdn.jsdelivr.net' headers.txt
 
+      - name: Browser check (production CSP, no blocked scripts or JavaScript errors)
+        run: |
+          # Playwright lives in a scratch folder so it never touches the app's dependencies.
+          mkdir -p "$RUNNER_TEMP/browser-check"
+          cp scripts/ci-browser-check.mjs "$RUNNER_TEMP/browser-check/"
+          cd "$RUNNER_TEMP/browser-check"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright@1
+          npx playwright install --with-deps chromium
+          node ci-browser-check.mjs
+        env:
+          BASE_URL: http://localhost:8080
+
       - name: A restart keeps the data
         run: |
           docker compose restart novaconnect
