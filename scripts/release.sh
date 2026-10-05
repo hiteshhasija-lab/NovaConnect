@@ -12,7 +12,10 @@
 #      health check, automatic rollback on failure);
 #   4. prints the post-deploy checklist (server HEAD = origin, version in the container,
 #      :stable = :<version> = running image, MEDIASOUP_ANNOUNCED_IP set, recent log errors,
-#      login page status) and updates STABLE-RELEASE.json.
+#      login page status) and updates STABLE-RELEASE.json;
+#   5. if the login page answers, removes old NovaConnect images and build folders
+#      (scripts/prune-images.sh: keeps :stable, :base*, the running image, the 5 newest versions
+#      and the 5 newest rollbacks).
 # Only for overlay releases (src/ views/ public/ migrations/). A change to dependencies or
 # Containerfile.base needs the base image rebuilt first. Since 1.0.175 the app applies pending
 # migrations itself at startup (src/migrate.js), so a release that adds one just ships it: set
@@ -104,6 +107,9 @@ d.update(stableVersion=v, markedStableAt=datetime.datetime.now(datetime.timezone
   rollbackImage="localhost/novaconnect:rollback-" + rb, reason=reason + f" gitCommit {c}. " + dbnote)
 json.dump(d, open(p, "w"), indent=2); print("STABLE-RELEASE.json ->", d["stableVersion"])
 PY
-echo "login page: \$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://10.0.0.102/login)"
+LOGIN=\$(curl -sk -o /dev/null -w '%{http_code}' --max-time 8 https://10.0.0.102/login || true)
+echo "login page: \$LOGIN"
+# Old images and build folders filled the disk once (#40): prune after a healthy release only.
+if [ "\$LOGIN" = 200 ]; then bash ~/novaconnect/scripts/prune-images.sh --yes || echo "cleanup failed (the release itself is fine)"; fi
 REMOTE
 echo "local HEAD $C"
