@@ -52,6 +52,11 @@ jobs:
               .env.example > .env
           # One media worker and a small port range keep Docker's port proxy light on the runner.
           printf 'MEDIASOUP_WORKERS=1\nMEDIASOUP_RTC_MIN_PORT=40000\nMEDIASOUP_RTC_MAX_PORT=40015\n' >> .env
+          # Shared secret for the NovaDesk integration endpoints, used by the idempotency check below.
+          SYNC_API_KEY=$(gen)
+          echo "::add-mask::$SYNC_API_KEY"
+          echo "SYNC_API_KEY=$SYNC_API_KEY" >> "$GITHUB_ENV"
+          echo "SYNC_API_KEY=$SYNC_API_KEY" >> .env
           # No certificate here, so NovaConnect serves http only (as README says it will).
           mkdir -p certs
           grep -cE '^[A-Z_]+=.+' .env
@@ -79,6 +84,32 @@ jobs:
           echo "login: HTTP $code"; test "$code" = 200
           grep -q '"role":"admin"' login.json
           curl -fsS -b cookies.txt http://localhost:8080/api/mobile/session | grep -q '"username":"admin"'
+
+      - name: NovaDesk card posts are idempotent
+        run: |
+          sql() { docker compose exec -T postgres psql -U novaconnect -d novaconnect -Atc "$1" < /dev/null | head -1; }
+          team=$(sql "insert into teams (name) values ('CI') returning id")
+          ch=$(sql "insert into channels (team_id, name) values ($team, 'ci-decom') returning id")
+          post() {
+            curl -s -o post.json -w '%{http_code}' -H "Authorization: Bearer $SYNC_API_KEY" -H 'Content-Type: application/json' \
+              -d "{\"channel_id\":$ch,\"body\":\"ci card\"$1}" http://localhost:8080/api/integrations/novadesk/decom-updates
+          }
+          test "$(post ',"idempotency_key":"ci-key-1"')" = 201
+          first=$(cat post.json)
+          test "$(post ',"idempotency_key":"ci-key-1"')" = 200
+          grep -q '"duplicate":true' post.json
+          # The repeat answers with the first message's id and stores nothing new.
+          test "$(grep -o '"messageId":[0-9]*' post.json)" = "$(echo "$first" | grep -o '"messageId":[0-9]*')"
+          test "$(sql "select count(*) from messages where idempotency_key = 'ci-key-1'")" = 1
+          # A different key is a different message, and posts without a key behave as before.
+          test "$(post ',"idempotency_key":"ci-key-2"')" = 201
+          test "$(post '')" = 201
+          test "$(post '')" = 201
+          test "$(sql "select count(*) from messages where channel_id = $ch")" = 4
+          # Wrong credentials are still refused.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong' -H 'Content-Type: application/json' \
+            -d "{\"channel_id\":$ch,\"body\":\"x\"}" http://localhost:8080/api/integrations/novadesk/decom-updates)
+          test "$code" = 401
 
       - name: Production security headers
         run: |
