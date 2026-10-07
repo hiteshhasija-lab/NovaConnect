@@ -117,6 +117,34 @@ jobs:
             -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" http://localhost:8080/api/mobile/login)
           test "$code" = 200
 
+      - name: Backup, wipe and restore (README "Backups" and "Restore")
+        run: |
+          state() { docker compose exec -T postgres psql -U novaconnect -d novaconnect -Atc "select (select count(*) from users) || ' users, ' || (select count(*) from meet_links) || ' meeting links, admin created ' || (select created_at from users where username='admin')" < /dev/null; }
+          docker compose exec -T novaconnect sh -c 'echo ci-restore-marker > /app/data/uploads/ci-marker.txt' < /dev/null
+          before=$(state); echo "before: $before"
+          docker compose exec -T postgres pg_dump -U novaconnect -Fc novaconnect < /dev/null > novaconnect.dump
+          docker compose exec -T novaconnect tar -C /app/data/uploads -cf - . < /dev/null > uploads.tar
+          docker compose down -v
+          docker compose up -d postgres redis meilisearch
+          # The postgres image restarts once while it initialises: wait, pause, wait again.
+          for round in 1 2; do
+            for i in $(seq 1 30); do docker compose exec -T postgres pg_isready -U novaconnect -d novaconnect < /dev/null && break; sleep 2; done
+            sleep 6
+          done
+          docker compose exec -T postgres pg_restore -U novaconnect -d novaconnect --no-owner --exit-on-error < novaconnect.dump
+          docker compose run --rm --no-deps -T --entrypoint tar novaconnect -C /app/data/uploads -xf - < uploads.tar
+          docker compose up -d novaconnect
+          for i in $(seq 1 60); do curl -fsS http://localhost:8080/health && break; sleep 3; done
+          after=$(state); echo "after:  $after"
+          test -n "$before" && test "$before" = "$after"
+          docker compose exec -T novaconnect cat /app/data/uploads/ci-marker.txt < /dev/null | grep -q ci-restore-marker
+          docker compose logs novaconnect > restored.log
+          grep -q "Database schema is up to date" restored.log
+          if grep -q "Created the first admin account" restored.log; then echo "a new admin was created instead of restoring"; exit 1; fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" http://localhost:8080/api/mobile/login)
+          echo "login after restore: HTTP $code"; test "$code" = 200
+
       - name: Logs (on failure)
         if: failure()
         run: docker compose logs

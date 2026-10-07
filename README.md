@@ -67,13 +67,39 @@ Redis and Meilisearch keep their data. New database migrations apply themselves 
 starts; back up first (below). If one fails, NovaConnect stops instead of running on a
 half-updated database, and `docker compose logs novaconnect` says why.
 
-**Backups:** the database is the `pgdata` volume, uploads and recordings the `uploads` volume.
-For example: `docker compose exec postgres pg_dump -U novaconnect -Fc novaconnect > novaconnect.dump`.
+**Backups** (tested by wiping an install and restoring it, 2026-10-07). Two things hold your data:
+the database and the uploads volume (files and recordings). Sessions (Redis) and the search index
+(Meilisearch) are rebuilt and don't need backing up.
+
+```bash
+docker compose exec -T postgres pg_dump -U novaconnect -Fc novaconnect < /dev/null > novaconnect.dump
+docker compose exec -T novaconnect tar -C /app/data/uploads -cf - . < /dev/null > uploads.tar
+```
+
+Keep both files, plus `.env` and `certs/`, somewhere off the server. (`< /dev/null` matters inside a
+script: `compose exec` otherwise swallows the rest of the script as its input.)
+
+**Restore** onto an empty install (same `.env`; a new server, or after `docker compose down -v`).
+The order matters: the data goes in *before* NovaConnect starts, or it would see an empty database,
+create the tables and a new admin, and the restore would clash with them.
+
+```bash
+docker compose up -d postgres redis meilisearch          # data services only, empty; give Postgres ~15 s to initialise
+docker compose exec -T postgres pg_restore -U novaconnect -d novaconnect --no-owner --exit-on-error < novaconnect.dump
+docker compose run --rm --no-deps -T --entrypoint tar novaconnect -C /app/data/uploads -xf - < uploads.tar
+docker compose up -d novaconnect                         # "Database schema is up to date", search reindexes
+```
+
+Everyone signs in again afterwards (sessions aren't restored). With Podman, use `podman compose`.
 
 **Host notes**
 - *Podman Compose on RHEL:* `podman compose` needs a provider; `podman-compose` is in EPEL
   (`sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm`,
   then `sudo dnf install podman-compose`).
+- *Start at boot with rootless Podman:* containers don't come back after a reboot on their own.
+  Run once, as the user that owns them: `systemctl --user enable podman-restart.service` and
+  `sudo loginctl enable-linger $USER` (tested with a real reboot: all four containers returned with
+  nobody logged in). Docker restarts them itself (`restart: unless-stopped`).
 - *Rootless Podman:* binding ports 80/443 needs `sysctl net.ipv4.ip_unprivileged_port_start=0`
   (or use ports above 1024). Reserve the media range so nothing else takes a port from it
   (`net.ipv4.ip_local_reserved_ports=40000-40499`), or the pod can fail to start after a reboot.
