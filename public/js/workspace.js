@@ -1108,6 +1108,7 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') html += decomSkipManualTasksCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') html += decomPrecheckTaskCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_summary') html += decomSummaryCardHtml(msg.metadata);
+    if (msg.metadata && msg.metadata.cardType === 'decom_status_report') html += decomStatusReportCardHtml(msg.metadata);
     (msg.attachments || []).forEach(a => { html += attachmentHtml(a); });
     html += reactionsHtml(msg);
     if (!isThreadReply && msg.reply_count) {
@@ -1333,6 +1334,49 @@
   // Terminal, non-interactive — no wiring function, just a formatted read-out of what
   // happened. All values come from NovaDesk (real elapsed time, real reclaimed specs, the
   // actual tracker row appended), not fabricated here.
+  // Answer to "status <server | CHG number>" (decomFlow.js handleStatusQuery). Times arrive as UTC
+  // text from NovaDesk and are shown in the viewer's own time zone.
+  function decomStatusReportCardHtml(meta) {
+    const when = (v) => {
+      if (!v) return '';
+      const d = new Date(String(v).replace(' ', 'T') + 'Z');
+      return Number.isNaN(d.getTime()) ? escapeHtml(String(v)) : escapeHtml(d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }));
+    };
+    const row = (label, value) => value ? '<div class="decom-summary-row"><span class="decom-summary-label">' + escapeHtml(label) + '</span><span class="decom-summary-value">' + value + '</span></div>' : '';
+    const matches = Array.isArray(meta.matches) ? meta.matches : [];
+    let body = '';
+    if (!matches.length) {
+      body = '<div class="decom-status-empty">' + (meta.ci
+        ? escapeHtml(meta.ci.name) + ' (' + escapeHtml(meta.ci.ciNumber || '') + ') is in the CMDB with status ' + escapeHtml(meta.ci.status || '') + ', but no decommission has been requested for it.'
+        : 'No server or Change called “' + escapeHtml(meta.query || '') + '” was found.') + '</div>';
+    }
+    matches.forEach(m => {
+      const state = m.status === 'closed' ? 'done' : (m.status === 'cancelled' || m.status === 'rejected' || m.approvalStatus === 'rejected') ? 'stopped' : 'open';
+      const soakWaiting = m.status === 'in_progress' && !!m.soakEndsAt && !m.destroyedAt;
+      const soakOver = !!m.soakEndsAt && !!(m.destroyedAt || m.completedAt);
+      const link = m.novadeskChangeUrl ? ' <a class="decom-status-link" href="' + escapeHtml(m.novadeskChangeUrl) + '" target="_blank" rel="noopener">View Change</a>' : '';
+      body +=
+        '<div class="decom-status-item decom-status-' + state + '">' +
+          '<div class="decom-status-head"><strong>' + escapeHtml(m.number) + '</strong>' + (m.ci ? ' · ' + escapeHtml(m.ci.name) : '') + link + '</div>' +
+          '<div class="decom-summary-box">' +
+            row('Status', escapeHtml(m.step || '')) +
+            row('Requested by', escapeHtml(m.requestedBy || '')) +
+            row('Submitted', when(m.submittedAt)) +
+            row('Approved', m.approvedAt ? when(m.approvedAt) + (m.approvedBy ? ' by ' + escapeHtml(m.approvedBy) : '') : '') +
+            row('Powered off', when(m.poweredOffAt)) +
+            row(soakWaiting ? 'Soak period ends' : 'Soak period ended', soakWaiting || soakOver ? when(m.soakEndsAt) : '') +
+            row('Destroyed', when(m.destroyedAt)) +
+            row('Completed', when(m.completedAt)) +
+            row('Cancelled', when(m.cancelledAt)) +
+            row('Assigned to', escapeHtml(m.assignedTo || '') + (m.assignmentGroup ? ' (' + escapeHtml(m.assignmentGroup) + ')' : '')) +
+            row('Tasks', m.tasksTotal ? escapeHtml(String(m.tasksDone)) + ' of ' + escapeHtml(String(m.tasksTotal)) + ' done' : '') +
+            row('CMDB status', m.ci ? escapeHtml(m.ci.status || '') : '') +
+          '</div>' +
+        '</div>';
+    });
+    return '<div class="decom-card decom-card-status-report"><div class="decom-card-title">📋 Status for ' + escapeHtml(meta.query || '') + '</div>' + body + '</div>';
+  }
+
   function decomSummaryCardHtml(meta) {
     const row = (label, value) => '<div class="decom-summary-row"><span class="decom-summary-label">' + escapeHtml(label) + '</span><span class="decom-summary-value">' + value + '</span></div>';
     return (

@@ -729,3 +729,21 @@ body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
 /* Chat identity keeps presence beneath the name without moving contextual tabs. */
 #mainHeader .dm-header-identity { display:flex;flex-direction:column;min-width:0;gap:2px; }
 #mainHeader #dmHeaderLastSeen { font-size:.75em;font-weight:400;color:var(--text-muted);line-height:1.3; }
+
+/* Chat text can always be selected and copied, in direct chats, channels and threads, including the
+   text inside bot cards (status reports, approvals, summaries). Buttons and the hover toolbar stay
+   non-selectable so a drag that starts on them does not select their labels. */
+#messageList .msg-content, #threadPanel .msg-content,
+#messageList .msg-text, #threadPanel .msg-text,
+.decom-card, .decom-card * { -webkit-user-select: text; user-select: text; }
+#messageList .msg-content, #threadPanel .msg-content, .decom-card { cursor: text; }
+.msg-actions, .msg-actions *, .decom-card button, .reaction-pill, .thread-link { -webkit-user-select: none; user-select: none; cursor: pointer; }
+
+/* Status report card ("status <server | CHG number>"). */
+.decom-card-status-report .decom-status-item { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--border); }
+.decom-card-status-report .decom-status-item:first-of-type { margin-top: .25rem; padding-top: 0; border-top: 0; }
+.decom-status-head { margin-bottom: .25rem; }
+.decom-status-link { margin-left: .5rem; font-size: .85em; }
+.decom-status-done .decom-status-head strong { color: #2e7d32; }
+.decom-status-stopped .decom-status-head strong { color: #c4314b; }
+.decom-status-empty { margin-top: .25rem; color: var(--text-muted); }

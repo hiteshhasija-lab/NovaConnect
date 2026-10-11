@@ -49,7 +49,7 @@ async function callNovaDesk(path, body) {
 }
 
 // Parse only the explicit standalone Decommission keyword, without an AI dependency.
-const { extractDecomIntent } = require('./decomIntent');
+const { extractDecomIntent, extractStatusIntent } = require('./decomIntent');
 
 async function findServerDecomChannel() {
   return db.prepare("SELECT id FROM channels WHERE name = 'server-decom'").get();
@@ -100,11 +100,61 @@ function setThinking(targets, thinking) {
   }
 }
 
+// "status <server | CHG number>" in a decommission DM or #server-decom: looks the request up in
+// NovaDesk (read only) and answers in the same place with a status card. A request is a DM-only or
+// channel-only question: the answer goes where it was asked, not to both surfaces.
+async function handleStatusQuery(target, intent) {
+  if (intent.help) {
+    // Only in the bot DM: a bare "status" in a busy channel is ordinary conversation.
+    if (target.conversationId) {
+      await postBotMessage(target, 'ℹ️ Ask for the status of a decommission with "status <server name>" or "status <change number>", for example "status DECOM-TEST-24" or "status CHG0000068".');
+    }
+    return;
+  }
+  setThinking([target], true);
+  let result;
+  try {
+    result = await callNovaDesk('/api/integrations/novaconnect/decommission-status', { query: intent.query });
+  } catch (e) {
+    setThinking([target], false);
+    await postBotMessage(target, `⚠️ Couldn't look up "${intent.query}": ${e.message}`);
+    return;
+  }
+  setThinking([target], false);
+
+  const matches = (result.matches || []).map((m) => ({
+    ...m,
+    novadeskChangeUrl: NOVADESK_PUBLIC_URL && m.id ? `${NOVADESK_PUBLIC_URL}/changes/${m.id}` : null
+  }));
+  // The body stays one short line: the details are in the card (and read as plain text where a
+  // client does not draw it).
+  const lines = [`📋 Status for ${result.query}`];
+  if (!matches.length) {
+    lines.push(result.ci
+      ? `${result.ci.name} (${result.ci.ciNumber}) is in the CMDB with status ${result.ci.status}, but no decommission has been requested for it.`
+      : `Nothing found: no server or Change called "${result.query}".`);
+  } else {
+    lines.push(matches.length === 1
+      ? `${matches[0].number}: ${matches[0].step}.`
+      : `${matches.length} decommission requests found, newest first.`);
+  }
+  await postBotMessage(target, lines.join('\n'), {
+    cardType: 'decom_status_report',
+    query: result.query,
+    kind: result.kind,
+    ci: result.ci || null,
+    matches
+  });
+}
+
 // Fire-and-forget from the message-post route — never let this throw upstream, since a
 // NovaDesk hiccup here must not affect the human's own message send.
 async function handleDecomTrigger(target, userId, text) {
   if (!NOVADESK_BASE_URL) return; // integration not configured
   try {
+    const statusIntent = extractStatusIntent(text);
+    if (statusIntent) { await handleStatusQuery(target, statusIntent); return; }
+
     const intent = extractDecomIntent(text);
     if (!intent) return;
 

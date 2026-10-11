@@ -140,6 +140,10 @@ function createMainWindow() {
         { label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => { isQuitting = true; app.quit(); } },
       ],
     },
+    // Without an Edit menu the standard shortcuts (Cmd/Ctrl+C, V, X, A, Z) do nothing in this
+    // window on macOS, so text in the chat could not be copied. The role supplies Undo, Redo, Cut,
+    // Copy, Paste and Select All with their shortcuts on every platform.
+    { role: 'editMenu' },
     {
       label: 'View',
       submenu: [
@@ -153,6 +157,23 @@ function createMainWindow() {
     },
   ]);
   Menu.setApplicationMenu(menu);
+
+  // Right-click menu: Copy for selected text (chat messages, cards), the editing commands inside
+  // the message box and other inputs, Select All elsewhere, and Copy Link Address on links.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const items = [];
+    if (params.isEditable) {
+      items.push({ role: 'undo', enabled: params.editFlags.canUndo }, { role: 'redo', enabled: params.editFlags.canRedo }, { type: 'separator' },
+        { role: 'cut', enabled: params.editFlags.canCut }, { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste }, { type: 'separator' }, { role: 'selectAll' });
+    } else {
+      if (params.selectionText) items.push({ role: 'copy' });
+      if (params.linkURL) items.push({ label: 'Copy Link Address', click: () => require('electron').clipboard.writeText(params.linkURL) });
+      if (items.length) items.push({ type: 'separator' });
+      items.push({ role: 'selectAll' });
+    }
+    Menu.buildFromTemplate(items).popup({ window: mainWindow });
+  });
 
   // Meetings/calls need real camera+mic access — Electron blocks getUserMedia by default
   // unless the host app explicitly grants it, unlike a normal browser's per-site prompt.
