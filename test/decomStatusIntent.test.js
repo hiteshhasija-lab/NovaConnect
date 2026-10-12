@@ -32,8 +32,8 @@ test('a bare status asks for help and is never a lookup', () => {
 
 test('a status lookup is not also a decommission request', () => {
   for (const text of ['status SRV1', 'status CHG0000068']) assert.equal(extractDecomIntent(text), null, text);
-  // "decommission status SRV1" would read as a request for a host called "status" on its own, so
-  // decomFlow.handleDecomTrigger checks for a status lookup first; this is the phrase that order is for.
-  assert.deepEqual(extractDecomIntent('decommission status SRV1'), { hostname: 'status' });
+  // "decommission status SRV1" used to read as a request for a host called "status"; "status" is now
+  // on the not-a-host list, and decomFlow.handleDecomTrigger still checks for a status lookup first.
+  assert.equal(extractDecomIntent('decommission status SRV1'), null);
   assert.deepEqual(extractStatusIntent('decommission status SRV1'), { query: 'SRV1' });
 });

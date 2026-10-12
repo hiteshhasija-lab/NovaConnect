@@ -49,7 +49,7 @@ async function callNovaDesk(path, body) {
 }
 
 // Parse only the explicit standalone Decommission keyword, without an AI dependency.
-const { extractDecomIntent, extractStatusIntent } = require('./decomIntent');
+const { extractDecomIntent, extractStatusIntent, mentionsDecommission } = require('./decomIntent');
 
 async function findServerDecomChannel() {
   return db.prepare("SELECT id FROM channels WHERE name = 'server-decom'").get();
@@ -156,7 +156,14 @@ async function handleDecomTrigger(target, userId, text) {
     if (statusIntent) { await handleStatusQuery(target, statusIntent); return; }
 
     const intent = extractDecomIntent(text);
-    if (!intent) return;
+    if (!intent) {
+      // The word was used but no server name followed in a form we trust: say how to ask. Only in
+      // the bot DM; in the channel an ordinary sentence about decommissioning is just a sentence.
+      if (target.conversationId && mentionsDecommission(text)) {
+        await postBotMessage(target, 'ℹ️ To start a decommission, type "decommission <server name>", for example "decommission WIN-TEST-01". To check one, type "status <server name>" or "status <change number>".');
+      }
+      return;
+    }
 
     const user = await db.prepare('SELECT username, full_name FROM users WHERE id = ?').get(userId);
 
