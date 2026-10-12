@@ -21,8 +21,8 @@ const done = {
 };
 
 test('a completed decommission shows who, when and how it ended', () => {
-  const html = context.decomStatusReportCardHtml({ query: 'DECOM-TEST-24', kind: 'server', matches: [done] });
-  for (const v of ['CHG0000068', 'DECOM-TEST-24', 'Completed: VM destroyed and CI retired', 'Hitesh Hasija', 'Alex Admin', 'Submitted', 'Approved', 'Powered off', 'Soak period ended', 'Destroyed', 'Completed', '7 of 7 done', 'View Change']) {
+  const html = context.decomStatusReportCardHtml({ query: 'DECOM-TEST-24', kind: 'server', ci: { name: 'DECOM-TEST-24', status: 'retired' }, matches: [done] });
+  for (const v of ['CHG0000068', 'DECOM-TEST-24', 'Completed: VM destroyed and CI retired', 'Hitesh Hasija', 'Alex Admin', 'Submitted', 'Approved', 'Powered off', 'Soak period ended', 'Destroyed', 'Completed', '7 of 7 done', 'View Change', 'CMDB status']) {
     assert.ok(html.includes(v), v);
   }
   assert.ok(!html.includes('Cancelled'), 'no cancelled row for a completed Change');
@@ -45,10 +45,33 @@ test('a running soak period says when it ends', () => {
   assert.ok(!html.includes('Soak period ended'));
 });
 
-test('nothing found, and a server with no decommission', () => {
-  assert.match(context.decomStatusReportCardHtml({ query: 'NOPE', matches: [] }), /No server or Change called/);
-  const known = context.decomStatusReportCardHtml({ query: 'PLAIN', ci: { name: 'PLAIN', ciNumber: 'CI9', status: 'in_use' }, matches: [] });
-  assert.match(known, /no decommission has been requested/);
+test('nothing found draws no card (the message text already says so)', () => {
+  assert.equal(context.decomStatusReportCardHtml({ query: 'NOPE', matches: [] }), '');
+  assert.equal(context.decomStatusReportCardHtml({ query: 'PLAIN', ci: { name: 'PLAIN', ciNumber: 'CI9', status: 'in_use' }, matches: [] }), '');
+});
+
+test('the card does not repeat the message title', () => {
+  const html = context.decomStatusReportCardHtml({ query: 'DECOM-TEST-11', matches: [done] });
+  assert.ok(!html.includes('Status for'), 'no second title');
+});
+
+test('a cancelled Change never shows a CMDB status, even when a later Change retired the server', () => {
+  const cancelled = { ...done, number: 'CHG0000039', status: 'cancelled', step: 'Cancelled', completedAt: null, destroyedAt: null, poweredOffAt: null,
+    approvedAt: null, soakEndsAt: null, cancelledAt: '2026-10-08 12:00:00', tasksDone: 0, ci: { name: 'DECOM-TEST-11', status: 'retired' } };
+  const html = context.decomStatusReportCardHtml({ query: 'DECOM-TEST-11', kind: 'server', ci: { name: 'DECOM-TEST-11', status: 'retired' }, matches: [done, cancelled] });
+  const parts = html.split('CHG0000039');
+  assert.equal(parts.length, 2, 'cancelled Change present');
+  assert.ok(!parts[1].includes('CMDB status'), 'no CMDB status row under the cancelled Change');
+  assert.ok(parts[0].includes('CMDB status'), 'the completed Change keeps its row');
+  assert.ok(html.includes('is currently <strong>retired</strong>'), 'the server\'s status now is said once, at the top');
+  const rejected = context.decomStatusReportCardHtml({ query: 'X', matches: [{ ...cancelled, status: 'rejected', approvalStatus: 'rejected' }] });
+  assert.ok(!rejected.includes('CMDB status'));
+});
+
+test('an open Change shows the CMDB status it has put the server in', () => {
+  const html = context.decomStatusReportCardHtml({ query: 'SRV1', matches: [{ ...done, status: 'in_progress', step: 'Pre-checks in progress (1 of 3 done)', ci: { name: 'SRV1', status: 'maintenance' },
+    destroyedAt: null, completedAt: null, poweredOffAt: null, soakEndsAt: null }] });
+  assert.ok(html.includes('CMDB status') && html.includes('maintenance'));
 });
 
 test('values are escaped', () => {

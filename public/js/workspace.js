@@ -1344,14 +1344,19 @@
     };
     const row = (label, value) => value ? '<div class="decom-summary-row"><span class="decom-summary-label">' + escapeHtml(label) + '</span><span class="decom-summary-value">' + value + '</span></div>' : '';
     const matches = Array.isArray(meta.matches) ? meta.matches : [];
+    // Nothing to tabulate: the message text above already says "nothing found" / "no decommission".
+    if (!matches.length) return '';
     let body = '';
-    if (!matches.length) {
-      body = '<div class="decom-status-empty">' + (meta.ci
-        ? escapeHtml(meta.ci.name) + ' (' + escapeHtml(meta.ci.ciNumber || '') + ') is in the CMDB with status ' + escapeHtml(meta.ci.status || '') + ', but no decommission has been requested for it.'
-        : 'No server or Change called “' + escapeHtml(meta.query || '') + '” was found.') + '</div>';
+    // The server's status NOW belongs to the server, not to any one Change, so it is shown once
+    // here. Per Change, "CMDB status" appears only where that Change decided it (completed:
+    // retired) or is still working on it (open: maintenance); a cancelled or rejected Change never
+    // retired anything, even when a later Change on the same server did.
+    if (meta.ci && meta.ci.status) {
+      body += '<div class="decom-status-now">' + escapeHtml(meta.ci.name || '') + ' is currently <strong>' + escapeHtml(meta.ci.status) + '</strong> in the CMDB.</div>';
     }
     matches.forEach(m => {
-      const state = m.status === 'closed' ? 'done' : (m.status === 'cancelled' || m.status === 'rejected' || m.approvalStatus === 'rejected') ? 'stopped' : 'open';
+      const stopped = m.status === 'cancelled' || m.status === 'rejected' || m.approvalStatus === 'rejected';
+      const state = m.status === 'closed' ? 'done' : stopped ? 'stopped' : 'open';
       const soakWaiting = m.status === 'in_progress' && !!m.soakEndsAt && !m.destroyedAt;
       const soakOver = !!m.soakEndsAt && !!(m.destroyedAt || m.completedAt);
       const link = m.novadeskChangeUrl ? ' <a class="decom-status-link" href="' + escapeHtml(m.novadeskChangeUrl) + '" target="_blank" rel="noopener">View Change</a>' : '';
@@ -1370,11 +1375,11 @@
             row('Cancelled', when(m.cancelledAt)) +
             row('Assigned to', escapeHtml(m.assignedTo || '') + (m.assignmentGroup ? ' (' + escapeHtml(m.assignmentGroup) + ')' : '')) +
             row('Tasks', m.tasksTotal ? escapeHtml(String(m.tasksDone)) + ' of ' + escapeHtml(String(m.tasksTotal)) + ' done' : '') +
-            row('CMDB status', m.ci ? escapeHtml(m.ci.status || '') : '') +
+            row('CMDB status', !stopped && m.ci ? escapeHtml(m.ci.status || '') : '') +
           '</div>' +
         '</div>';
     });
-    return '<div class="decom-card decom-card-status-report"><div class="decom-card-title">📋 Status for ' + escapeHtml(meta.query || '') + '</div>' + body + '</div>';
+    return '<div class="decom-card decom-card-status-report">' + body + '</div>';
   }
 
   function decomSummaryCardHtml(meta) {

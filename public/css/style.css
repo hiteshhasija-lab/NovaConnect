@@ -747,3 +747,4 @@ body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
 .decom-status-done .decom-status-head strong { color: #2e7d32; }
 .decom-status-stopped .decom-status-head strong { color: #c4314b; }
 .decom-status-empty { margin-top: .25rem; color: var(--text-muted); }
+.decom-status-now { margin: .1rem 0 .25rem; color: var(--text-muted); font-size: .92em; }
