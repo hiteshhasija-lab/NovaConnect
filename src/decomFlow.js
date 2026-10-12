@@ -220,6 +220,7 @@ async function handleDecomTrigger(target, userId, text) {
         risk: titleCase(change.risk),
         plannedStart: change.planned_start ? change.planned_start.replace(' ', 'T') + 'Z' : null,
         requestedBy: user ? user.full_name : 'Unknown',
+        requestedByUserId: userId,
         assignmentGroup: change.assignment_group,
         assignedTo: assignee ? assignee.full_name : 'Unassigned',
         novadeskChangeUrl: NOVADESK_PUBLIC_URL ? `${NOVADESK_PUBLIC_URL}/changes/${change.id}` : null,

@@ -29,7 +29,7 @@ router.post('/:changeId/approve', async (req, res) => {
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/approve`, {
       approved_by_username: user.username,
-      acting_user: await actingUser(req.session.user.id)
+      acting_user: await actingUser(req.session.user.id, req.params.changeId)
     });
     res.json({ ok: true, change });
   } catch (e) {
@@ -46,7 +46,7 @@ router.post('/:changeId/reject', async (req, res) => {
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/reject`, {
       rejected_by_username: user.username,
-      acting_user: await actingUser(req.session.user.id)
+      acting_user: await actingUser(req.session.user.id, req.params.changeId)
     });
     res.json({ ok: true, change });
   } catch (e) {
@@ -67,7 +67,7 @@ router.post('/:changeId/confirm-destroy', async (req, res) => {
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/confirm-destroy`, {
       confirmed_by_username: user.username,
-      acting_user: await actingUser(req.session.user.id)
+      acting_user: await actingUser(req.session.user.id, req.params.changeId)
     });
     res.json({ ok: true, change });
   } catch (e) {
@@ -85,7 +85,7 @@ router.post('/:changeId/cancel-destroy', async (req, res) => {
   try {
     const { change } = await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/cancel-destroy`, {
       cancelled_by_username: user.username,
-      acting_user: await actingUser(req.session.user.id)
+      acting_user: await actingUser(req.session.user.id, req.params.changeId)
     });
     res.json({ ok: true, change });
   } catch (e) {
@@ -102,7 +102,7 @@ router.post('/:changeId/skip-manual-tasks', async (req, res) => {
   try {
     await callNovaDesk(`/api/integrations/novaconnect/decommission-requests/${req.params.changeId}/skip-manual-tasks`, {
       skipped_by_username: user.username,
-      acting_user: await actingUser(req.session.user.id)
+      acting_user: await actingUser(req.session.user.id, req.params.changeId)
     });
     await resolveDecomCardByMessageId(req.body.message_id, 'skipped');
     res.json({ ok: true });
@@ -125,7 +125,7 @@ router.post('/:changeId/precheck-task', async (req, res) => {
       task_description: req.body.task_description,
       task_id: req.body.task_id,
       actor_username: user.username,
-      acting_user: await actingUser(req.session.user.id)
+      acting_user: await actingUser(req.session.user.id, req.params.changeId)
     });
     const status = action === 'complete' ? 'completed' : 'skipped';
     res.json({ ok: true, status });
