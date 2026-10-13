@@ -111,6 +111,32 @@ jobs:
             -d "{\"channel_id\":$ch,\"body\":\"x\"}" http://localhost:8080/api/integrations/novadesk/decom-updates)
           test "$code" = 401
 
+      - name: Search finds a message (Meilisearch end to end)
+        run: |
+          # Global search was broken for every query (the index did not allow the `deleted` filter),
+          # and nothing in CI used it. The index is rebuilt from the database at start-up, so a
+          # restart also exercises the reindex.
+          sql() { docker compose exec -T postgres psql -U novaconnect -d novaconnect -Atc "$1" < /dev/null | head -1; }
+          now="to_char(now() at time zone 'utc','YYYY-MM-DD HH24:MI:SS')"
+          uid=$(sql "select id from users where username = 'admin'")
+          team=$(sql "insert into teams (name) values ('CI search') returning id")
+          ch=$(sql "insert into channels (team_id, name) values ($team, 'ci-search') returning id")
+          sql "insert into team_members (team_id, user_id, role, joined_at) values ($team, $uid, 'member', $now)" > /dev/null
+          sql "insert into messages (channel_id, user_id, body, created_at, updated_at) values ($ch, $uid, 'ciquokka search marker', $now, $now)" > /dev/null
+          docker compose restart novaconnect
+          for i in $(seq 1 60); do curl -fsS http://localhost:8080/health > /dev/null && break; sleep 3; done
+          curl -s -o /dev/null -c cookies.txt -H 'Content-Type: application/json' \
+            -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" http://localhost:8080/api/mobile/login
+          code=000
+          for i in $(seq 1 30); do
+            code=$(curl -s -o search.json -w '%{http_code}' -b cookies.txt "http://localhost:8080/api/search?q=ciquokka")
+            if [ "$code" = 200 ] && grep -q 'ciquokka' search.json; then echo "search: found the message"; exit 0; fi
+            sleep 2
+          done
+          echo "search did not return the message (last HTTP $code)"; cat search.json; echo
+          docker compose logs novaconnect | grep -i search | tail -10
+          exit 1
+
       - name: Production security headers
         run: |
           curl -sI http://localhost:8080/login | tee headers.txt

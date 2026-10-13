@@ -199,9 +199,10 @@ async function initDb() {
   // The NovaDesk decommission integration (bot user, IT Operations team, #server-decom) only
   // exists where NovaDesk is configured.
   if (process.env.NOVADESK_BASE_URL) await ensureDecomWorkflowSetup();
-  const { ensureIndex, reindexAll } = require('./search');
+  const { ensureIndex, reindexAll, selfCheck } = require('./search');
   await ensureIndex().catch(e => console.error('Search index init failed:', e.message));
-  reindexAll().then(() => console.log('Search reindex complete')).catch(e => console.error('Search reindex failed:', e.message));
+  selfCheck().then(problem => { if (problem) console.error('Search self-check failed (searches will return an error):', problem); });
+  reindexAll().then(r => console.log(`Search reindex complete (${r.indexed} indexed, ${r.removed} stale removed)`)).catch(e => console.error('Search reindex failed:', e.message));
   return { seeded };
 }
 

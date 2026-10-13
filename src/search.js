@@ -1,5 +1,6 @@
 const { MeiliSearch } = require('meilisearch');
 const { db } = require('./db');
+const { INDEX_SETTINGS, buildFilter } = require('./searchFilter');
 
 const MEILI_HOST = process.env.MEILI_HOST || 'http://localhost:7700';
 const MEILI_API_KEY = process.env.MEILI_API_KEY || '';
@@ -29,24 +30,26 @@ async function ensureIndex() {
   const indexList = indexes.results || indexes;
   const exists = indexList.some(i => i.uid === INDEX_NAME);
   if (!exists) {
-    await c.createIndex(INDEX_NAME, { primaryKey: 'id' });
+    const created = await c.createIndex(INDEX_NAME, { primaryKey: 'id' });
+    if (created && created.taskUid !== undefined) await c.waitForTask(created.taskUid, { timeOutMs: 60000 });
   }
   const idx = await getIndex();
-  await idx.updateSettings({
-    searchableAttributes: ['body', 'author_name', 'channel_name', 'conversation_name'],
-    filterableAttributes: ['channel_id', 'conversation_id', 'author_id', 'team_id', 'is_thread', 'created_at'],
-    sortableAttributes: ['created_at'],
-    rankingRules: [
-      'words',
-      'typo',
-      'proximity',
-      'attribute',
-      'sort',
-      'exactness',
-      'created_at:desc'
-    ],
-    distinctAttribute: null,
-  });
+  // Settings are applied by a background task; wait for it so a search made right after start-up
+  // never meets the old settings.
+  const task = await idx.updateSettings(INDEX_SETTINGS);
+  if (task && task.taskUid !== undefined) await c.waitForTask(task.taskUid, { timeOutMs: 60000 });
+}
+
+// A search that touches every attribute the real queries use, so a settings mistake is reported at
+// start-up instead of on the first user search. Resolves to null when fine, else the error message.
+async function selfCheck() {
+  try {
+    const idx = await getIndex();
+    await idx.search('', { filter: buildFilter([0], [0]), limit: 0 });
+    return null;
+  } catch (e) {
+    return e.message;
+  }
 }
 
 async function indexMessage(message, author, channel, conversation, team) {
@@ -82,10 +85,13 @@ async function updateMessage(message, author, channel, conversation, team) {
 async function reindexAll() {
   await ensureIndex();
   const idx = await getIndex();
-  await idx.deleteAllDocuments();
 
+  // Upsert every live message in batches (documents are replaced by id), so search keeps answering
+  // while this runs; then remove documents that no longer exist in the database.
   const batchSize = 500;
-  let offset = 0;
+  let lastId = 0;
+  let lastTask = null;     // Meilisearch queues work; the last task is waited for so "done" is true
+  const live = new Set();
   while (true) {
     const rows = await db.prepare(`
       SELECT m.*, u.full_name as author_name,
@@ -95,10 +101,10 @@ async function reindexAll() {
       LEFT JOIN users u ON u.id = m.user_id
       LEFT JOIN channels c ON c.id = m.channel_id
       LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
-      WHERE m.deleted = 0
+      WHERE m.deleted = 0 AND m.id > ?
       ORDER BY m.id
-      LIMIT ? OFFSET ?
-    `).all(batchSize, offset);
+      LIMIT ?
+    `).all(lastId, batchSize);
     if (!rows.length) break;
 
     const docs = rows.map(r => ({
@@ -115,11 +121,28 @@ async function reindexAll() {
       parent_message_id: r.parent_message_id || null,
       created_at: r.created_at,
       updated_at: r.updated_at,
-      deleted: 0,
+      deleted: false,
     }));
-    await idx.addDocuments(docs);
-    offset += batchSize;
+    lastTask = await idx.addDocuments(docs);
+    for (const r of rows) live.add(Number(r.id));
+    lastId = Number(rows[rows.length - 1].id);
   }
+
+  const stale = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await idx.getDocuments({ fields: ['id'], limit: pageSize, offset });
+    const results = page.results || page;
+    if (!results.length) break;
+    for (const doc of results) if (!live.has(Number(doc.id))) stale.push(doc.id);
+    if (results.length < pageSize) break;
+  }
+  for (let i = 0; i < stale.length; i += 1000) lastTask = await idx.deleteDocuments(stale.slice(i, i + 1000));
+  if (lastTask && lastTask.taskUid !== undefined) {
+    const c = await getClient();
+    await c.waitForTask(lastTask.taskUid, { timeOutMs: 120000 });
+  }
+  return { indexed: live.size, removed: stale.length };
 }
 
 async function searchMessages(userId, query, options = {}) {
@@ -139,16 +162,9 @@ async function searchMessages(userId, query, options = {}) {
   `).all(userId);
   const convoIds = accessibleConvos.map(r => r.conversation_id);
 
-  const filterParts = [];
-  if (channelIds.length || convoIds.length) {
-    const orParts = [];
-    if (channelIds.length) orParts.push(`channel_id IN [${channelIds.join(',')}]`);
-    if (convoIds.length) orParts.push(`conversation_id IN [${convoIds.join(',')}]`);
-    filterParts.push(`(${orParts.join(' OR ')})`);
-  }
-  filterParts.push('deleted = false');
-
-  const filter = filterParts.join(' AND ');
+  // A user with no accessible channels or conversations must see nothing, not everything.
+  const filter = buildFilter(channelIds, convoIds);
+  if (!filter) return { hits: [], estimatedTotalHits: 0, query, processingTimeMs: 0 };
 
   const limit = Math.min(options.limit || 50, 100);
   const offset = options.offset || 0;
@@ -174,6 +190,9 @@ async function searchMessages(userId, query, options = {}) {
 }
 
 module.exports = {
+  INDEX_SETTINGS,
+  buildFilter,
+  selfCheck,
   ensureIndex,
   indexMessage,
   removeMessage,
