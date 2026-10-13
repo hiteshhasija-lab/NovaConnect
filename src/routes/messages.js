@@ -197,11 +197,13 @@ router.post('/api/messages/:id/reactions', async (req, res) => {
     await db.prepare('INSERT INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)').run(ctx.msg.id, req.session.user.id, emoji);
   }
 
+  // The broadcast has no single viewer, so `mine` is false in it; each reaction lists `user_ids`
+  // and the client works out its own. The toggler's answer is built for them.
   const message = await hydrateOne(ctx.msg, null);
   const event = 'reaction:update';
   if (ctx.channel) emitToChannel(ctx.channel.id, event, { message_id: ctx.msg.id, reactions: message.reactions, parent_message_id: ctx.msg.parent_message_id });
   else emitToConversation(ctx.conversation.id, event, { message_id: ctx.msg.id, reactions: message.reactions, parent_message_id: ctx.msg.parent_message_id });
-  res.json({ reactions: message.reactions });
+  res.json({ reactions: (await hydrateOne(ctx.msg, req.session.user.id)).reactions });
 });
 
 router.put('/api/messages/:id', async (req, res) => {

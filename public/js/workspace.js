@@ -1014,7 +1014,8 @@
   function reactionsHtml(msg) {
     let html = '<div class="msg-reactions">';
     (msg.reactions || []).forEach(r => {
-      html += '<span class="reaction-pill ' + (r.mine ? 'mine' : '') + '" data-emoji="' + r.emoji + '">' + r.emoji + ' ' + r.count + '</span>';
+      const mine = r.mine || (Array.isArray(r.user_ids) && r.user_ids.map(Number).includes(Number(NC.currentUser.id)));
+      html += '<span class="reaction-pill ' + (mine ? 'mine' : '') + '" data-emoji="' + r.emoji + '">' + r.emoji + ' ' + r.count + '</span>';
     });
     html += '</div>';
     return html;

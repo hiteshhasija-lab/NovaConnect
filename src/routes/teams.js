@@ -48,6 +48,9 @@ router.post('/api/teams', async (req, res) => {
   `).get(team.id, req.session.user.id);
 
   team.my_role = 'owner';
+  // The creator's open sockets must join the new team's rooms now, or live messages from the
+  // people who join later would not reach them until a reload.
+  await resyncUserRooms(req.session.user.id);
   res.status(201).json({ team, channel });
 });
 
@@ -216,6 +219,16 @@ router.post('/api/teams/:id/channels', async (req, res) => {
   }
   await db.prepare(`INSERT INTO channel_members (channel_id, user_id, role) VALUES (?, ?, 'owner')`).run(channel.id, userId);
   await resyncUserRooms(userId);
+  // A public channel belongs to every team member: join their open sockets to its room and have
+  // their sidebars reload, so it works live for them without a page reload.
+  if (!channel.is_private) {
+    const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(teamId);
+    for (const m of members) {
+      if (m.user_id === userId) continue;
+      await resyncUserRooms(m.user_id).catch(console.error);
+      emitToUser(m.user_id, 'membership:changed', { teamId: Number(teamId) });
+    }
+  }
   res.status(201).json(channel);
 });
 

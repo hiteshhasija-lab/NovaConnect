@@ -20,7 +20,7 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (BLOCKED_EXTENSIONS.has(ext)) return cb(new Error(`Files of type "${ext}" are not allowed.`));
+    if (BLOCKED_EXTENSIONS.has(ext)) return cb(Object.assign(new Error(`Files of type "${ext}" are not allowed.`), { status: 400, expose: true }));
     cb(null, true);
   }
 });

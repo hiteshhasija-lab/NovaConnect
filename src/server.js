@@ -113,18 +113,25 @@ const globalLimiter = rateLimit({
   skip: (req) => req.path === '/health', // Don't rate limit health checks
 });
 
-// Stricter rate limiter for auth endpoints
-const authLimiter = rateLimit({
+// Stricter rate limiters for the auth endpoints. Sign-in counts failed attempts only: a successful
+// sign-in must not use up the allowance, or everyone behind one office address would lock each
+// other out at the start of the working day. Sign-up counts every request (it is open to anyone).
+const authLimiterOptions = {
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20, // limit each IP to 20 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many login attempts, please try again later.' },
   keyGenerator: (req) => req.ip,
-});
+};
+const authLimiter = rateLimit({ ...authLimiterOptions, skipSuccessfulRequests: true });
+const registerLimiter = rateLimit(authLimiterOptions);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/mobile/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/register', registerLimiter);
+// The web client's own forms post here; the paths above are the API aliases.
+app.post('/login', authLimiter);
+app.post('/register', registerLimiter);
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '..', 'views'));
@@ -245,9 +252,30 @@ app.use((req, res) => {
 });
 
 // Four parameters: that's how Express recognises an error handler, so _next stays.
+// A request the client got wrong (body too large, malformed JSON, a refused upload) is answered
+// with its own 4xx status and message, not a 500 and a stack trace in the log.
+function clientError(err) {
+  const status = err.status || err.statusCode;
+  // Postgres "invalid input syntax" (a non-numeric id in the URL): no such thing, not a server fault.
+  if (err.code === '22P02') return { status: 404, message: 'Not found.' };
+  if (err.name === 'MulterError') return { status: err.code === 'LIMIT_FILE_SIZE' ? 413 : 400, message: err.code === 'LIMIT_FILE_SIZE' ? 'That file is too large.' : 'The upload was not accepted.' };
+  if (status >= 400 && status < 500) {
+    const messages = { 413: 'That is too large to send.', 400: 'The request could not be read.' };
+    return { status, message: err.expose && err.type !== 'entity.too.large' && err.type !== 'entity.parse.failed' ? err.message : (messages[status] || 'The request was not accepted.') };
+  }
+  return null;
+}
 app.use((err, req, res, _next) => {
+  const client = clientError(err);
+  if (client) {
+    logger.warn({ status: client.status, path: req.path, reason: err.message }, 'Request refused');
+    if (req.path.startsWith('/api/')) return res.status(client.status).json({ error: client.message });
+    return res.status(client.status).render('error', { title: 'Request Refused', message: client.message });
+  }
   console.error(err);
-  if (req.path.startsWith('/api/')) return res.status(500).json({ error: err.message || 'Something went wrong.' });
+  // A database error's text names tables and columns; the client gets a plain message.
+  const fromDatabase = typeof err.code === 'string' && /^[0-9A-Z]{5}$/.test(err.code);
+  if (req.path.startsWith('/api/')) return res.status(500).json({ error: fromDatabase ? 'Something went wrong.' : (err.message || 'Something went wrong.') });
   res.status(500).render('error', { title: 'Server Error', message: 'Something went wrong.' });
 });
 

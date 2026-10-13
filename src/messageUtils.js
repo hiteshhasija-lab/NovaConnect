@@ -23,8 +23,9 @@ async function hydrateMessages(rows, currentUserId) {
   const reactionsByMessage = {};
   for (const r of reactions) {
     if (!reactionsByMessage[r.message_id]) reactionsByMessage[r.message_id] = {};
-    if (!reactionsByMessage[r.message_id][r.emoji]) reactionsByMessage[r.message_id][r.emoji] = { emoji: r.emoji, count: 0, mine: false };
+    if (!reactionsByMessage[r.message_id][r.emoji]) reactionsByMessage[r.message_id][r.emoji] = { emoji: r.emoji, count: 0, mine: false, user_ids: [] };
     reactionsByMessage[r.message_id][r.emoji].count++;
+    reactionsByMessage[r.message_id][r.emoji].user_ids.push(r.user_id);
     if (r.user_id === currentUserId) reactionsByMessage[r.message_id][r.emoji].mine = true;
   }
 
