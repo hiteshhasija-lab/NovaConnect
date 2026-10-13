@@ -26,6 +26,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
+      - name: Client-server contract (web, iOS) against the routes
+        run: node scripts/contract-check.js
       - run: npm test
 
   fresh-install:
