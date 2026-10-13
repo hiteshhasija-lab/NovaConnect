@@ -189,7 +189,138 @@ async function searchMessages(userId, query, options = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Global search for the UI (GET /api/search): { messages, files, people, source }.
+//
+// The client (public/js/workspace.js) renders messages with author, chat and date, files, and
+// people. Meilisearch is used only to rank and select message ids (typo tolerance, relevance); the
+// rows themselves are read back from Postgres, so what is shown is always current, the access rules
+// are applied a second time, and there is one result shape whichever engine answered. If
+// Meilisearch is down, slow or erroring, messages come from a plain Postgres search instead
+// (source: 'postgres') and the user still gets results. Files and people are Postgres either way.
+// ---------------------------------------------------------------------------------------------
+const MEILI_TIMEOUT_MS = 3000;
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Meilisearch did not answer within ${ms} ms`)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function visibleScope(userId) {
+  const channelIds = (await db.prepare(`
+    SELECT c.id FROM channels c
+    JOIN team_members tm ON tm.team_id = c.team_id AND tm.user_id = ?
+    WHERE c.is_private = 0
+    UNION
+    SELECT cm.channel_id AS id FROM channel_members cm WHERE cm.user_id = ?
+  `).all(userId, userId)).map(r => r.id);
+  const convoIds = (await db.prepare('SELECT conversation_id AS id FROM dm_participants WHERE user_id = ?').all(userId)).map(r => r.id);
+  return { channelIds, convoIds };
+}
+
+const placeholders = (n) => Array(n).fill('?').join(',');
+
+// Rows for the given message ids, in the given order, limited to what the user may see.
+async function hydrateMessages(ids, scope) {
+  if (!ids.length || (!scope.channelIds.length && !scope.convoIds.length)) return [];
+  const access = [];
+  const params = [...ids];
+  if (scope.channelIds.length) { access.push(`m.channel_id IN (${placeholders(scope.channelIds.length)})`); params.push(...scope.channelIds); }
+  if (scope.convoIds.length) { access.push(`m.conversation_id IN (${placeholders(scope.convoIds.length)})`); params.push(...scope.convoIds); }
+  const rows = await db.prepare(`
+    SELECT m.id, m.body, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name,
+           c.name AS channel_name, dc.is_group AS dm_is_group
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.user_id
+    LEFT JOIN channels c ON c.id = m.channel_id
+    LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
+    WHERE m.deleted = 0 AND m.id IN (${placeholders(ids.length)}) AND (${access.join(' OR ')})
+  `).all(...params);
+  const byId = new Map(rows.map(r => [Number(r.id), r]));
+  return ids.map(id => byId.get(Number(id))).filter(Boolean);
+}
+
+async function messagesFromMeilisearch(q, scope, limit) {
+  const filter = buildFilter(scope.channelIds, scope.convoIds);
+  if (!filter) return [];
+  const idx = await getIndex();
+  const result = await withTimeout(idx.search(q, { filter, limit, attributesToRetrieve: ['id'] }), MEILI_TIMEOUT_MS);
+  return hydrateMessages(result.hits.map(h => h.id), scope);
+}
+
+// The search used before Meilisearch: newest first, case-insensitive substring of the body.
+async function messagesFromPostgres(q, scope, limit) {
+  const parts = [];
+  const params = [];
+  if (scope.channelIds.length) {
+    parts.push(`SELECT m.id, m.body, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name, c.name AS channel_name, NULL AS dm_is_group
+          FROM messages m LEFT JOIN users u ON u.id = m.user_id LEFT JOIN channels c ON c.id = m.channel_id
+          WHERE m.deleted = 0 AND m.channel_id IN (${placeholders(scope.channelIds.length)}) AND strpos(lower(m.body), lower(?)) > 0`);
+    params.push(...scope.channelIds, q);
+  }
+  if (scope.convoIds.length) {
+    parts.push(`SELECT m.id, m.body, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name, NULL AS channel_name, dc.is_group AS dm_is_group
+          FROM messages m LEFT JOIN users u ON u.id = m.user_id LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
+          WHERE m.deleted = 0 AND m.conversation_id IN (${placeholders(scope.convoIds.length)}) AND strpos(lower(m.body), lower(?)) > 0`);
+    params.push(...scope.convoIds, q);
+  }
+  if (!parts.length) return [];
+  return db.prepare(`${parts.join(' UNION ALL ')} ORDER BY created_at DESC LIMIT ${Math.max(1, Math.min(Number(limit) || 25, 100))}`).all(...params);
+}
+
+async function filesFromPostgres(q, scope, limit) {
+  const parts = [];
+  const params = [];
+  if (scope.channelIds.length) {
+    parts.push(`SELECT a.id, a.original_name, a.mime_type, a.created_at, m.channel_id, m.conversation_id, c.name AS channel_name, NULL AS dm_is_group
+          FROM attachments a JOIN messages m ON m.id = a.message_id LEFT JOIN channels c ON c.id = m.channel_id
+          WHERE m.deleted = 0 AND m.channel_id IN (${placeholders(scope.channelIds.length)}) AND strpos(lower(a.original_name), lower(?)) > 0`);
+    params.push(...scope.channelIds, q);
+  }
+  if (scope.convoIds.length) {
+    parts.push(`SELECT a.id, a.original_name, a.mime_type, a.created_at, m.channel_id, m.conversation_id, NULL AS channel_name, dc.is_group AS dm_is_group
+          FROM attachments a JOIN messages m ON m.id = a.message_id LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
+          WHERE m.deleted = 0 AND m.conversation_id IN (${placeholders(scope.convoIds.length)}) AND strpos(lower(a.original_name), lower(?)) > 0`);
+    params.push(...scope.convoIds, q);
+  }
+  if (!parts.length) return [];
+  return db.prepare(`${parts.join(' UNION ALL ')} ORDER BY created_at DESC LIMIT ${Math.max(1, Math.min(Number(limit) || 25, 100))}`).all(...params);
+}
+
+async function peopleFromPostgres(userId, q) {
+  const like = `%${q}%`;
+  return db.prepare(`
+    SELECT id, full_name, username, email, title, status FROM users
+    WHERE active = 1 AND id != ? AND (full_name ILIKE ? OR username ILIKE ? OR email ILIKE ?)
+      AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = ?)
+      AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = ?)
+    ORDER BY full_name LIMIT 10
+  `).all(userId, like, like, like, userId, userId);
+}
+
+async function globalSearch(userId, rawQuery, options = {}) {
+  const q = String(rawQuery || '').trim().slice(0, 200);
+  if (!q) return { messages: [], files: [], people: [], source: 'none' };
+  const limit = Math.max(1, Math.min(Number(options.limit) || 25, 100));
+  const scope = await visibleScope(userId);
+
+  let messages;
+  let source = 'meilisearch';
+  try {
+    messages = await messagesFromMeilisearch(q, scope, limit);
+  } catch (e) {
+    console.error('Meilisearch search failed, using the database instead:', e.message);
+    source = 'postgres';
+    messages = await messagesFromPostgres(q, scope, limit);
+  }
+  const [files, people] = await Promise.all([filesFromPostgres(q, scope, limit), peopleFromPostgres(userId, q)]);
+  return { messages, files, people, source };
+}
+
 module.exports = {
+  globalSearch,
+  visibleScope,
   INDEX_SETTINGS,
   buildFilter,
   selfCheck,

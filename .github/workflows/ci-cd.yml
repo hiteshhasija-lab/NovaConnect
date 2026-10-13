@@ -130,12 +130,26 @@ jobs:
           code=000
           for i in $(seq 1 30); do
             code=$(curl -s -o search.json -w '%{http_code}' -b cookies.txt "http://localhost:8080/api/search?q=ciquokka")
-            if [ "$code" = 200 ] && grep -q 'ciquokka' search.json; then echo "search: found the message"; exit 0; fi
+            if [ "$code" = 200 ] && grep -q 'ciquokka' search.json; then break; fi
             sleep 2
           done
-          echo "search did not return the message (last HTTP $code)"; cat search.json; echo
-          docker compose logs novaconnect | grep -i search | tail -10
-          exit 1
+          if ! { [ "$code" = 200 ] && grep -q 'ciquokka' search.json; }; then
+            echo "search did not return the message (last HTTP $code)"; cat search.json; echo
+            docker compose logs novaconnect | grep -i search | tail -10
+            exit 1
+          fi
+          # The response is the shape the web client renders: messages, files, people.
+          grep -q '"messages":\[{' search.json && grep -q '"files":\[' search.json && grep -q '"people":\[' search.json
+          grep -q '"source":"meilisearch"' search.json
+          echo "search: found the message through Meilisearch"
+          # With Meilisearch down, search still answers, from the database.
+          docker compose stop meilisearch
+          code=$(curl -s -o search-down.json -w '%{http_code}' -b cookies.txt "http://localhost:8080/api/search?q=ciquokka")
+          echo "search with Meilisearch down: HTTP $code"
+          test "$code" = 200
+          grep -q 'ciquokka' search-down.json
+          grep -q '"source":"postgres"' search-down.json
+          docker compose start meilisearch
 
       - name: Production security headers
         run: |

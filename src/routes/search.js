@@ -1,22 +1,16 @@
 const createAsyncRouter = require('../asyncRouter');
 const { requireAuth } = require('../middleware/auth');
-const { searchMessages } = require('../search');
+const { globalSearch } = require('../search');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
 
+// One search bar across messages, files and people. Messages come from Meilisearch when it
+// answers and from the database when it does not (see globalSearch in ../search.js); the response
+// shape is the one public/js/workspace.js renders: { messages, files, people, source }.
 router.get('/api/search', async (req, res) => {
-  const q = (req.query.q || '').trim();
-  const limit = Math.min(Number(req.query.limit) || 50, 100);
-  const offset = Number(req.query.offset) || 0;
-  const sortParam = req.query.sort || 'created_at:desc';
-  const sort = sortParam.split(',').map(s => s.trim());
-
-  if (!q) return res.json({ hits: [], estimatedTotalHits: 0, query: '', processingTimeMs: 0 });
-
   try {
-    const result = await searchMessages(req.session.user.id, q, { limit, offset, sort });
-    res.json(result);
+    res.json(await globalSearch(req.session.user.id, req.query.q, { limit: req.query.limit }));
   } catch (e) {
     console.error('Global search error:', e);
     res.status(500).json({ error: 'Search failed' });
