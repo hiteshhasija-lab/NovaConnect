@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const createAsyncRouter = require('../asyncRouter');
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { validateNewPassword, replacePassword } = require('../passwordChange');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -33,14 +34,12 @@ router.post('/password', async (req, res) => {
   if (!bcrypt.compareSync(current_password || '', user.password_hash)) {
     return res.render('profile', { title: 'My Profile', user, error: 'Current password is incorrect.', success: null });
   }
-  if (!new_password || new_password.length < 8) {
-    return res.render('profile', { title: 'My Profile', user, error: 'New password must be at least 8 characters.', success: null });
-  }
-  if (new_password !== confirm_password) {
-    return res.render('profile', { title: 'My Profile', user, error: 'New password and confirmation do not match.', success: null });
-  }
+  const validationError = validateNewPassword(new_password, confirm_password);
+  if (validationError) return res.render('profile', { title: 'My Profile', user, error: validationError, success: null });
 
-  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(new_password, 10), user.id);
+  await replacePassword(db, user.id, new_password);
+  req.session.user.must_change_password = false;
+  user.must_change_password = 0;
   res.render('profile', { title: 'My Profile', user, error: null, success: 'Password changed.' });
 });
 

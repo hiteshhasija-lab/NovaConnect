@@ -116,6 +116,20 @@ async function register(c, username, fullName, password) {
     return must(/already taken/.test(dup.text) && /8 characters/.test(short.text), 'dup/short messages missing');
   });
   await step('/api/mobile/session returns the signed-in user', async () => { const r = await alice.get('/api/mobile/session'); return must(r.status === 200 && r.data.user.username === un('alice'), r.text.slice(0, 100)); });
+  await step('admin reset requires a temporary-password change before normal access', async () => {
+    const temporary = `Temp-${tag}-9!`;
+    const reset = await admin.req('POST', `/admin/users/${carol.user.id}/reset-password`, { form: { new_password: temporary, confirm_password: temporary } });
+    must(reset.status === 302 && /password_reset=/.test(reset.headers.get('location') || ''), `reset ${reset.status}`);
+    await carol.post('/api/mobile/logout');
+    const login = await carol.login(un('carol'), temporary);
+    must(login.status === 200 && login.data.user.must_change_password === true, `temporary login ${login.status}`);
+    const blocked = await carol.get('/api/teams');
+    must(blocked.status === 403 && blocked.data.code === 'PASSWORD_CHANGE_REQUIRED', `blocked ${blocked.status} ${blocked.text.slice(0, 100)}`);
+    const changed = await carol.post('/api/mobile/password', { current_password: temporary, new_password: PW, confirm_password: PW });
+    must(changed.status === 200 && changed.data.user.must_change_password === false, `change ${changed.status} ${changed.text.slice(0, 100)}`);
+    const allowed = await carol.get('/api/teams');
+    return must(allowed.status === 200, `after change ${allowed.status}`);
+  });
   await step('realtime sockets connect for alice, bob and carol', async () => { await alice.connect(); await bob.connect(); await carol.connect(); return true; });
 
   section = 'teams & channels';

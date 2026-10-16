@@ -44,6 +44,24 @@ import SwiftUI
         catch { self.error = error.localizedDescription; return }
         expire()
     }
+    func changeTemporaryPassword(current: String, new: String, confirmation: String) async -> Bool {
+        guard let api else { return false }
+        busy = true; error = nil
+        defer { busy = false }
+        do {
+            let response: SessionResponse = try await api.get("/api/mobile/password", method: "POST", body: [
+                "current_password": current,
+                "new_password": new,
+                "confirm_password": confirmation
+            ])
+            user = response.user
+            live.start(api)
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
     func expire() {
         calls.disconnected(); meetings.disconnected(); live.stop(); if let api { SessionVault.delete(api.baseURL); api.clearCookies() }; api = nil; user = nil; drafts.removeAll(); AttachmentCache.clear()
     }
@@ -57,6 +75,7 @@ import SwiftUI
         WindowGroup {
             Group {
                 if session.restoring { ProgressView("Connecting…") }
+                else if session.user?.must_change_password == true { RequiredPasswordChange() }
                 else if session.user != nil { NativeRoot() }
                 else { NativeLogin() }
             }
@@ -78,6 +97,42 @@ import SwiftUI
                 if next == .active, session.user != nil, !session.live.connected, let api = session.api { session.live.start(api) }
                 if next == .background, !session.calls.keepsConnection, !session.meetings.keepsConnection { session.live.enterBackground() }
             }
+        }
+    }
+}
+
+struct RequiredPasswordChange: View {
+    @EnvironmentObject private var session: AppSession
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmation = ""
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("An administrator reset your password. Replace the temporary password before continuing.")
+                        .foregroundStyle(.secondary)
+                }
+                Section("Change password") {
+                    SecureField("Temporary password", text: $currentPassword).textContentType(.password)
+                    SecureField("New password", text: $newPassword).textContentType(.newPassword)
+                    SecureField("Confirm new password", text: $confirmation).textContentType(.newPassword)
+                    Button {
+                        Task {
+                            if await session.changeTemporaryPassword(current: currentPassword, new: newPassword, confirmation: confirmation) {
+                                currentPassword = ""; newPassword = ""; confirmation = ""
+                            }
+                        }
+                    } label: {
+                        HStack { Text("Change password"); Spacer(); if session.busy { ProgressView() } else { Image(systemName: "checkmark") } }
+                    }
+                    .novaGlassButtons(prominent: true)
+                    .disabled(session.busy || currentPassword.isEmpty || newPassword.count < 8 || confirmation.isEmpty)
+                }
+                if let error = session.error { Section { Text(error).foregroundStyle(.red) } }
+                Section { Button("Sign out", role: .destructive) { Task { await session.logout() } } }
+            }
+            .navigationTitle("Password required")
         }
     }
 }

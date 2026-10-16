@@ -5,6 +5,7 @@
 
   <% if (success) { %><div class="alert alert-success py-2 small"><%= success %></div><% } %>
   <% if (error) { %><div class="alert alert-danger py-2 small"><%= error %></div><% } %>
+  <% if (user.must_change_password) { %><div class="alert alert-warning py-2">An administrator reset your password. Change the temporary password below to continue.</div><% } %>
 
   <div class="card mb-4">
     <div class="card-body">

@@ -2,6 +2,8 @@ const createAsyncRouter = require('../asyncRouter');
 const { db } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { normalizeNewUser, validateNewUser, usernameTaken, createUser } = require('../newUser');
+const bcrypt = require('bcryptjs');
+const { validateNewPassword } = require('../passwordChange');
 
 const router = createAsyncRouter();
 router.use(requireAuth, requireRole('admin'));
@@ -13,13 +15,14 @@ router.get('/reports', async (req, res) => {
 
 function listUsers() {
   return db.prepare(`
-    SELECT id, username, full_name, email, title, role, status, active, created_at FROM users ORDER BY full_name
+    SELECT id, username, full_name, email, title, role, status, active, must_change_password, created_at FROM users ORDER BY full_name
   `).all();
 }
 
 router.get('/users', async (req, res) => {
   const added = typeof req.query.added === 'string' ? req.query.added : null;
-  res.render('admin-users', { title: 'Manage Users', users: await listUsers(), added, error: null, form: {} });
+  const passwordReset = typeof req.query.password_reset === 'string' ? req.query.password_reset : null;
+  res.render('admin-users', { title: 'Manage Users', users: await listUsers(), added, passwordReset, error: null, form: {} });
 });
 
 router.post('/users', async (req, res) => {
@@ -29,7 +32,7 @@ router.post('/users', async (req, res) => {
 
   const error = validateNewUser(u) || ((await usernameTaken(u.username)) ? 'That username is already taken.' : null);
   if (error) {
-    return res.status(400).render('admin-users', { title: 'Manage Users', users: await listUsers(), added: null, error, form });
+    return res.status(400).render('admin-users', { title: 'Manage Users', users: await listUsers(), added: null, passwordReset: null, error, form });
   }
 
   await createUser(u, role);
@@ -48,6 +51,21 @@ router.post('/users/:id/role', async (req, res) => {
   const role = req.body.role === 'admin' ? 'admin' : 'member';
   await db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
   res.redirect('/admin/users');
+});
+
+router.post('/users/:id/reset-password', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0 || id === req.session.user.id) {
+    return res.status(400).render('error', { title: 'Not Allowed', message: 'Choose another user account to reset.' });
+  }
+  const user = await db.prepare('SELECT id, username FROM users WHERE id = ?').get(id);
+  if (!user) return res.status(404).render('error', { title: 'Not Found', message: 'That user no longer exists.' });
+  const validationError = validateNewPassword(req.body.new_password, req.body.confirm_password);
+  if (validationError) return res.status(400).render('error', { title: 'Password Not Reset', message: validationError });
+
+  const passwordHash = await bcrypt.hash(req.body.new_password, 10);
+  await db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, id);
+  res.redirect(`/admin/users?password_reset=${encodeURIComponent(user.username)}`);
 });
 
 module.exports = router;

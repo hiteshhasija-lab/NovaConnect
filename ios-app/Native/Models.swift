@@ -7,6 +7,7 @@ struct Person: Codable, Identifiable, Hashable {
     var last_seen_at: String?
     var status: String?
     var role: String?
+    var must_change_password: Bool?
     var email: String?
     var title: String?
     var initials: String { full_name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined() }

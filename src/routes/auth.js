@@ -22,9 +22,9 @@ router.post('/login', async (req, res) => {
     // 401 (the page still renders): the sign-in rate limiter counts only failed attempts.
     return res.status(401).render('login', { error: 'Invalid username or password.', title: 'Log In' });
   }
-  req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role };
+  req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role, must_change_password: Boolean(user.must_change_password) };
   if (req.body.remember) req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
-  const dest = loginDestination(req.session.returnTo) || '/app';
+  const dest = user.must_change_password ? '/profile#password' : (loginDestination(req.session.returnTo) || '/app');
   delete req.session.returnTo;
   res.redirect(dest);
 });
@@ -48,7 +48,7 @@ router.post('/register', async (req, res) => {
   }
 
   const user = await db.prepare('SELECT * FROM users WHERE username = ?').get(b.username);
-  req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role };
+  req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role, must_change_password: Boolean(user.must_change_password) };
   res.redirect('/app');
 });
 

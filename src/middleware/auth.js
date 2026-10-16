@@ -9,13 +9,25 @@ async function requireAuth(req, res, next) {
     return res.redirect('/login');
   }
 
-  const fresh = await db.prepare('SELECT id, username, full_name, role, active FROM users WHERE id = ?').get(req.session.user.id);
+  const fresh = await db.prepare('SELECT id, username, full_name, role, active, must_change_password FROM users WHERE id = ?').get(req.session.user.id);
   if (!fresh || !fresh.active) {
     return req.session.destroy(() => res.redirect('/login'));
   }
   req.session.user.role = fresh.role;
   req.session.user.full_name = fresh.full_name;
   req.session.user.username = fresh.username;
+  req.session.user.must_change_password = Boolean(fresh.must_change_password);
+
+  if (fresh.must_change_password) {
+    const requestPath = req.originalUrl.split('?')[0];
+    const allowed = requestPath === '/profile' || requestPath === '/profile/password';
+    if (!allowed) {
+      if (req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/')) {
+        return res.status(403).json({ error: 'Change your temporary password to continue.', code: 'PASSWORD_CHANGE_REQUIRED' });
+      }
+      return res.redirect('/profile#password');
+    }
+  }
 
   next();
 }
