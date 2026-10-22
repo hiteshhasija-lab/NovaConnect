@@ -7,8 +7,15 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
+# mediasoup picks its prebuilt media worker by the host's kernel major version. The "kernel7" build
+# does not run inside a container build (CI runners on kernel 7 hit this: the check fails and it falls
+# back to compiling, which needs python and a toolchain this image does not have), while the
+# "kernel6" build runs everywhere from kernel 6 up. So a host above kernel 6 uses the kernel6 build.
+# Only this one npm ci is affected (NODE_OPTIONS is not kept in the image).
+RUN printf '%s\n' "const os = require('os');" "const real = os.release.bind(os);" \
+      "os.release = () => { const r = real(); return Number(r.split('.')[0]) > 6 ? '6.0.0' : r; };" > /tmp/kernel6.js
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN NODE_OPTIONS="--require /tmp/kernel6.js" npm ci --omit=dev && rm -f /tmp/kernel6.js
 
 ENV PORT=8080
 ENV HTTPS_PORT=8443
