@@ -3,6 +3,8 @@ const createAsyncRouter = require('../asyncRouter');
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { validateNewPassword, replacePassword } = require('../passwordChange');
+const { revokeUserSessions } = require('../sessions');
+const { disconnectUser } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -32,12 +34,15 @@ router.post('/password', async (req, res) => {
   const { current_password, new_password, confirm_password } = req.body;
 
   if (!bcrypt.compareSync(current_password || '', user.password_hash)) {
-    return res.render('profile', { title: 'My Profile', user, error: 'Current password is incorrect.', success: null });
+    return res.status(400).render('profile', { title: 'My Profile', user, error: 'Current password is incorrect.', success: null });
   }
   const validationError = validateNewPassword(new_password, confirm_password);
-  if (validationError) return res.render('profile', { title: 'My Profile', user, error: validationError, success: null });
+  if (validationError) return res.status(400).render('profile', { title: 'My Profile', user, error: validationError, success: null });
 
   await replacePassword(db, user.id, new_password);
+  // Every other session of this person ends; this one carries on.
+  await revokeUserSessions(user.id, req.sessionID);
+  disconnectUser(user.id);
   req.session.user.must_change_password = false;
   user.must_change_password = 0;
   res.render('profile', { title: 'My Profile', user, error: null, success: 'Password changed.' });

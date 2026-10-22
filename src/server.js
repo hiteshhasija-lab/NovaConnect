@@ -216,9 +216,28 @@ const sessionMiddleware = session({
   secret: cfg.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 8 }
+  // SameSite is explicit because the app has no CSRF tokens: a cross-site form post must not carry the session.
+  cookie: { maxAge: 1000 * 60 * 60 * 8, httpOnly: true, sameSite: 'lax' }
 });
 app.use(sessionMiddleware);
+
+// Changing a password asks for the current one, so guessing it with a stolen session is throttled
+// like signing in: 10 wrong attempts per person per 15 minutes (successes do not count).
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.session?.user?.id ? 'user:' + req.session.user.id : 'ip:' + req.ip),
+  handler: (req, res) => {
+    const message = 'Too many password attempts, please try again later.';
+    if (req.path.startsWith('/api/')) return res.status(429).json({ error: message });
+    return res.status(429).render('error', { title: 'Too Many Attempts', message });
+  },
+});
+app.post('/profile/password', passwordLimiter);
+app.post('/api/mobile/password', passwordLimiter);
 app.use(globalLimiter); // after static files and the session — see its definition above
 
 app.use(attachUser);
@@ -228,7 +247,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/api/mobile', require('./mobileSession').createMobileSessionRouter({ db: require('./db').db }));
+app.use('/api/mobile', require('./mobileSession').createMobileSessionRouter({ db: require('./db').db, revokeOtherSessions: (userId, sessionId) => require('./sessions').revokeUserSessions(userId, sessionId).then(() => realtime.disconnectUser(userId)) }));
 app.use('/', authRoutes);
 app.use('/app', appRoutes);
 app.use('/', require('./routes/membership'));

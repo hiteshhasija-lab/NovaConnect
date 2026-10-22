@@ -3,7 +3,7 @@ const createAsyncRouter = require('./asyncRouter');
 const { validateNewPassword, replacePassword } = require('./passwordChange');
 
 // Same session and identity as the web app; never issue a second, weaker bearer token.
-function createMobileSessionRouter({ db, compare = bcrypt.compare, hash = bcrypt.hash }) {
+function createMobileSessionRouter({ db, compare = bcrypt.compare, hash = bcrypt.hash, revokeOtherSessions = async () => {} }) {
   const router = createAsyncRouter();
   const publicUser = u => ({ id: u.id, username: u.username, full_name: u.full_name, role: u.role, status: u.status || 'offline', must_change_password: Boolean(u.must_change_password) });
   const regenerate = req => new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
@@ -41,6 +41,7 @@ function createMobileSessionRouter({ db, compare = bcrypt.compare, hash = bcrypt
     const error = validateNewPassword(req.body?.new_password, req.body?.confirm_password);
     if (error) return res.status(400).json({ error });
     await replacePassword(db, user.id, req.body.new_password, hash);
+    await revokeOtherSessions(user.id, req.sessionID);
     user.must_change_password = 0;
     req.session.user = publicUser(user);
     await save(req);

@@ -97,6 +97,8 @@ function attach(server, sessionMiddleware) {
   io.use((socket, next) => {
     const user = socket.request.session && socket.request.session.user;
     if (!user) return next(new Error('unauthorized'));
+    // A temporary password has to be replaced first: no live events until then.
+    if (user.must_change_password) return next(new Error('password change required'));
     socket.user = user;
     next();
   });
@@ -239,4 +241,10 @@ function resetCallPresence() {
     .catch(err => console.error('call presence reset failed:', err.message));
 }
 
-module.exports = { resetCallPresence, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };
+// Closes every open socket of a person (their sessions were revoked); a client that is still
+// signed in reconnects by itself.
+function disconnectUser(userId) {
+  if (io) io.in(`user:${userId}`).disconnectSockets(true);
+}
+
+module.exports = { disconnectUser, resetCallPresence, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };

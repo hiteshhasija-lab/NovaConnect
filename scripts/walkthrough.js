@@ -130,6 +130,30 @@ async function register(c, username, fullName, password) {
     const allowed = await carol.get('/api/teams');
     return must(allowed.status === 200, `after change ${allowed.status}`);
   });
+  await step('a password reset or change ends the person\'s other sessions, a forced-change session gets no socket, wrong guesses are throttled', async () => {
+    const erin = new Client('erin'); const un2 = un('erin');
+    await erin.req('POST', '/register', { form: { full_name: 'Erin Eld', username: un2, password: PW, confirm_password: PW } });
+    must((await erin.login(un2, PW)).status === 200, 'erin login');
+    const other = new Client('erin-other-device'); await other.login(un2, PW);
+    must((await other.get('/api/teams')).status === 200, 'second session works before the reset');
+    const temp = `Tmp-${tag}-7!`;
+    const reset = await admin.req('POST', `/admin/users/${erin.user.id}/reset-password`, { form: { new_password: temp, confirm_password: temp } });
+    must(reset.status === 302, 'reset ' + reset.status);
+    const gone = await other.get('/api/teams');
+    must(gone.status === 401 || gone.status === 302, 'the session open before the reset must be signed out, got ' + gone.status);
+    const forced = new Client('erin-forced'); must((await forced.login(un2, temp)).status === 200, 'temporary login');
+    const sock = await forced.connect().then(() => true, () => false);
+    must(sock === false, 'a forced-change session must not get a realtime socket');
+    const next = `New-${tag}-6!`;
+    const ch = await forced.post('/api/mobile/password', { current_password: temp, new_password: next, confirm_password: next });
+    must(ch.status === 200, 'change ' + ch.status);
+    let throttled = 0;
+    for (let i = 0; i < 12; i++) { const w = await forced.post('/api/mobile/password', { current_password: 'wrong' + i, new_password: next, confirm_password: next }); if (w.status === 429) { throttled = i + 1; break; } }
+    must(throttled > 0 && throttled <= 11, 'wrong current-password guesses must be throttled (10 per 15 min), first 429 after ' + throttled);
+    const l = await fetch(BASE + '/api/mobile/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: un('alice'), password: PW }) });
+    const cookie = l.headers.getSetCookie()[0] || '';
+    return must(/HttpOnly/i.test(cookie) && /SameSite=Lax/i.test(cookie), 'session cookie flags: ' + cookie.replace(/=[^;]*/, '=…'));
+  });
   await step('realtime sockets connect for alice, bob and carol', async () => { await alice.connect(); await bob.connect(); await carol.connect(); return true; });
 
   section = 'teams & channels';

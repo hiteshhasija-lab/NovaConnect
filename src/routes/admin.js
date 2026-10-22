@@ -4,6 +4,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { normalizeNewUser, validateNewUser, usernameTaken, createUser } = require('../newUser');
 const bcrypt = require('bcryptjs');
 const { validateNewPassword } = require('../passwordChange');
+const { revokeUserSessions } = require('../sessions');
+const { disconnectUser } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth, requireRole('admin'));
@@ -65,6 +67,9 @@ router.post('/users/:id/reset-password', async (req, res) => {
 
   const passwordHash = await bcrypt.hash(req.body.new_password, 10);
   await db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, id);
+  // Whoever held the old password (or a session made with it) is signed out everywhere.
+  await revokeUserSessions(id);
+  disconnectUser(id);
   res.redirect(`/admin/users?password_reset=${encodeURIComponent(user.username)}`);
 });
 
