@@ -1,13 +1,12 @@
-const path = require('path');
 const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
-const { upload, uploadFile, STORAGE_DRIVER } = require('../upload');
+const { upload, uploadFile } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
-const { getPublicUrl, LOCAL_UPLOAD_ROOT } = require('../storage');
+const { serveStored } = require('../storage');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -128,7 +127,17 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
   `).get(channel.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
-    const stored = await uploadFile(req.file);
+    let stored;
+    try {
+      stored = await uploadFile(req.file);
+    } catch (e) {
+      // The message was saved a moment ago: take it back, so a failed upload leaves no empty message behind.
+      await db.prepare('DELETE FROM messages WHERE id = ?').run(row.id);
+      await require('fs').promises.unlink(req.file.path).catch(() => {});
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      console.error('Saving an attachment failed:', e.message);
+      return res.status(502).json({ error: 'File storage is unavailable. Try again in a moment.' });
+    }
     await db.prepare(`
       INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -369,11 +378,8 @@ router.get('/api/attachments/:id/download', async (req, res) => {
   if (!att) return res.status(404).render('error', { title: 'Not Found', message: 'Attachment not found.' });
   const ctx = await loadMessageWithAccess(att.message_id, req.session.user.id);
   if (!ctx) return res.status(403).render('error', { title: 'Access Denied', message: 'You cannot view this file.' });
-  const url = getPublicUrl(att.storage_key || att.filename, att.storage_driver);
-  if (att.storage_driver === 's3' || STORAGE_DRIVER === 's3') {
-    return res.redirect(url);
-  }
-  res.download(path.join(LOCAL_UPLOAD_ROOT, att.storage_key || att.filename), att.original_name);
+  // The driver recorded with the file decides where it is read from, whatever STORAGE_DRIVER says now.
+  await serveStored(req, res, { key: att.storage_key || att.filename, driver: att.storage_driver, name: att.original_name });
 });
 
 module.exports = router;

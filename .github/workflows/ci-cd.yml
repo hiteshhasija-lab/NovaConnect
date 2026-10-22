@@ -29,6 +29,21 @@ jobs:
       - name: Client-server contract (web, iOS) against the routes
         run: node scripts/contract-check.js
       - run: npm test
+      - name: File storage against a real S3 server (SeaweedFS)
+        run: |
+          mkdir -p "$RUNNER_TEMP/sw"
+          S3_AK=ci$(openssl rand -hex 6); S3_SK=$(openssl rand -hex 16)
+          echo "::add-mask::$S3_SK"
+          printf '{"identities":[{"name":"ci","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$S3_AK" "$S3_SK" > "$RUNNER_TEMP/sw/s3.json"
+          docker run -d --name seaweed -p 8333:8333 -v "$RUNNER_TEMP/sw:/cfg" docker.io/chrislusf/seaweedfs:latest server -dir=/data -s3 -s3.config=/cfg/s3.json -master.volumeSizeLimitMB=64 -volume.max=4
+          for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:8333/ && break; sleep 1; done
+          sleep 5
+          S3_AK="$S3_AK" S3_SK="$S3_SK" node -e '
+            const { S3Client, CreateBucketCommand } = require("@aws-sdk/client-s3");
+            const c = new S3Client({ region: "us-east-1", endpoint: "http://localhost:8333", forcePathStyle: true, credentials: { accessKeyId: process.env.S3_AK, secretAccessKey: process.env.S3_SK } });
+            c.send(new CreateBucketCommand({ Bucket: "nc-test" })).then(() => console.log("bucket created"), (e) => { console.error(e); process.exit(1); });'
+          S3_TEST_ENDPOINT=http://localhost:8333 S3_TEST_BUCKET=nc-test S3_TEST_ACCESS_KEY="$S3_AK" S3_TEST_SECRET_KEY="$S3_SK" node --test test/storage.s3.test.js
+          docker rm -f seaweed
 
   fresh-install:
     name: Fresh install (compose.yaml)

@@ -84,7 +84,10 @@ const EnvSchema = z.object({
   // UDP port range for call/meeting media (sfu.js), split between the workers.
   MEDIASOUP_RTC_MIN_PORT: z.coerce.number().int().min(1024).max(65535).default(40000),
   MEDIASOUP_RTC_MAX_PORT: z.coerce.number().int().min(1024).max(65535).default(49999),
-}).passthrough().refine(c => c.MEDIASOUP_RTC_MAX_PORT - c.MEDIASOUP_RTC_MIN_PORT + 1 >= 16 * (c.MEDIASOUP_WORKERS || 8), {
+}).passthrough().refine(c => c.STORAGE_DRIVER !== 's3' || (c.S3_BUCKET && c.S3_ACCESS_KEY_ID && c.S3_SECRET_ACCESS_KEY), {
+  message: 'STORAGE_DRIVER=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY',
+  path: ['STORAGE_DRIVER'],
+}).refine(c => c.MEDIASOUP_RTC_MAX_PORT - c.MEDIASOUP_RTC_MIN_PORT + 1 >= 16 * (c.MEDIASOUP_WORKERS || 8), {
   message: 'MEDIASOUP_RTC_MIN_PORT..MEDIASOUP_RTC_MAX_PORT must span at least 16 ports per media worker',
   path: ['MEDIASOUP_RTC_MAX_PORT'],
 });
@@ -115,7 +118,7 @@ function validateConfig() {
       warnings.push('SESSION_SECRET uses default dev value — must be changed in production');
     }
     if (process.env.STORAGE_DRIVER === 'local') {
-      warnings.push('STORAGE_DRIVER=local in production — consider S3 for durability');
+      warnings.push('STORAGE_DRIVER=local in production — files live on this server\'s disk (STORAGE_DRIVER=s3 keeps them in a bucket)');
     }
     if (warnings.length) {
       console.warn('[Config] Production warnings:\n' + warnings.map(w => `  - ${w}`).join('\n'));

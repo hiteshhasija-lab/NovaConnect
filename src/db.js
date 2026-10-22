@@ -202,6 +202,7 @@ async function initDb() {
   const { ensureIndex, reindexAll, selfCheck } = require('./search');
   await ensureIndex().catch(e => console.error('Search index init failed:', e.message));
   selfCheck().then(problem => { if (problem) console.error('Search self-check failed (searches will return an error):', problem); });
+  require('./storage').selfCheck().then(problem => { if (problem) console.error('File storage self-check failed (attachments, recordings and profile photos cannot be saved):', problem); else if (require('./storage').STORAGE_DRIVER === 's3') console.log('File storage: S3 bucket reachable (test object written, read and deleted)'); });
   reindexAll().then(r => console.log(`Search reindex complete (${r.indexed} indexed, ${r.removed} stale removed)`)).catch(e => console.error('Search reindex failed:', e.message));
   return { seeded };
 }

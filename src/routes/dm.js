@@ -279,7 +279,17 @@ router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(re
   `).get(convo.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
-    const stored = await uploadFile(req.file);
+    let stored;
+    try {
+      stored = await uploadFile(req.file);
+    } catch (e) {
+      // The message was saved a moment ago: take it back, so a failed upload leaves no empty message behind.
+      await db.prepare('DELETE FROM messages WHERE id = ?').run(row.id);
+      await require('fs').promises.unlink(req.file.path).catch(() => {});
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      console.error('Saving an attachment failed:', e.message);
+      return res.status(502).json({ error: 'File storage is unavailable. Try again in a moment.' });
+    }
     await db.prepare(`
       INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)

@@ -69,7 +69,7 @@ half-updated database, and `docker compose logs novaconnect` says why.
 
 **Backups** (tested by wiping an install and restoring it, 2026-10-07). Two things hold your data:
 the database and the uploads volume (files and recordings). Sessions (Redis) and the search index
-(Meilisearch) are rebuilt and don't need backing up.
+(Meilisearch) are rebuilt and don't need backing up. (With `STORAGE_DRIVER=s3`, files saved since the switch are in the bucket, not the uploads volume: see "File storage in a bucket".)
 
 ```bash
 docker compose exec -T postgres pg_dump -U novaconnect -Fc novaconnect < /dev/null > novaconnect.dump
@@ -91,6 +91,39 @@ docker compose up -d novaconnect                         # "Database schema is u
 ```
 
 Everyone signs in again afterwards (sessions aren't restored). With Podman, use `podman compose`.
+
+**File storage in a bucket (S3).** By default attachments, recordings and profile photos live on the
+server's disk (`uploads` volume). To keep them in an S3-compatible bucket instead (Amazon S3,
+Backblaze B2, Wasabi, or your own SeaweedFS/Garage server), set in `.env`:
+
+```
+STORAGE_DRIVER=s3
+S3_BUCKET=novaconnect-files
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_REGION=us-east-1
+S3_ENDPOINT=https://s3.example.com      # only for a non-AWS service
+S3_FORCE_PATH_STYLE=true                # most self-hosted servers need this
+```
+
+Create the bucket first and keep it **private**: NovaConnect checks the person's access on every
+download and streams the file through itself (Range requests included, so recordings play and scrub),
+so nothing needs to reach the bucket from a browser. At start-up it writes, reads and deletes a small
+test object and logs `File storage: S3 bucket reachable` or the problem. If the bucket is unreachable
+later, text chat carries on, uploads answer "File storage is unavailable", and avatars show initials.
+
+Switching only changes where **new** files go; every file remembers where it was saved, so older
+files keep working from disk. To move them across (safe to repeat and to interrupt; a file is
+switched only after the copy in the bucket has the right size):
+
+```bash
+docker compose exec novaconnect node src/tools/migrate-uploads-to-s3.js                 # dry run
+docker compose exec novaconnect node src/tools/migrate-uploads-to-s3.js --apply         # copy, verify, switch
+docker compose exec novaconnect node src/tools/migrate-uploads-to-s3.js --apply --delete-local   # later: remove the verified local copies
+```
+
+Backups: with S3 the uploads volume holds only what was saved before the switch; the bucket needs its
+own backup or versioning, in addition to the database dump.
 
 **Host notes**
 - *Podman Compose on RHEL:* `podman compose` needs a provider; `podman-compose` is in EPEL
