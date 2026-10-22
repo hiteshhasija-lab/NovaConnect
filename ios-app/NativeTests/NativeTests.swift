@@ -17,6 +17,14 @@ import Security
         XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "Alice & Bob/#?")
         XCTAssertThrowsError(try api.url("//attacker.example"))
     }
+    func testActivityWithoutTextStillDecodes() throws {
+        // notifications.body is a nullable column: one row without text must not fail the whole list.
+        let data = Data(#"{"notifications":[{"id":1,"body":null,"actor_name":null,"is_read":0},{"id":2,"body":"Maria mentioned you","actor_name":"Maria Chen","is_read":1}],"unread_count":1}"#.utf8)
+        let activities = try JSONDecoder().decode(Activities.self, from: data).notifications
+        XCTAssertEqual(activities.count, 2)
+        XCTAssertNil(activities[0].body)
+        XCTAssertEqual(activities[1].body, "Maria mentioned you")
+    }
     func testHydratedMessageContract() throws {
         let data = Data(#"{"messages":[{"id":1,"body":"hello","author":{"id":2,"username":"eva","full_name":"Eva Hasija","status":"online"},"created_at":"2026-09-30 14:00:00","edited":false,"deleted":false,"reactions":[{"emoji":"👍","count":2,"mine":true}],"attachments":[{"id":3,"original_name":"review.pdf","mime_type":"application/pdf","size":100}]}],"has_more":false}"#.utf8)
         let page = try JSONDecoder().decode(MessagePage.self, from: data)

@@ -423,7 +423,7 @@ struct ActivityView: View {
             ForEach(activities) { activity in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(activity.actor_name ?? "NovaConnect").font(.headline)
-                    Text(activity.body)
+                    Text(activity.body ?? "(no text)")
                     if activity.is_read == 0 { Button("Mark read") { Task { do { try await session.api?.send("/api/notifications/\(activity.id)/read"); await load() } catch { self.error = error.localizedDescription } } } }
                 }.padding(.vertical, 5)
             }

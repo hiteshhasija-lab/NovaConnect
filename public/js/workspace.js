@@ -1849,6 +1849,9 @@
   // Bootstrap's JS bundle loads after this script (see partials/foot), so modal
   // instances are created lazily on first use rather than at parse time.
   function modalOf(el) { return bootstrap.Modal.getOrCreateInstance(el); }
+  // Bootstrap sets aria-hidden on a modal as it closes; a field inside it that still has focus (the
+  // team name after pressing Create) makes the browser warn. Release the focus first, for every modal.
+  document.addEventListener('hide.bs.modal', (e) => { const a = document.activeElement; if (a && a !== document.body && e.target.contains(a)) a.blur(); });
   const teamsModalEl = document.getElementById('teamsModal');
   function openTeamsModal() {
     modalOf(teamsModalEl).show();

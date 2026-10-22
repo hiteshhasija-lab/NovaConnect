@@ -74,7 +74,8 @@ enum MeetingCode {
         return String(input[match])
     }
 }
-struct Activity: Decodable, Identifiable { let id: Int; let body: String; let actor_name: String?; let is_read: Int? }
+// body is a nullable column: a notification without text must not make the whole list fail to decode.
+struct Activity: Decodable, Identifiable { let id: Int; let body: String?; let actor_name: String?; let is_read: Int? }
 struct Activities: Decodable { let notifications: [Activity] }
 struct AIMessage: Decodable, Identifiable { let id: Int; let role: String; let body: String }
 struct AIMessages: Decodable { let messages: [AIMessage] }
