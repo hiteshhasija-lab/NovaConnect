@@ -248,3 +248,106 @@ jobs:
       - name: Clean up
         if: always()
         run: docker compose down -v
+
+  # An existing install keeps working when it is upgraded in place, the way the README describes:
+  # start an OLDER release, put data in it, rebuild from this version on the same volumes, and check
+  # that the same person still signs in and finds everything. Two baselines: the release before the
+  # latest one (what a regularly updated install does) and 1.0.183 (a long jump, over every migration
+  # since). The old version is built with this tree's Containerfile (only the dependency step, which
+  # does not depend on the source), so a runner-kernel problem in an old recipe cannot fail the test.
+  upgrade:
+    name: Upgrade in place from ${{ matrix.baseline }} (compose.yaml)
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - baseline: the previous release
+            ref: auto
+          - baseline: 1.0.183
+            ref: 1c96cf5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Settings from .env.example, and the old source
+        run: |
+          gen() { openssl rand -hex 32; }
+          ADMIN_PASSWORD=$(openssl rand -hex 12)
+          SYNC_API_KEY=$(gen)
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "::add-mask::$SYNC_API_KEY"
+          echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$GITHUB_ENV"
+          echo "SYNC_API_KEY=$SYNC_API_KEY" >> "$GITHUB_ENV"
+          sed -e "s/^PGPASSWORD=$/PGPASSWORD=$(gen)/" \
+              -e "s/^SESSION_SECRET=$/SESSION_SECRET=$(gen)/" \
+              -e "s/^REDIS_PASSWORD=$/REDIS_PASSWORD=$(gen)/" \
+              -e "s/^MEILI_API_KEY=$/MEILI_API_KEY=$(gen)/" \
+              -e "s/^ADMIN_PASSWORD=$/ADMIN_PASSWORD=$ADMIN_PASSWORD/" \
+              -e "s/^MEDIASOUP_ANNOUNCED_IP=$/MEDIASOUP_ANNOUNCED_IP=127.0.0.1/" \
+              -e "s/^NOVACONNECT_HTTP_PORT=80$/NOVACONNECT_HTTP_PORT=8080/" \
+              -e "s/^NOVACONNECT_HTTPS_PORT=443$/NOVACONNECT_HTTPS_PORT=8443/" \
+              .env.example > .env
+          printf 'MEDIASOUP_WORKERS=1\nMEDIASOUP_RTC_MIN_PORT=40000\nMEDIASOUP_RTC_MAX_PORT=40015\nSYNC_API_KEY=%s\n' "$SYNC_API_KEY" >> .env
+          mkdir -p certs
+          ref="${{ matrix.ref }}"
+          # "auto": the second-latest commit that changed src/version.js = the release before the current one.
+          if [ "$ref" = auto ]; then ref=$(git log -n 2 --format=%H -- src/version.js | tail -1); fi
+          test "$(git rev-parse "$ref")" != "$(git rev-parse HEAD)"
+          echo "Upgrading from $ref ($(git show "$ref:src/version.js" | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+")) to $(git rev-parse --short HEAD) ($(grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" src/version.js))"
+          git worktree add "$RUNNER_TEMP/old" "$ref"
+          cp Containerfile "$RUNNER_TEMP/old/Containerfile"
+          cp .env "$RUNNER_TEMP/old/.env"
+          mkdir -p "$RUNNER_TEMP/old/certs"
+
+      - name: Start the old release and put data in it
+        working-directory: ${{ runner.temp }}/old
+        run: |
+          docker compose -p ncup up -d --build
+          for i in $(seq 1 60); do curl -fsS http://localhost:8080/health && break; sleep 3; done
+          curl -fsS http://localhost:8080/health
+          echo "old version: $(docker compose -p ncup exec -T novaconnect node -e 'console.log(require("./src/version"))' < /dev/null)"
+          STATE_FILE="$RUNNER_TEMP/upgrade-state.json" node "$GITHUB_WORKSPACE/scripts/upgrade-check.js" seed
+
+      - name: Upgrade in place to this version
+        run: |
+          # Same project name, same .env, same volumes: only the image and the code change.
+          docker compose -p ncup up -d --build --force-recreate novaconnect
+          for i in $(seq 1 60); do curl -fsS http://localhost:8080/health && break; sleep 3; done
+          curl -fsS http://localhost:8080/health
+          new="$(grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" src/version.js)"
+          running="$(docker compose -p ncup exec -T novaconnect node -e 'console.log(require("./src/version"))' < /dev/null)"
+          echo "now running: $running (expected $new)"
+          test "$running" = "$new"
+
+      - name: Migrations applied and nothing in the logs
+        run: |
+          latest=$(ls migrations | sed 's/\.js$//' | sort | tail -1)
+          applied=$(docker compose -p ncup exec -T postgres psql -U novaconnect -d novaconnect -Atc "select max(name) from pgmigrations" < /dev/null | head -1)
+          echo "newest migration in the code: $latest; newest applied: $applied"
+          test "$applied" = "$latest"
+          docker compose -p ncup logs novaconnect > upgrade.log
+          if grep -qE '"level":"(error|fatal)"' upgrade.log; then grep -E '"level":"(error|fatal)"' upgrade.log | head -5; exit 1; fi
+
+      - name: The same person finds everything after the upgrade
+        run: STATE_FILE="$RUNNER_TEMP/upgrade-state.json" node scripts/upgrade-check.js verify
+
+      - name: Walk-through on the upgraded install
+        run: |
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/walk-deps" ws@8
+          WALK_SKIP_SCHEDULER=1 NODE_PATH="$RUNNER_TEMP/walk-deps/node_modules" node scripts/walkthrough.js
+        env:
+          BASE_URL: http://localhost:8080
+
+      - name: Logs (on failure)
+        if: failure()
+        run: docker compose -p ncup logs
+
+      - name: Clean up
+        if: always()
+        run: docker compose -p ncup down -v
