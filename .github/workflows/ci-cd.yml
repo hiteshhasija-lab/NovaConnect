@@ -188,6 +188,11 @@ jobs:
         env:
           BASE_URL: http://localhost:8080
 
+      - name: The server logged no errors during the walk-through
+        run: |
+          docker compose logs novaconnect > walk.log
+          if grep -qE '"level":"(error|fatal)"' walk.log; then grep -E '"level":"(error|fatal)"' walk.log | head -5; echo "errors in the server log"; exit 1; fi
+
       - name: Browser check (production CSP, no blocked scripts or JavaScript errors)
         run: |
           # Playwright lives in a scratch folder so it never touches the app's dependencies.
@@ -343,6 +348,11 @@ jobs:
           WALK_SKIP_SCHEDULER=1 NODE_PATH="$RUNNER_TEMP/walk-deps/node_modules" node scripts/walkthrough.js
         env:
           BASE_URL: http://localhost:8080
+
+      - name: The server logged no errors during the walk-through
+        run: |
+          docker compose -p ncup logs novaconnect > walk.log
+          if grep -qE '"level":"(error|fatal)"' walk.log; then grep -E '"level":"(error|fatal)"' walk.log | head -5; echo "errors in the server log"; exit 1; fi
 
       - name: Logs (on failure)
         if: failure()

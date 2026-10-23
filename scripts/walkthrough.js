@@ -314,6 +314,11 @@ async function register(c, username, fullName, password) {
     const big = await alice.post(`/api/channels/${general.id}/messages`, { body: 'x'.repeat(200000) });
     return must(big.status === 413 || big.status === 400, 'oversize message must be a 4xx refusal, got ' + big.status) && `oversize -> ${big.status}`;
   });
+  await step('an oversize request to a page (not the API) is refused with the app\'s own error page, not a crash', async () => {
+    const r = await alice.req('POST', '/login', { form: { username: 'x'.repeat(300000), password: 'y' } });
+    const h = await anon.get('/health');
+    return must(r.status === 413 && /too large/i.test(r.text) && !/at .*\.js:\d+|ReferenceError/.test(r.text) && h.status === 200, `status ${r.status}: ${r.text.replace(/\s+/g, ' ').slice(0, 120)}`);
+  });
   await step('file attachment: upload with a message, download returns identical bytes', async () => {
     const fd = new FormData();
     fd.append('body', 'see attached');

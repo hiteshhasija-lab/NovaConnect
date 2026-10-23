@@ -146,6 +146,14 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Template helpers for every page, set before anything that can fail: an error raised by the body
+// parser (a request that is too large) is rendered with the same layout, which needs `h`.
+app.use((req, res, next) => {
+  res.locals.h = helpers;
+  res.locals.path = req.path;
+  next();
+});
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(methodOverride('_method'));
@@ -241,12 +249,6 @@ app.post('/api/mobile/password', passwordLimiter);
 app.use(globalLimiter); // after static files and the session — see its definition above
 
 app.use(attachUser);
-app.use((req, res, next) => {
-  res.locals.h = helpers;
-  res.locals.path = req.path;
-  next();
-});
-
 app.use('/api/mobile', require('./mobileSession').createMobileSessionRouter({ db: require('./db').db, revokeOtherSessions: (userId, sessionId) => require('./sessions').revokeUserSessions(userId, sessionId).then(() => realtime.disconnectUser(userId)) }));
 app.use('/', authRoutes);
 app.use('/app', appRoutes);
