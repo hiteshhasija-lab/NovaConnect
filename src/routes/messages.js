@@ -3,6 +3,7 @@ const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
+const { parseAnnouncement, announcementOf, metadataOf } = require('../announcement');
 const { upload, uploadFile } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
@@ -118,9 +119,14 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
 
   const body = (req.body.body || '').trim();
   const gifUrl = parseGifUrl(req.body.gif_url);
-  if (!body && !req.file && !gifUrl) return res.status(400).json({ error: 'Message cannot be empty.' });
   const parentId = req.body.parent_message_id ? Number(req.body.parent_message_id) : null;
-  const metadata = gifUrl ? JSON.stringify({ gifUrl }) : null;
+  // An announcement (headline banner) is a top-level post; its text under the banner may be empty.
+  const announcement = parseAnnouncement({ headline: req.body.announcement_headline, subhead: req.body.announcement_subhead, theme: req.body.announcement_theme });
+  if (announcement?.error) return res.status(400).json({ error: announcement.error });
+  if (announcement && parentId) return res.status(400).json({ error: 'A reply cannot be an announcement.' });
+  if (!body && !req.file && !gifUrl && !announcement) return res.status(400).json({ error: 'Message cannot be empty.' });
+  const meta = { ...(gifUrl ? { gifUrl } : {}), ...(announcement ? { announcement: announcement.value } : {}) };
+  const metadata = Object.keys(meta).length ? JSON.stringify(meta) : null;
 
   const row = await db.prepare(`
     INSERT INTO messages (channel_id, user_id, body, parent_message_id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
@@ -221,11 +227,21 @@ router.put('/api/messages/:id', async (req, res) => {
   if (ctx.msg.user_id !== req.session.user.id) return res.status(403).json({ error: 'You can only edit your own messages.' });
 
   const body = (req.body.body || '').trim();
-  if (!body) return res.status(400).json({ error: 'Message cannot be empty.' });
+  // An announcement's headline, subheading and colour can be edited too (never added or removed).
+  const existing = announcementOf(ctx.msg);
+  let metadata = ctx.msg.metadata;
+  if (req.body.announcement !== undefined) {
+    if (!existing) return res.status(400).json({ error: 'Only an announcement has a headline.' });
+    const a = parseAnnouncement(req.body.announcement);
+    if (!a) return res.status(400).json({ error: 'An announcement needs a headline.' });
+    if (a.error) return res.status(400).json({ error: a.error });
+    metadata = JSON.stringify({ ...metadataOf(ctx.msg), announcement: a.value });
+  }
+  if (!body && !existing) return res.status(400).json({ error: 'Message cannot be empty.' });
 
   const updated = await db.prepare(`
-    UPDATE messages SET body = ?, edited = 1, updated_at = ? WHERE id = ? RETURNING *
-  `).get(body, nowStr(), ctx.msg.id);
+    UPDATE messages SET body = ?, metadata = ?, edited = 1, updated_at = ? WHERE id = ? RETURNING *
+  `).get(body, metadata, nowStr(), ctx.msg.id);
   const message = await hydrateOne(updated, req.session.user.id);
   const event = updated.parent_message_id ? 'thread:message:update' : 'message:update';
   if (ctx.channel) emitToChannel(ctx.channel.id, event, message);
@@ -319,10 +335,13 @@ router.post('/api/messages/:id/forward', async (req, res) => {
 
   const author = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(ctx.msg.user_id);
   const metadata = JSON.stringify({ forwardedFrom: { messageId: ctx.msg.id, authorName: author ? author.full_name : 'Unknown user' } });
+  // A forwarded announcement arrives as an ordinary message: its headline (bold) and subheading lead the text.
+  const ann = announcementOf(ctx.msg);
+  const body = ann ? [`**${ann.headline}**`, ann.subhead, ctx.msg.body].filter(Boolean).join('\n') : ctx.msg.body;
   const row = await db.prepare(`
     INSERT INTO messages (channel_id, conversation_id, user_id, body, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *
-  `).get(targetChannelId || null, targetChannelId ? null : targetConversationId, req.session.user.id, ctx.msg.body, metadata, nowStr(), nowStr());
+  `).get(targetChannelId || null, targetChannelId ? null : targetConversationId, req.session.user.id, body, metadata, nowStr(), nowStr());
 
   const sourceAttachments = await db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(ctx.msg.id);
   for (const a of sourceAttachments) {

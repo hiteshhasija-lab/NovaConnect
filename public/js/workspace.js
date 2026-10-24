@@ -978,6 +978,7 @@
       header.innerHTML = '<div class="main-header-title text-muted">NovaConnect</div>';
     }
     renderOooNotice();
+    syncAnnounceAvailability();
   }
 
   // ---------------- messages ----------------
@@ -997,7 +998,7 @@
       const day = fmtDayLabel(msg.created_at);
       if (day !== lastDay) { list.appendChild(el('<div class="day-divider"><span>' + day + '</span></div>')); lastAuthor = null; lastDay = day; }
       if (msg.metadata && msg.metadata.system) { list.appendChild(buildSystemRow(msg)); lastAuthor = null; return; }
-      const grouped = lastAuthor === msg.author.id && (toDate(msg.created_at) - lastTime) < 5 * 60 * 1000;
+      const grouped = lastAuthor === msg.author.id && (toDate(msg.created_at) - lastTime) < 5 * 60 * 1000 && !isAnnouncement(msg);
       list.appendChild(buildMessageRow(msg, grouped));
       lastAuthor = msg.author.id; lastTime = toDate(msg.created_at);
     });
@@ -1129,7 +1130,8 @@
     let html = '';
     if (msg.pinned) html += '<div class="msg-pinned-flag"><i class="bi bi-pin-angle-fill"></i> Pinned' + (msg.pinned_by ? ' by ' + escapeHtml(msg.pinned_by.full_name) : '') + '</div>';
     if (msg.metadata && msg.metadata.forwardedFrom) html += '<div class="msg-forwarded-flag"><i class="bi bi-arrow-90deg-right"></i> Forwarded from ' + escapeHtml(msg.metadata.forwardedFrom.authorName) + '</div>';
-    if (msg.body.trim() || !(msg.metadata && msg.metadata.gifUrl)) {
+    if (isAnnouncement(msg)) html += announcementHtml(msg.metadata.announcement);
+    if (msg.body.trim() || !(msg.metadata && (msg.metadata.gifUrl || msg.metadata.announcement))) {
       html += '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
     }
     if (msg.metadata && msg.metadata.gifUrl) html += '<img class="msg-gif" src="' + escapeHtml(msg.metadata.gifUrl) + '" alt="GIF">';
@@ -1431,13 +1433,18 @@
   function startEdit(row, msg) {
     const box = row.querySelector('.msg-content');
     const original = box.innerHTML;
-    box.innerHTML = '<textarea class="composer-input w-100 mb-1" rows="2">' + escapeHtml(msg.body) + '</textarea>' +
+    const a = isAnnouncement(msg) ? msg.metadata.announcement : null;
+    box.innerHTML = (a ? '<input type="text" class="form-control form-control-sm mb-1 edit-headline" maxlength="120" aria-label="Announcement headline" value="' + escapeHtml(a.headline) + '">' +
+        '<input type="text" class="form-control form-control-sm mb-1 edit-subhead" maxlength="200" aria-label="Announcement subheading" placeholder="Subheading (optional)" value="' + escapeHtml(a.subhead || '') + '">' : '') +
+      '<textarea class="composer-input w-100 mb-1" rows="2">' + escapeHtml(msg.body) + '</textarea>' +
       '<button class="btn btn-sm btn-primary me-1 save-edit">Save</button><button class="btn btn-sm btn-outline-secondary cancel-edit">Cancel</button>';
     const ta = box.querySelector('textarea');
-    ta.focus();
+    (a ? box.querySelector('.edit-headline') : ta).focus();
     box.querySelector('.cancel-edit').addEventListener('click', () => { box.innerHTML = original; });
     box.querySelector('.save-edit').addEventListener('click', () => {
-      api('/api/messages/' + msg.id, { method: 'PUT', body: { body: ta.value } }).catch(showToastError);
+      const body = { body: ta.value };
+      if (a) body.announcement = { headline: box.querySelector('.edit-headline').value, subhead: box.querySelector('.edit-subhead').value, theme: a.theme };
+      api('/api/messages/' + msg.id, { method: 'PUT', body }).catch(showToastError);
     });
   }
 
@@ -1462,7 +1469,7 @@
     if (lastRow && !newDay) {
       const lastId = Number(lastRow.dataset.id);
       const lastMsg = (state.active.messages || []).find(m => m.id === lastId);
-      if (lastMsg && lastMsg.author.id === msg.author.id && (toDate(msg.created_at) - toDate(lastMsg.created_at)) < 5 * 60 * 1000) grouped = true;
+      if (lastMsg && lastMsg.author.id === msg.author.id && (toDate(msg.created_at) - toDate(lastMsg.created_at)) < 5 * 60 * 1000 && !isAnnouncement(msg)) grouped = true;
     }
     list.appendChild(buildMessageRow(msg, grouped));
     (state.active.messages = state.active.messages || []).push(msg);
@@ -1583,6 +1590,49 @@
     });
   });
 
+  // ---------------- announcement posts ----------------
+  // The toolbar's megaphone turns a channel post into an announcement: a headline banner (and an
+  // optional subheading) in one of the colours src/announcement.js allows, above the usual text.
+  const ANNOUNCE_THEMES = ['blue', 'purple', 'green', 'orange', 'red', 'slate'];
+  const announceBtn = document.getElementById('composerAnnounceBtn');
+  const announcePanel = document.getElementById('composerAnnouncement');
+  const announceHeadline = document.getElementById('announceHeadline');
+  const announceSubhead = document.getElementById('announceSubhead');
+  let announceTheme = ANNOUNCE_THEMES[0];
+  function announcing() { return !announcePanel.classList.contains('d-none'); }
+  function setAnnounceTheme(theme) {
+    announceTheme = ANNOUNCE_THEMES.includes(theme) ? theme : ANNOUNCE_THEMES[0];
+    ANNOUNCE_THEMES.forEach(t => announcePanel.classList.toggle('msg-announcement-' + t, t === announceTheme));
+    announcePanel.querySelectorAll('.announce-theme').forEach(b => b.setAttribute('aria-checked', String(b.dataset.theme === announceTheme)));
+  }
+  function setAnnouncing(on) {
+    announcePanel.classList.toggle('d-none', !on);
+    announceBtn.setAttribute('aria-pressed', String(on));
+    announceBtn.classList.toggle('active', on);
+    composerInput.placeholder = on ? 'Add the announcement text (optional)' : 'Type a message… (@ to mention)';
+    if (!on) { announceHeadline.value = ''; announceSubhead.value = ''; setAnnounceTheme(ANNOUNCE_THEMES[0]); }
+    else announceHeadline.focus();
+  }
+  announceBtn.addEventListener('click', () => setAnnouncing(!announcing()));
+  announcePanel.querySelectorAll('.announce-theme').forEach(b => b.addEventListener('click', () => setAnnounceTheme(b.dataset.theme)));
+  announceHeadline.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); announceSubhead.focus(); } });
+  announceSubhead.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); composerInput.focus(); } });
+  // Announcements are for channels: the button shows there only, and leaving the channel drops a draft banner.
+  // (Looks the panel up itself: renderMainHeader may run before this section's constants exist.)
+  function syncAnnounceAvailability() {
+    const inChannel = state.active.type === 'channel';
+    document.querySelectorAll('.composer-announce-only').forEach(n => n.classList.toggle('d-none', !inChannel));
+    if (!inChannel && !document.getElementById('composerAnnouncement').classList.contains('d-none')) setAnnouncing(false);
+  }
+  // Function declarations (hoisted): messages can render before this section has run.
+  function announcementHtml(a) {
+    const theme = /^(blue|purple|green|orange|red|slate)$/.test(a.theme) ? a.theme : 'blue';
+    return '<div class="msg-announcement msg-announcement-' + theme + '"><div class="msg-announcement-label"><i class="bi bi-megaphone-fill" aria-hidden="true"></i> Announcement</div>' +
+      '<div class="msg-announcement-headline">' + escapeHtml(a.headline) + '</div>' +
+      (a.subhead ? '<div class="msg-announcement-subhead">' + escapeHtml(a.subhead) + '</div>' : '') + '</div>';
+  }
+  function isAnnouncement(msg) { return !!(msg && msg.metadata && msg.metadata.announcement && !msg.deleted); }
+
   // ---------------- formatting toolbar ----------------
   document.getElementById('composerFormatBtn').addEventListener('click', () => {
     document.getElementById('composerToolbar').classList.toggle('d-none');
@@ -1697,12 +1747,20 @@
 
   function sendComposerMessage() {
     const body = composerInput.value.trim();
-    if (!body && !pendingFile) return;
+    const announce = state.active.type === 'channel' && announcing();
+    if (announce && !announceHeadline.value.trim()) { showToastError(new Error('Add a headline for the announcement.')); announceHeadline.focus(); return; }
+    if (!body && !pendingFile && !announce) return;
     if (state.active.type === 'none') return;
     composerHistory.reset();
     const fd = new FormData();
     fd.append('body', bodyWithReply(body));
     if (pendingFile) fd.append('file', pendingFile);
+    if (announce) {
+      fd.append('announcement_headline', announceHeadline.value);
+      fd.append('announcement_subhead', announceSubhead.value);
+      fd.append('announcement_theme', announceTheme);
+      setAnnouncing(false);
+    }
     const url = state.active.type === 'channel' ? '/api/channels/' + state.active.channel.id + '/messages' : '/api/dm/' + state.active.conversation.id + '/messages';
     clearReplyPreview();
     composerInput.value = ''; composerInput.style.height = 'auto';
@@ -1732,6 +1790,7 @@
     const body = composerInput.value.trim();
     if (!body) { scheduleError.textContent = 'Type a message first.'; return; }
     if (pendingFile) { scheduleError.textContent = 'Scheduled messages can\'t include an attachment yet — remove the file first.'; return; }
+    if (announcing()) { scheduleError.textContent = 'Announcements can\'t be scheduled yet — send it now or turn the announcement off.'; return; }
     const sendAt = localInputToUtcStr(scheduleAtInput.value);
     if (!sendAt) { scheduleError.textContent = 'Choose a time.'; return; }
     api(scheduleEndpoint(), { method: 'POST', body: { body: bodyWithReply(body), send_at: sendAt } }).then(() => {

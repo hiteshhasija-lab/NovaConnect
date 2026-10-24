@@ -122,6 +122,16 @@
         <button type="button" data-fmt="code" title="Code"><i class="bi bi-code"></i></button>
         <button type="button" data-fmt="codeblock" title="Code block"><i class="bi bi-code-square"></i></button>
         <button type="button" data-fmt="link" title="Link"><i class="bi bi-link-45deg"></i></button>
+        <span class="composer-toolbar-divider composer-announce-only"></span>
+        <button type="button" class="composer-announce-only" id="composerAnnounceBtn" title="Post as an announcement" aria-pressed="false"><i class="bi bi-megaphone"></i></button>
+      </div>
+      <%# An announcement's banner (channels only; workspace.js, src/announcement.js). %>
+      <div class="composer-announcement msg-announcement-blue d-none" id="composerAnnouncement">
+        <input type="text" id="announceHeadline" maxlength="120" placeholder="Add a headline" aria-label="Announcement headline">
+        <input type="text" id="announceSubhead" maxlength="200" placeholder="Add a subheading (optional)" aria-label="Announcement subheading">
+        <div class="announce-themes" role="radiogroup" aria-label="Banner colour">
+          <% ['blue', 'purple', 'green', 'orange', 'red', 'slate'].forEach(function (t, i) { %><button type="button" role="radio" class="announce-theme msg-announcement-<%= t %>" data-theme="<%= t %>" aria-checked="<%= i === 0 %>" aria-label="<%= t %>" title="<%= t[0].toUpperCase() + t.slice(1) %>"></button><% }) %>
+        </div>
       </div>
       <div class="composer-row">
         <label class="composer-attach-btn" title="Attach a file">

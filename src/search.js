@@ -1,4 +1,5 @@
 const { MeiliSearch } = require('meilisearch');
+const { searchText } = require('./announcement');
 const { db } = require('./db');
 const { INDEX_SETTINGS, buildFilter, sqlConditions, hasLink } = require('./searchFilter');
 const { parseSearchQuery } = require('./searchQuery');
@@ -67,7 +68,7 @@ async function indexMessage(message, author, channel, conversation, team) {
   const doc = {
     ...filterFields(message.created_at, message.body, !!attached),
     id: message.id,
-    body: message.body || '',
+    body: searchText(message),
     author_id: message.user_id,
     author_name: author?.full_name || '',
     channel_id: message.channel_id || null,
@@ -122,7 +123,7 @@ async function reindexAll() {
     const docs = rows.map(r => ({
       ...filterFields(r.created_at, r.body, r.has_file),
       id: r.id,
-      body: r.body || '',
+      body: searchText(r),
       author_id: r.user_id,
       author_name: r.author_name || '',
       channel_id: r.channel_id || null,
@@ -242,7 +243,7 @@ async function hydrateMessages(ids, scope) {
   if (scope.channelIds.length) { access.push(`m.channel_id IN (${placeholders(scope.channelIds.length)})`); params.push(...scope.channelIds); }
   if (scope.convoIds.length) { access.push(`m.conversation_id IN (${placeholders(scope.convoIds.length)})`); params.push(...scope.convoIds); }
   const rows = await db.prepare(`
-    SELECT m.id, m.body, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name,
+    SELECT m.id, m.body, m.metadata, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name,
            c.name AS channel_name, dc.is_group AS dm_is_group
     FROM messages m
     LEFT JOIN users u ON u.id = m.user_id
@@ -250,6 +251,8 @@ async function hydrateMessages(ids, scope) {
     LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
     WHERE m.deleted = 0 AND m.id IN (${placeholders(ids.length)}) AND (${access.join(' OR ')})
   `).all(...params);
+  // A result shows the text that matched: an announcement's headline and subheading lead it.
+  rows.forEach(r => { r.body = searchText(r); delete r.metadata; });
   const byId = new Map(rows.map(r => [Number(r.id), r]));
   return ids.map(id => byId.get(Number(id))).filter(Boolean);
 }

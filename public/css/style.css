@@ -765,3 +765,25 @@ body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
 .decom-status-stopped .decom-status-head strong { color: #c4314b; }
 .decom-status-empty { margin-top: .25rem; color: var(--text-muted); }
 .decom-status-now { margin: .1rem 0 .25rem; color: var(--text-muted); font-size: .92em; }
+
+/* Announcement posts (src/announcement.js): a headline banner above the post's text, in one of six
+   colours; the composer's banner editor uses the same colours. */
+.msg-announcement-blue { --ann-bg: linear-gradient(135deg, #1d4f9a, #3d82d6); }
+.msg-announcement-purple { --ann-bg: linear-gradient(135deg, #4b2a8a, #8257c9); }
+.msg-announcement-green { --ann-bg: linear-gradient(135deg, #1d6b45, #36a26b); }
+.msg-announcement-orange { --ann-bg: linear-gradient(135deg, #a4480f, #e07a2b); }
+.msg-announcement-red { --ann-bg: linear-gradient(135deg, #8f1d2c, #d0434f); }
+.msg-announcement-slate { --ann-bg: linear-gradient(135deg, #2f3a4c, #5b6b83); }
+.msg-announcement { background: var(--ann-bg); color: #fff; border-radius: 0.6rem; padding: 0.9rem 1.1rem; margin: 0.15rem 0 0.5rem; }
+.msg-announcement-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.85; margin-bottom: 0.3rem; }
+.msg-announcement-headline { font-size: 1.3rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.msg-announcement-subhead { margin-top: 0.25rem; opacity: 0.92; overflow-wrap: anywhere; }
+.composer-announcement { background: var(--ann-bg); border-radius: 0.6rem; padding: 0.7rem; margin-bottom: 0.5rem; display: grid; gap: 0.4rem; }
+.composer-announcement input { background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.4); color: #fff; border-radius: 0.4rem; padding: 0.35rem 0.6rem; font: inherit; }
+.composer-announcement input::placeholder { color: rgba(255, 255, 255, 0.75); }
+.composer-announcement input:focus { outline: 2px solid #fff; outline-offset: 0; }
+#announceHeadline { font-size: 1.1rem; font-weight: 700; }
+.announce-themes { display: flex; gap: 0.45rem; }
+.announce-theme { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.55); background: var(--ann-bg); padding: 0; }
+.announce-theme[aria-checked="true"] { border-color: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
+#composerAnnounceBtn.active { color: var(--brand, #3d82d6); background: var(--surface-2); border-radius: 0.3rem; }

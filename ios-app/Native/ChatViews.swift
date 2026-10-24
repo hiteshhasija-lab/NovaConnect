@@ -274,6 +274,14 @@ struct ChatTimeline: View {
                 }
                 if message.deleted { Text("This message was deleted").italic().foregroundStyle(.secondary) }
                 else {
+                    if let announcement = message.announcement {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(announcement.text("headline")).font(.title3.bold())
+                            if !announcement.text("subhead").isEmpty { Text(announcement.text("subhead")).font(.subheadline) }
+                        }
+                        .foregroundStyle(.white).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+                    }
                     let content = QuotedBody(message.body)
                     if let quote = content.quote {
                         Text(quote).font(.caption).foregroundStyle(.secondary)

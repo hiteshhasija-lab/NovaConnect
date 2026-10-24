@@ -458,6 +458,33 @@ async function register(c, username, fullName, password) {
 
   section = 'scheduled messages';
   let scheduledId;
+  await step('announcement: headline banner posted and delivered live, validated, editable, searchable, forwarded as text; not in chats', async () => {
+    const headline = `Maintenance ${tag}x Saturday <b>`;
+    const r = await alice.post(`/api/channels/${general.id}/messages`, { body: 'Details below', announcement_headline: headline, announcement_subhead: '02:00 to 04:00 UTC', announcement_theme: 'orange' });
+    must(r.status === 201, `${r.status} ${r.text.slice(0, 160)}`);
+    const a = r.data.metadata && r.data.metadata.announcement;
+    must(a && a.headline === headline && a.subhead === '02:00 to 04:00 UTC' && a.theme === 'orange', JSON.stringify(r.data.metadata));
+    await bob.waitFor('message:new', (m) => m.id === r.data.id && m.metadata && m.metadata.announcement && m.metadata.announcement.headline === headline);
+    const only = await alice.post(`/api/channels/${general.id}/messages`, { body: '', announcement_headline: 'Headline only', announcement_theme: 'evil' });
+    must(only.status === 201 && only.data.metadata.announcement.theme === 'blue', `headline only: ${only.status} ${only.text.slice(0, 120)}`);
+    const noHead = await alice.post(`/api/channels/${general.id}/messages`, { body: 'x', announcement_subhead: 'sub only' });
+    must(noHead.status === 400, 'subheading without headline: ' + noHead.status);
+    const reply = await alice.post(`/api/channels/${general.id}/messages`, { body: 'x', parent_message_id: r.data.id, announcement_headline: 'In a thread' });
+    must(reply.status === 400, 'announcement as a reply: ' + reply.status);
+    const e = await alice.put(`/api/messages/${r.data.id}`, { body: 'Moved', announcement: { headline: `Maintenance ${tag}x Sunday`, subhead: '', theme: 'orange' } });
+    must(e.status === 200 && e.data.metadata.announcement.headline.endsWith('Sunday') && e.data.body === 'Moved' && e.data.edited, JSON.stringify(e.data).slice(0, 200));
+    await bob.waitFor('message:update', (m) => m.id === r.data.id && m.metadata.announcement.headline.endsWith('Sunday'));
+    const plain = await alice.post(`/api/channels/${general.id}/messages`, { body: 'ordinary' });
+    const bad = await alice.put(`/api/messages/${plain.data.id}`, { body: 'ordinary', announcement: { headline: 'Sneaky' } });
+    must(bad.status === 400, 'headline added to an ordinary post: ' + bad.status);
+    let found;
+    for (let i = 0; i < 20; i++) { const q = await bob.get(`/api/search?q=${encodeURIComponent(tag + 'x Sunday')}`); found = q.data && q.data.messages && q.data.messages.find((m) => m.id === r.data.id); if (found) break; await sleep(500); }
+    must(found, 'the edited headline is not searchable');
+    const f = await alice.post(`/api/messages/${r.data.id}/forward`, { conversation_id: dm });
+    must((f.status === 200 || f.status === 201) && f.data.body.startsWith(`**Maintenance ${tag}x Sunday**`) && !f.data.metadata.announcement, `forward: ${f.status} ${f.text.slice(0, 160)}`);
+    const inChat = await alice.post(`/api/dm/${dm}/messages`, { body: 'hi', announcement_headline: 'Not here' });
+    return must(inChat.status === 201 && !(inChat.data.metadata && inChat.data.metadata.announcement), 'a chat message became an announcement: ' + inChat.text.slice(0, 160));
+  });
   await step('schedule a message; list it; cancel it', async () => {
     const at = new Date(Date.now() + 5 * 60000).toISOString().slice(0, 19).replace('T', ' ');
     const r = await alice.post(`/api/channels/${general.id}/messages/schedule`, { body: 'later', send_at: at });

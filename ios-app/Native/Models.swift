@@ -50,6 +50,13 @@ struct Message: Decodable, Identifiable {
     let reactions: [Reaction]
     let attachments: [Attachment]
 }
+extension Message {
+    // An announcement post's banner (server: src/announcement.js): headline, optional subheading.
+    var announcement: [String: CardValue]? {
+        if case .object(let value)? = metadata?["announcement"] { return value }
+        return nil
+    }
+}
 struct MessagePage: Decodable { let messages: [Message]; let has_more: Bool }
 struct Team: Decodable, Identifiable { let id: Int; let name: String; let description: String?; let is_member: Bool? }
 struct Channel: Decodable, Identifiable { let id: Int; let name: String; let description: String? }
