@@ -2,6 +2,7 @@ const createAsyncRouter = require('../asyncRouter');
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { resyncUserRooms, emitToUser } = require('../realtime');
+const { audit } = require('../audit');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -48,6 +49,7 @@ router.post('/api/teams', async (req, res) => {
   `).get(team.id, req.session.user.id);
 
   team.my_role = 'owner';
+  await audit(req, 'team.create', { targetType: 'team', targetId: team.id, targetName: team.name });
   // The creator's open sockets must join the new team's rooms now, or live messages from the
   // people who join later would not reach them until a reload.
   await resyncUserRooms(req.session.user.id);
@@ -104,6 +106,8 @@ router.post('/api/teams/:id/join-requests/:userId/approve', async (req, res) => 
   emitToUser(targetId, 'membership:changed', { teamId });
   emitToUser(targetId, 'notification:new', {});
   await tellOwnersPending(teamId);
+  const who = await db.prepare('SELECT username FROM users WHERE id = ?').get(targetId);
+  await audit(req, 'team.member_add', { targetType: 'user', targetId, targetName: who?.username, details: { team_id: Number(teamId), team: team.name, approved_request: true } });
   res.json({ ok: true });
 });
 
@@ -123,7 +127,8 @@ router.patch('/api/teams/:id/settings', async (req, res) => {
   const teamId = req.params.id;
   if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only a team owner can change settings.' });
   if (typeof req.body.require_approval !== 'boolean') return res.status(400).json({ error: 'require_approval must be true or false.' });
-  await db.prepare('UPDATE teams SET require_approval = ? WHERE id = ?').run(req.body.require_approval ? 1 : 0, teamId);
+  const updatedTeam = await db.prepare('UPDATE teams SET require_approval = ? WHERE id = ? RETURNING id, name').get(req.body.require_approval ? 1 : 0, teamId);
+  await audit(req, 'team.settings', { targetType: 'team', targetId: teamId, targetName: updatedTeam?.name, details: { require_approval: req.body.require_approval } });
   res.json({ ok: true, require_approval: req.body.require_approval });
 });
 
@@ -138,6 +143,7 @@ router.post('/api/teams/:id/leave', async (req, res) => {
   await db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(teamId, userId);
   await db.prepare('DELETE FROM channel_members WHERE user_id = ? AND channel_id IN (SELECT id FROM channels WHERE team_id = ?)').run(userId, teamId);
   await resyncUserRooms(userId);
+  if (mine) await audit(req, 'team.leave', { targetType: 'team', targetId: teamId, targetName: (await db.prepare('SELECT name FROM teams WHERE id = ?').get(teamId))?.name });
   res.json({ ok: true });
 });
 
@@ -178,9 +184,10 @@ router.post('/api/teams/:id/members', async (req, res) => {
   const username = (req.body.username || '').trim();
   const user = await db.prepare('SELECT id FROM users WHERE username = ? AND active = 1').get(username);
   if (!user) return res.status(404).json({ error: `No active user found with username "${username}".` });
-  await db.prepare(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, 'member') ON CONFLICT DO NOTHING`)
+  const added = await db.prepare(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, 'member') ON CONFLICT DO NOTHING`)
     .run(teamId, user.id);
   await resyncUserRooms(user.id);
+  if (added.changes) await audit(req, 'team.member_add', { targetType: 'user', targetId: user.id, targetName: username, details: { team_id: Number(teamId) } });
   res.status(201).json({ ok: true });
 });
 
@@ -193,9 +200,13 @@ router.delete('/api/teams/:id/members/:userId', async (req, res) => {
   }
   const target = await db.prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?').get(teamId, targetId);
   if (target?.role === 'owner') return res.status(400).json({ error: 'Change this owner to a member before removing them.' });
-  await db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(teamId, targetId);
+  const removed = await db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(teamId, targetId);
   await db.prepare('DELETE FROM channel_members WHERE user_id = ? AND channel_id IN (SELECT id FROM channels WHERE team_id = ?)').run(targetId, teamId);
   await resyncUserRooms(targetId);
+  if (removed.changes) {
+    const who = await db.prepare('SELECT username FROM users WHERE id = ?').get(targetId);
+    await audit(req, isSelf ? 'team.leave' : 'team.member_remove', { targetType: 'user', targetId, targetName: who?.username, details: { team_id: Number(teamId) } });
+  }
   res.json({ ok: true });
 });
 
@@ -219,6 +230,7 @@ router.post('/api/teams/:id/channels', async (req, res) => {
   }
   await db.prepare(`INSERT INTO channel_members (channel_id, user_id, role) VALUES (?, ?, 'owner')`).run(channel.id, userId);
   await resyncUserRooms(userId);
+  await audit(req, 'channel.create', { targetType: 'channel', targetId: channel.id, targetName: '#' + channel.name, details: { team_id: Number(teamId), private: !!channel.is_private } });
   // A public channel belongs to every team member: join their open sockets to its room and have
   // their sidebars reload, so it works live for them without a page reload.
   if (!channel.is_private) {
@@ -262,7 +274,8 @@ router.delete('/api/teams/:id', async (req, res) => {
   if (!Number.isSafeInteger(teamId) || teamId < 1) return res.status(400).json({ error: 'Invalid team.' });
   if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only team owners or admins can delete a team.' });
   const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(teamId);
-  await db.prepare('DELETE FROM teams WHERE id = ?').run(teamId);
+  const deletedTeam = await db.prepare('DELETE FROM teams WHERE id = ? RETURNING id, name').get(teamId);
+  if (deletedTeam) await audit(req, 'team.delete', { targetType: 'team', targetId: teamId, targetName: deletedTeam.name, details: { members: members.length } });
   for (const member of members) {
     emitToUser(member.user_id, 'team:deleted', { teamId });
     await resyncUserRooms(member.user_id).catch(console.error);
@@ -293,6 +306,7 @@ router.delete('/api/channels/:id', async (req, res) => {
   if (!(await isTeamOwner(channel.team_id, req.session.user.id))) return res.status(403).json({ error: 'Only team owners or admins can delete a channel.' });
   const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(channel.team_id);
   await db.prepare('DELETE FROM channels WHERE id = ?').run(channelId);
+  await audit(req, 'channel.delete', { targetType: 'channel', targetId: channelId, targetName: '#' + channel.name, details: { team_id: channel.team_id } });
   for (const member of members) {
     emitToUser(member.user_id, 'channel:deleted', { teamId: channel.team_id, channelId });
     await resyncUserRooms(member.user_id).catch(console.error);

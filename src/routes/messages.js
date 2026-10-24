@@ -5,6 +5,7 @@ const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
 const { parseAnnouncement, announcementOf, metadataOf } = require('../announcement');
 const { editVersions } = require('../editHistory');
+const { audit } = require('../audit');
 const { upload, uploadFile } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
@@ -284,6 +285,11 @@ router.delete('/api/messages/:id', async (req, res) => {
   await db.prepare("UPDATE messages SET deleted = 1, body = '', updated_at = ? WHERE id = ?").run(nowStr(), ctx.msg.id);
   // Its earlier versions go with it: a deleted message's text is not kept anywhere else either.
   await db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(ctx.msg.id);
+  // Who deleted which message where; not its text. by_moderator: an admin or team owner removed someone else's.
+  await audit(req, 'message.delete', {
+    targetType: 'message', targetId: ctx.msg.id, targetName: ctx.channel ? '#' + ctx.channel.name : 'chat #' + ctx.conversation.id,
+    details: { author_id: ctx.msg.user_id, by_moderator: ctx.msg.user_id !== req.session.user.id, reply: !!ctx.msg.parent_message_id },
+  });
   const payload = { id: ctx.msg.id, parent_message_id: ctx.msg.parent_message_id };
   const event = ctx.msg.parent_message_id ? 'thread:message:delete' : 'message:delete';
   if (ctx.channel) emitToChannel(ctx.channel.id, event, payload);

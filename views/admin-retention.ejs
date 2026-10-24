@@ -1,0 +1,52 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4 admin-retention">
+  <h1 class="h4"><i class="bi bi-hourglass-split me-2"></i>Message retention</h1>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="text-muted small">Messages older than the period you choose are deleted for everyone, with their files, reactions and edit history; they cannot be brought back. A post whose thread has newer replies keeps its place as "This message was deleted" until the replies expire too. NovaDesk cards still waiting for an answer are kept. It runs every hour, and every run that deletes something is in the <a href="/admin/audit?group=retention">audit log</a>.</p>
+
+  <% if (notice) { %><div class="alert alert-success py-2 small" role="status"><%= notice %></div><% } %>
+  <% if (error) { %><div class="alert alert-danger py-2 small" role="alert"><%= error %></div><% } %>
+
+  <% if (confirm) { %>
+  <div class="card border-danger mb-4"><div class="card-body">
+    <h2 class="h6">Confirm the new policy</h2>
+    <p>Channels: <strong><%= label(confirm.value.channel_days) %></strong> · Chats: <strong><%= label(confirm.value.chat_days) %></strong></p>
+    <p>Right now that deletes <strong><%= confirm.preview.channel %></strong> channel message(s) and <strong><%= confirm.preview.chat %></strong> chat message(s), within the hour.</p>
+    <form method="POST" action="/admin/retention" class="d-flex gap-2">
+      <input type="hidden" name="channel_days" value="<%= confirm.value.channel_days || 'forever' %>">
+      <input type="hidden" name="chat_days" value="<%= confirm.value.chat_days || 'forever' %>">
+      <input type="hidden" name="confirm" value="1">
+      <button class="btn btn-danger btn-sm" type="submit">Save the policy</button>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/retention">Cancel</a>
+    </form>
+  </div></div>
+  <% } %>
+
+  <div class="card mb-4"><div class="card-body">
+    <form method="POST" action="/admin/retention" class="row g-3 align-items-end">
+      <div class="col-sm-4">
+        <label class="form-label small" for="retChannels">Channel messages</label>
+        <select class="form-select form-select-sm" id="retChannels" name="channel_days">
+          <% options.forEach(o => { %><option value="<%= o || 'forever' %>" <%= policy.channel_days === o ? 'selected' : '' %>><%= label(o) %></option><% }) %>
+        </select>
+      </div>
+      <div class="col-sm-4">
+        <label class="form-label small" for="retChats">Chat messages (1:1, group and meeting chats)</label>
+        <select class="form-select form-select-sm" id="retChats" name="chat_days">
+          <% options.forEach(o => { %><option value="<%= o || 'forever' %>" <%= policy.chat_days === o ? 'selected' : '' %>><%= label(o) %></option><% }) %>
+        </select>
+      </div>
+      <div class="col-sm-4"><button class="btn btn-primary btn-sm" type="submit">Review the change</button></div>
+    </form>
+    <p class="small text-muted mt-3 mb-0"><% if (policy.updated_at) { %>Last changed <%= policy.updated_at %> UTC<%= policy.updated_by_name ? ' by ' + policy.updated_by_name : '' %>.<% } else { %>No policy has been set: every message is kept.<% } %></p>
+  </div></div>
+
+  <% if (policy.channel_days || policy.chat_days) { %>
+  <form method="POST" action="/admin/retention/run">
+    <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-play-fill"></i> Run now</button>
+    <span class="small text-muted ms-2">Deletes what is already past the policy instead of waiting for the hourly run.</span>
+  </form>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

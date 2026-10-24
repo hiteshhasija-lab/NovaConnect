@@ -249,7 +249,7 @@ app.post('/api/mobile/password', passwordLimiter);
 app.use(globalLimiter); // after static files and the session — see its definition above
 
 app.use(attachUser);
-app.use('/api/mobile', require('./mobileSession').createMobileSessionRouter({ db: require('./db').db, revokeOtherSessions: (userId, sessionId) => require('./sessions').revokeUserSessions(userId, sessionId).then(() => realtime.disconnectUser(userId)) }));
+app.use('/api/mobile', require('./mobileSession').createMobileSessionRouter({ db: require('./db').db, revokeOtherSessions: (userId, sessionId) => require('./sessions').revokeUserSessions(userId, sessionId).then(() => realtime.disconnectUser(userId)), audit: require('./audit').audit }));
 app.use('/', authRoutes);
 app.use('/app', appRoutes);
 app.use('/', require('./routes/membership'));

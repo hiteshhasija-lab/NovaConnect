@@ -8,6 +8,9 @@ const { emitToChannel, emitToConversation, refreshScheduledPresence } = require(
 const { recordMentions, channelMemberIds } = require('./routes/messages');
 const { getConfig } = require('./config');
 const { deleteFile } = require('./storage');
+const { maybeRunRetention } = require('./retention');
+const { audit } = require('./audit');
+const { removeMessages } = require('./search');
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -89,7 +92,10 @@ function start() {
     clearExpiredStatusMessages().catch(e => console.error('status-message expiry sweep failed:', e.message)),
     cleanupExpiredRecordings().catch(e => console.error('recording retention sweep failed:', e.message)),
     // Calendar meetings and out of office start and end on the clock: "In a meeting" / "Out of office".
-    refreshScheduledPresence().catch(e => console.error('presence sweep failed:', e.message))
+    refreshScheduledPresence().catch(e => console.error('presence sweep failed:', e.message)),
+    // Message retention (retention.js): at most once an hour, only when an admin set a policy.
+    maybeRunRetention({ audit, unindex: ids => removeMessages(ids).catch(e => console.error('retention: search index cleanup failed:', e.message)) })
+      .catch(e => console.error('retention run failed:', e.message))
   ]);
   tick();
   setInterval(tick, POLL_INTERVAL_MS);

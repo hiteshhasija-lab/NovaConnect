@@ -703,6 +703,44 @@ async function register(c, username, fullName, password) {
     return must(back.status === 200 && role.status === 302, `back ${back.status} role ${role.status}`);
   });
   await step('admin cannot deactivate themselves', async () => { const r = await admin.req('POST', `/admin/users/${admin.user.id}/toggle-active`, { form: {} }); return must(r.status === 400, 'status ' + r.status); });
+  await step('audit log: admin actions, sign-ins (failed too) and deletions are recorded without message text; members cannot see it; export is itself logged', async () => {
+    const page = await admin.get('/admin/audit');
+    must(page.status === 200 && page.text.includes('Audit log'), 'page ' + page.status);
+    const denied = await alice.get('/admin/audit');
+    must(denied.status === 403, 'a member opened the audit log: ' + denied.status);
+    must((await alice.get('/admin/audit.csv')).status === 403, 'a member exported the audit log');
+    const csv = async (q) => { const r = await admin.get('/admin/audit.csv?' + q); must(r.status === 200 && /^id,at,actor_id/.test(r.text), 'csv ' + r.status); return r.text; };
+    const adminCsv = await csv('group=admin');
+    for (const a of ['admin.user_create', 'admin.user_deactivate', 'admin.user_activate', 'admin.role_change']) must(adminCsv.includes(a) && adminCsv.includes(un('dan')), a + ' missing');
+    const authCsv = await csv('group=auth');
+    must(/auth\.login_failed,user,[^,]*,[^,]*/.test(authCsv) && authCsv.includes(un('dan')) && authCsv.includes('no active account'), 'the deactivated sign-in attempt is not logged');
+    must(authCsv.includes('wrong password') && authCsv.includes('auth.login,') && authCsv.includes('auth.password_change'), 'sign-ins or password changes are not logged');
+    must(!/definitely-wrong|Walk-/.test(authCsv), 'a password reached the audit log');
+    const msgCsv = await csv('group=message');
+    must(msgCsv.includes('message.delete') && !msgCsv.includes('draft three'), 'message deletions missing, or message text in the log');
+    const teamCsv = await csv('group=team');
+    must(teamCsv.includes('team.create') && teamCsv.includes('team.member_add') && (await csv('group=channel')).includes('channel.create'), 'team or channel changes missing');
+    const p2 = await csv('person=' + admin.user.id);
+    must(!p2.split('\r\n').slice(1).some((l) => l && !l.includes(',' + admin.user.id + ',')), 'the person filter let other people through');
+    return must((await csv('group=audit')).includes('audit.export'), 'the export itself is not logged');
+  });
+  await step('message retention: off by default, the change is shown before it is saved, only offered periods, members refused, run now, logged', async () => {
+    const page = await admin.get('/admin/retention');
+    must(page.status === 200 && page.text.includes('No policy has been set'), 'page ' + page.status);
+    must((await alice.req('POST', '/admin/retention', { form: { channel_days: '30', chat_days: '30' } })).status === 403, 'a member changed retention');
+    must((await admin.req('POST', '/admin/retention', { form: { channel_days: '1', chat_days: 'forever' } })).status === 400, 'a 1-day period was accepted');
+    const review = await admin.req('POST', '/admin/retention', { form: { channel_days: '365', chat_days: 'forever' } });
+    must(review.status === 200 && review.text.includes('Confirm the new policy') && /deletes <strong>\d+<\/strong> channel message/.test(review.text), 'no confirmation step');
+    must((await admin.get('/admin/retention')).text.includes('No policy has been set'), 'saved before it was confirmed');
+    const saved = await admin.req('POST', '/admin/retention', { form: { channel_days: '365', chat_days: 'forever', confirm: '1' } });
+    must(saved.status === 200 && saved.text.includes('Retention policy saved'), 'save ' + saved.status);
+    const run = await admin.req('POST', '/admin/retention/run', { form: {} });
+    must(run.status === 200 && run.data && run.data.channel_days === 365 && run.data.channel_deleted === 0, 'run: ' + run.text.slice(0, 160));
+    const off = await admin.req('POST', '/admin/retention', { form: { channel_days: 'forever', chat_days: 'forever', confirm: '1' } });
+    must(off.status === 200, 'turning it off ' + off.status);
+    const log = await admin.get('/admin/audit.csv?group=retention');
+    return must(log.text.includes('retention.policy') && log.text.includes('Keep forever') && log.text.includes('1 year'), 'retention changes are not logged');
+  });
 
   section = 'AI assistant';
   await step('with no Gemini key the assistant answers gracefully, history and clear work', async () => {

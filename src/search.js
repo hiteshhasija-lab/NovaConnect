@@ -90,6 +90,13 @@ async function removeMessage(messageId) {
   await idx.deleteDocument(messageId);
 }
 
+// Several at once (retention runs); a message cleared but kept for its thread goes from search too.
+async function removeMessages(ids) {
+  if (!ids.length) return;
+  const idx = await getIndex();
+  await idx.deleteDocuments(ids);
+}
+
 async function updateMessage(message, author, channel, conversation, team) {
   await indexMessage(message, author, channel, conversation, team);
 }
@@ -426,7 +433,7 @@ module.exports = {
   selfCheck,
   ensureIndex,
   indexMessage,
-  removeMessage,
+  removeMessage, removeMessages,
   updateMessage,
   reindexAll,
   searchMessages,

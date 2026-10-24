@@ -3,6 +3,7 @@ const { loginDestination } = require('../loginDestination');
 const { db } = require('../db');
 const { normalizeNewUser, validateNewUser, createUser } = require('../newUser');
 const createAsyncRouter = require('../asyncRouter');
+const { audit } = require('../audit');
 
 const router = createAsyncRouter();
 
@@ -19,11 +20,13 @@ router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   const user = await db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username);
   if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
+    await audit(req, 'auth.login_failed', { actor: null, targetType: 'user', targetId: user?.id, targetName: String(username || '').slice(0, 100), details: { via: 'web', reason: user ? 'wrong password' : 'no active account with that username' } });
     // 401 (the page still renders): the sign-in rate limiter counts only failed attempts.
     return res.status(401).render('login', { error: 'Invalid username or password.', title: 'Log In' });
   }
   req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role, must_change_password: Boolean(user.must_change_password) };
   if (req.body.remember) req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
+  await audit(req, 'auth.login', { actor: req.session.user, details: { via: 'web' } });
   const dest = user.must_change_password ? '/profile#password' : (loginDestination(req.session.returnTo) || '/app');
   delete req.session.returnTo;
   res.redirect(dest);
@@ -49,11 +52,13 @@ router.post('/register', async (req, res) => {
 
   const user = await db.prepare('SELECT * FROM users WHERE username = ?').get(b.username);
   req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role, must_change_password: Boolean(user.must_change_password) };
+  await audit(req, 'auth.register', { targetType: 'user', targetId: user.id, targetName: user.username });
   res.redirect('/app');
 });
 
 router.post('/logout', async (req, res) => {
   const userId = req.session.user && req.session.user.id;
+  if (userId) await audit(req, 'auth.logout', { details: { via: 'web' } });
   req.session.destroy(async () => {
     if (userId) await db.prepare("UPDATE users SET status = 'offline' WHERE id = ?").run(userId);
     res.redirect('/login');

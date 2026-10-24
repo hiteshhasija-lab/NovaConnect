@@ -193,6 +193,55 @@ jobs:
           docker compose logs novaconnect > walk.log
           if grep -qE '"level":"(error|fatal)"' walk.log; then grep -E '"level":"(error|fatal)"' walk.log | head -5; echo "errors in the server log"; exit 1; fi
 
+      - name: Message retention deletes exactly what is past the policy
+        run: |
+          # Backdated rows, a 1-year policy for channels, "Run now", then what is left. Chats follow
+          # their own setting; a thread's post stays (cleared) while it has newer replies; a NovaDesk
+          # card still waiting for an answer is kept; a stored file another attachment uses is kept.
+          sql() { docker compose exec -T postgres psql -U novaconnect -d novaconnect -Atc "$1" < /dev/null | head -1; }
+          old="'2024-01-01 00:00:00'"; now="to_char(now() at time zone 'utc','YYYY-MM-DD HH24:MI:SS')"
+          uid=$(sql "select id from users where username = 'admin'")
+          team=$(sql "insert into teams (name) values ('CI retention') returning id")
+          ch=$(sql "insert into channels (team_id, name) values ($team, 'ci-retention') returning id")
+          convo=$(sql "insert into dm_conversations (is_group) values (0) returning id")
+          ins() { sql "insert into messages (channel_id, conversation_id, user_id, body, parent_message_id, metadata, created_at, updated_at) values ($1, $2, $uid, '$3', $4, $5, $6, $6) returning id"; }
+          old_post=$(ins $ch null 'old post' null null "$old")
+          new_post=$(ins $ch null 'new post' null null "$now")
+          thread=$(ins $ch null 'old thread' null null "$old")
+          old_reply=$(ins $ch null 'old reply' $thread null "$old")
+          new_reply=$(ins $ch null 'new reply' $thread null "$now")
+          card=$(ins $ch null 'pending card' null "'{\"cardType\":\"decom_approval\",\"status\":\"pending\"}'" "$old")
+          done_card=$(ins $ch null 'answered card' null "'{\"cardType\":\"decom_approval\",\"status\":\"approved\"}'" "$old")
+          old_chat=$(ins null $convo 'old chat' null null "$old")
+          att() { sql "insert into attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key) values ($1, '$2', 'x.txt', 'text/plain', 2, $uid, 'local', '$2') returning id" > /dev/null; }
+          att $old_post ci-ret-only; att $old_post ci-ret-shared; att $new_post ci-ret-shared
+          docker compose exec -T novaconnect sh -c 'd="${LOCAL_UPLOAD_ROOT:-/app/data/uploads}"; mkdir -p "$d"; echo x > "$d/ci-ret-only"; echo x > "$d/ci-ret-shared"' < /dev/null
+          stored() { docker compose exec -T novaconnect sh -c "test -f \"\${LOCAL_UPLOAD_ROOT:-/app/data/uploads}/$1\" && echo yes || echo no" < /dev/null; }
+          curl -s -o /dev/null -c cookies.txt -H 'Content-Type: application/json' \
+            -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" http://localhost:8080/api/mobile/login
+          policy() { curl -s -o /dev/null -w '%{http_code}' -b cookies.txt -d "channel_days=$1&chat_days=$2&confirm=1" http://localhost:8080/admin/retention; }
+          run() { curl -s -b cookies.txt -H 'Accept: application/json' -X POST http://localhost:8080/admin/retention/run; echo; }
+          test "$(policy 365 forever)" = 200
+          run
+          test "$(sql "select count(*) from messages where id in ($old_post, $old_reply, $done_card)")" = 0
+          test "$(sql "select count(*) from messages where id in ($new_post, $new_reply, $card, $old_chat)")" = 4
+          test "$(sql "select deleted || ':' || body from messages where id = $thread")" = "1:"
+          test "$(stored ci-ret-only)" = no
+          test "$(stored ci-ret-shared)" = yes
+          test "$(sql "select count(*) from attachments where storage_key = 'ci-ret-shared'")" = 1
+          test "$(policy 365 30)" = 200
+          run
+          test "$(sql "select count(*) from messages where id = $old_chat")" = 0
+          # Once the thread's last reply has expired too, the post goes with it.
+          sql "update messages set created_at = $old where id = $new_reply" > /dev/null
+          run
+          test "$(sql "select count(*) from messages where id in ($thread, $new_reply)")" = 0
+          test "$(sql "select count(*) from messages where id in ($new_post, $card)")" = 2
+          test "$(sql "select count(*) from audit_log where action = 'retention.run'")" -ge 3
+          test "$(sql "select count(*) from audit_log where action = 'retention.policy'")" -ge 2
+          test "$(policy forever forever)" = 200
+          echo "retention: deleted what was past the policy, kept the rest"
+
       - name: Browser check (production CSP, no blocked scripts or JavaScript errors)
         run: |
           # Playwright lives in a scratch folder so it never touches the app's dependencies.

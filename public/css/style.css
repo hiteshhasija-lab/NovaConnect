@@ -801,3 +801,8 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .edit-history-version.current { border-color: var(--brand, #3d82d6); }
 .edit-history-meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.3rem; }
 .edit-history-note { font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+
+/* Admin: audit log (views/admin-audit.ejs). */
+.audit-table td { font-size: 0.85rem; vertical-align: top; }
+.audit-table .audit-details { color: var(--text-muted); overflow-wrap: anywhere; max-width: 28rem; }
+.audit-table tr.audit-failed td { background: rgba(209, 73, 79, 0.08); }

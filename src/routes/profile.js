@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { validateNewPassword, replacePassword } = require('../passwordChange');
 const { revokeUserSessions } = require('../sessions');
 const { disconnectUser } = require('../realtime');
+const { audit } = require('../audit');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -43,6 +44,7 @@ router.post('/password', async (req, res) => {
   // Every other session of this person ends; this one carries on.
   await revokeUserSessions(user.id, req.sessionID);
   disconnectUser(user.id);
+  await audit(req, 'auth.password_change', { details: { via: 'web', was_temporary: !!user.must_change_password } });
   req.session.user.must_change_password = false;
   user.must_change_password = 0;
   res.render('profile', { title: 'My Profile', user, error: null, success: 'Password changed.' });
