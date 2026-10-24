@@ -55,7 +55,9 @@ async function selfCheck() {
 
 // The fields every indexed message carries for the search bar's filters (see searchFilter.js).
 function filterFields(createdAt, body, hasFile) {
-  const ms = Date.parse(String(createdAt || '').replace(' ', 'T') + 'Z');
+  // The first 19 characters ('YYYY-MM-DD HH:MM:SS', UTC): a few old rows carry fractions and '+00'
+  // ('2026-09-23 15:42:19.70825+00'), which Date.parse rejects with the 'Z' added.
+  const ms = Date.parse(String(createdAt || '').slice(0, 19).replace(' ', 'T') + 'Z');
   return { created_ts: Number.isFinite(ms) ? Math.floor(ms / 1000) : 0, has_file: !!hasFile, has_link: hasLink(body) };
 }
 
