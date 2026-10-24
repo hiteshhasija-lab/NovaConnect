@@ -690,6 +690,29 @@ async function register(c, username, fullName, password) {
     const off = await carol.put('/api/profile/out-of-office', { enabled: false, message: '', start_at: null, end_at: null });
     return must(off.status === 200 && !off.data.enabled, JSON.stringify(off.data));
   });
+  await step('VIP people: add, list, live to your other tabs, private to you, not yourself or someone blocked, remove', async () => {
+    must((await bob.get('/api/profile/vips')).data.length === 0, 'a new person already has VIPs');
+    const from = bob.events.length;
+    const add = await bob.put(`/api/profile/vips/${alice.user.id}`, {});
+    must(add.status === 200 && add.data.length === 1 && add.data[0].id === alice.user.id && add.data[0].full_name === 'Alice Anders', 'add: ' + add.text.slice(0, 160));
+    const again = await bob.put(`/api/profile/vips/${alice.user.id}`, {});
+    must(again.status === 200 && again.data.length === 1, 'adding twice made two');
+    const t0 = Date.now(); let heard = false;
+    while (Date.now() - t0 < 5000 && !heard) { heard = bob.events.slice(from).some((e) => e.name === 'vips:changed' && e.payload.ids.includes(alice.user.id)); if (!heard) await sleep(50); }
+    must(heard, "bob's other tabs were not told");
+    must(!alice.events.some((e) => e.name === 'vips:changed'), 'the VIP was told they are on a list');
+    must((await carol.get('/api/profile/vips')).data.length === 0, "carol sees bob's list");
+    must((await bob.put(`/api/profile/vips/${bob.user.id}`, {})).status === 400, 'made himself a VIP');
+    must((await bob.put('/api/profile/vips/99999999', {})).status === 404, 'a person who does not exist');
+    await bob.post(`/api/users/${carol.user.id}/block`);
+    const blocked = await bob.put(`/api/profile/vips/${carol.user.id}`, {});
+    await bob.del(`/api/users/${carol.user.id}/block`);
+    must(blocked.status === 404, 'a blocked person became a VIP: ' + blocked.status);
+    const page = await bob.get('/app');
+    must(page.status === 200 && page.text.includes('id="vipModal"') && page.text.includes('/js/vip-rules.js'), 'VIP dialog missing from the app page');
+    const off = await bob.del(`/api/profile/vips/${alice.user.id}`);
+    return must(off.status === 200 && off.data.length === 0, 'remove: ' + off.text.slice(0, 120));
+  });
   await step('profile page renders; update name and title; password change needs the current password', async () => {
     const page = await alice.get('/profile');
     must(page.status === 200, 'page ' + page.status);

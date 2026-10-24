@@ -66,6 +66,7 @@
             <h6 class="dropdown-header">Notifications</h6>
             <a class="dropdown-item pref-toggle-item" href="#" id="notifSoundToggle"><i class="bi bi-volume-up me-2"></i>Sound<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a>
             <a class="dropdown-item pref-toggle-item" href="#" id="notifDesktopToggle"><i class="bi bi-window me-2"></i>Desktop notifications<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a>
+            <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#vipModal"><i class="bi bi-star me-2"></i>VIP people</a>
             <hr class="dropdown-divider">
             <h6 class="dropdown-header">Message display</h6>
             <a class="dropdown-item pref-toggle-item" href="#" id="densityCompactToggle"><i class="bi bi-arrows-collapse me-2"></i>Compact messages<i class="bi bi-check2 pref-toggle-check ms-auto"></i></a>
@@ -247,6 +248,25 @@
           <button type="submit" class="btn btn-primary" id="oooSaveBtn">Save</button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- VIP people (Teams' "priority access"): workspace.js, public/js/vip-rules.js -->
+<div class="modal fade" id="vipModal" tabindex="-1" aria-labelledby="vipModalTitle">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="vipModalTitle"><i class="bi bi-star-fill me-2"></i>VIP people</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Messages from these people always reach you: through Do not disturb and Presenting, and in chats and channels you set to "mentions only" or "off". Only you see this list.</p>
+        <label class="form-label small" for="vipSearch">Add someone</label>
+        <input type="search" class="form-control form-control-sm mb-2" id="vipSearch" placeholder="Search by name or username" autocomplete="off">
+        <div class="vip-results mb-3" id="vipResults"></div>
+        <div class="vip-list" id="vipList"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -441,7 +461,8 @@
 <script src="/js/new-chat.js?v=1"></script>
 <link rel="stylesheet" href="/css/emoji-picker.css?v=1">
 <script src="/js/emoji-picker.js?v=1"></script>
-<script src="/js/profile-card.js?v=3"></script>
+<script src="/js/vip-rules.js?v=1"></script>
+<script src="/js/profile-card.js?v=4"></script>
 <script src="/js/composer-history.js?v=1"></script>
 <script src="/js/workspace.js?v=<%= h.jsVersion() %>"></script>
 <%- include('partials/foot') %>

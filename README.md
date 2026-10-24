@@ -152,6 +152,7 @@ own backup or versioning, in addition to the database dump.
 - **Threads** — reply-in-thread on any message, separate from the main channel flow.
 - **Reactions** — quick emoji reactions, toggle on click.
 - **@Mentions** — autocomplete in the composer; mentioned users get an in-app notification (Activity tab), live-updated over the socket.
+- **Notifications** — per chat and channel: all, mentions only or off. Do not disturb and Presenting silence alerts (sound, desktop notification, blink). **VIP people** (avatar menu, or the star on a profile card): your own private list of people whose messages always reach you, through Do not disturb and muted chats.
 - **File sharing** — attach a file to any message (channel or DM), 15MB limit, a denylist on executable extensions. Pictures (PNG, JPEG, GIF, WebP, recognised by their content) show as thumbnails of at most 640 px, made with ffmpeg at upload (older pictures get theirs in the background after a start); clicking one opens the full picture.
 - **Admin** — `/admin/users`: role changes, activate/deactivate accounts.
 - **Audit log** — `/admin/audit`: sign-ins (failed ones too), user administration, team and channel changes, message deletions and retention, with who, when and from which address; filter by kind, person and dates, export as CSV (the export is logged too). Append-only; it never holds message text or passwords.

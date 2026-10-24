@@ -6,6 +6,7 @@
   const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
 
   const state = {
+    vips: new Set(),
     view: NC.active?.type === 'dm' ? 'chat' : 'teams',
     teams: NC.teams || [],
     conversations: NC.conversations || [],
@@ -77,7 +78,7 @@
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     if (document.visibilityState === 'visible' && (state.active.type === 'channel' && msg.channel_id === state.active.channel?.id || state.active.type === 'dm' && msg.conversation_id === state.active.conversation?.id)) return;
     try {
-      const n = new Notification(msg.author.full_name, { body: msg.body || 'Sent an attachment', tag: 'novaconnect-' + (msg.channel_id || msg.conversation_id) });
+      const n = new Notification((isVip(msg) ? '★ ' : '') + msg.author.full_name, { body: msg.body || 'Sent an attachment', tag: 'novaconnect-' + (msg.channel_id || msg.conversation_id) });
       n.onclick = () => { window.focus(); if (msg.channel_id) navigateToChannel(msg.channel_id); else if (msg.conversation_id) navigateToDm(msg.conversation_id); };
     } catch (e) { /* notifications not available — not worth surfacing to the user */ }
   }
@@ -196,6 +197,7 @@
 
   const profileCard = window.createProfileCard({
     api, escapeHtml, avatarHtml, presence: id => state.presence[id],
+    vip: { self: NC.currentUser.id, has: id => state.vips.has(Number(id)), set: (id, on) => setVip(id, on), notify: e => showToastError(e) },
     onMessage: (userId) => api('/api/dm', { method: 'POST', body: { user_ids: [userId] } }).then(({ id }) => navigateToDm(id)).catch(showToastError)
   });
   const channelTools = createChannelTools({ api, escapeHtml, presence:id=>state.presence[id], notify:showToastError, navigate:navigateToChannel, openProfile: profileCard.open, onNotifyLevel:(id,level)=>setChannelLevel(id,level), events:teamId=>{
@@ -241,6 +243,8 @@
     return c?.notify_level || (c?.is_muted ? 'off' : 'all');
   }
   const mentionsMe = msg => typeof msg.body === 'string' && msg.body.includes('@' + NC.currentUser.full_name);
+  // VIP people: your list (GET /api/profile/vips), kept current across tabs by 'vips:changed'.
+  function isVip(msg) { return !!(msg.author && state.vips.has(Number(msg.author.id))); }
   function setChannelLevel(id, level) {
     const found = findChannel(id); if (found) found.channel.notify_level = level;
     if (state.active.type === 'channel' && Number(state.active.channel.id) === Number(id)) state.active.channel.notify_level = level;
@@ -311,8 +315,8 @@
       saveChatPreferences(msg.conversation_id, { is_unread:false }).catch(showToastError);
       markDmRead(msg.conversation_id, msg.id);
     } else {
-      // "Off" chats and channels get no unread dot; "Mentions only" still do (quietly).
-      if (notifyLevelFor(msg) !== 'off') {
+      // "Off" chats and channels get no unread dot; "Mentions only" still do (quietly); a VIP always does.
+      if (NCVipRules.unreadFor({ fromVip: isVip(msg), level: notifyLevelFor(msg) })) {
         if (msg.channel_id) state.unreadChannel.add(msg.channel_id);
         if (msg.conversation_id) state.unreadDm.add(msg.conversation_id);
       }
@@ -322,9 +326,10 @@
 
     // Triggered after the sidebar re-render above (not before) so the row this looks for
     // actually exists in the DOM by the time it queries for it.
-    // Alerts (sound, desktop notification, blink) follow the chat's/channel's notification level.
-    const level = notifyLevelFor(msg);
-    if (msg.author && msg.author.id !== NC.currentUser.id && (level === 'all' || (level === 'mentions' && mentionsMe(msg)))) {
+    // Alerts (sound, desktop notification, blink) follow the chat's/channel's notification level, and
+    // Do not disturb / Presenting silence them, except for VIP people (vip-rules.js).
+    if (msg.author && NCVipRules.alertFor({ fromMe: msg.author.id === NC.currentUser.id, fromVip: isVip(msg), myStatus: state.presence[NC.currentUser.id],
+      level: notifyLevelFor(msg), mentionsMe: mentionsMe(msg) })) {
       if (notifPrefEnabled('novaconnect-notif-sound', true)) playNotificationSound();
       showDesktopNotification(msg);
       blinkChatEntry(msg, isActiveChat);
@@ -356,6 +361,7 @@
       if (other) refreshChatLastSeen(other.id);
     }
   });
+  socket.on('vips:changed', ({ ids }) => { state.vips = new Set((ids || []).map(Number)); renderVipList(); });
   socket.on('presence:update', (payload) => {
     state.presence[payload.userId] = payload.status;
     refreshChatLastSeen(payload.userId);
@@ -2510,6 +2516,55 @@
     notice.innerHTML = away.map(p => '<div><i class="bi bi-airplane" aria-hidden="true"></i> <strong>' + escapeHtml(p.full_name) + '</strong> is out of office' + escapeHtml(oooUntilLabel(p.out_of_office.until)) + '.' +
       (p.out_of_office.message ? '<div class="ooo-notice-message">' + escapeHtml(p.out_of_office.message) + '</div>' : '') + '</div>').join('');
   }
+
+  // ---------------- VIP people ----------------
+  // The avatar menu's "VIP people" dialog: your list, a search to add someone, remove buttons.
+  // Who is on it decides what gets through Do not disturb and muted chats (vip-rules.js).
+  let vipPeople = [];
+  function applyVips(list) { vipPeople = list; state.vips = new Set(list.map(v => Number(v.id))); renderVipList(); }
+  function setVip(id, on) {
+    return api('/api/profile/vips/' + id, { method: on ? 'PUT' : 'DELETE' }).then(applyVips);
+  }
+  function renderVipList() {
+    const box = document.getElementById('vipList');
+    if (!box) return;
+    if (vipPeople.length !== state.vips.size || vipPeople.some(v => !state.vips.has(Number(v.id)))) {
+      api('/api/profile/vips').then(applyVips).catch(() => {});   // applyVips sets both, so this settles
+      return;
+    }
+    box.innerHTML = vipPeople.length ? '' : '<p class="text-muted small mb-0">No one yet. Messages from the people you add here always reach you, even while you are Do not disturb or have muted the chat.</p>';
+    vipPeople.forEach(v => {
+      const row = el('<div class="vip-row">' + avatarHtml(v) + '<span class="vip-name"></span><button type="button" class="btn btn-sm btn-outline-secondary">Remove</button></div>');
+      row.querySelector('.vip-name').textContent = v.full_name + (v.title ? ' · ' + v.title : '');
+      row.querySelector('button').addEventListener('click', () => setVip(v.id, false).catch(showToastError));
+      box.appendChild(row);
+    });
+  }
+  const vipSearch = document.getElementById('vipSearch');
+  const vipResults = document.getElementById('vipResults');
+  let vipSearchTimer = null;
+  vipSearch.addEventListener('input', () => {
+    clearTimeout(vipSearchTimer);
+    const q = vipSearch.value.trim();
+    if (!q) { vipResults.innerHTML = ''; return; }
+    vipSearchTimer = setTimeout(() => api('/api/users/search?q=' + encodeURIComponent(q)).then(people => {
+      if (vipSearch.value.trim() !== q) return;
+      vipResults.innerHTML = '';
+      people.filter(p => !state.vips.has(Number(p.id))).slice(0, 6).forEach(p => {
+        const b = el('<button type="button" class="vip-result">' + avatarHtml(p) + '<span></span><i class="bi bi-star ms-auto" aria-hidden="true"></i></button>');
+        b.querySelector('span').textContent = p.full_name + ' (@' + p.username + ')';
+        b.setAttribute('aria-label', 'Add ' + p.full_name + ' to VIP people');
+        b.addEventListener('click', () => setVip(p.id, true).then(() => { vipSearch.value = ''; vipResults.innerHTML = ''; vipSearch.focus(); }).catch(showToastError));
+        vipResults.appendChild(b);
+      });
+      if (!vipResults.children.length) vipResults.innerHTML = '<p class="text-muted small mb-0">No one else matches.</p>';
+    }).catch(showToastError), 250);
+  });
+  document.getElementById('vipModal').addEventListener('show.bs.modal', () => {
+    vipSearch.value = ''; vipResults.innerHTML = '';
+    api('/api/profile/vips').then(applyVips).catch(showToastError);
+  });
+  api('/api/profile/vips').then(applyVips).catch(() => {});
 
   // ---------------- boot ----------------
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));

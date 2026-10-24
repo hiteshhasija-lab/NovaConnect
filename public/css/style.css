@@ -817,3 +817,13 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .image-viewer-bar { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; color: #fff; }
 .image-viewer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-viewer-img { max-width: calc(100vw - 32px); max-height: calc(100vh - 80px); object-fit: contain; margin-top: 2.5rem; }
+
+/* VIP people (views/workspace.ejs #vipModal). */
+.vip-row, .vip-result { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0; }
+.vip-row .vip-name { flex: 1; overflow-wrap: anywhere; }
+.vip-row .user-avatar, .vip-result .user-avatar { width: 1.9rem; height: 1.9rem; font-size: 0.75rem; flex-shrink: 0; }
+.vip-result { width: 100%; border: 0; background: none; text-align: left; border-radius: 0.4rem; padding: 0.35rem 0.4rem; color: inherit; }
+.vip-result:hover, .vip-result:focus-visible { background: var(--surface-2); }
+.vip-result .bi-star { color: #e8a33d; }
+.profile-card-vip-btn .bi-star-fill { color: #e8a33d; }
+.profile-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }

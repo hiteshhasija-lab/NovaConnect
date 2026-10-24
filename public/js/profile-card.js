@@ -2,7 +2,7 @@
 // (matching channel-tools.js's own dialog() pattern) rather than an anchored popover, since
 // that's how Teams itself presents it. Fetches fresh from /api/users/:id/profile every open
 // so it always reflects current status/status message, never a stale cached copy.
-window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, onMessage }) {
+window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, onMessage, vip }) {
   const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
   let dialog = null;
   // ' until Fri, Oct 30, 5:00 PM' in this browser's time zone, from the database's UTC text time.
@@ -41,9 +41,22 @@ window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, on
           (u.email ? '<div><i class="bi bi-envelope"></i> <a href="mailto:' + escapeHtml(u.email) + '">' + escapeHtml(u.email) + '</a></div>' : '') +
           '<div><i class="bi bi-at"></i> ' + escapeHtml(u.username) + '</div>' +
         '</div>' +
-        '<div class="profile-card-actions"><button type="button" class="btn btn-sm btn-primary profile-card-message-btn"><i class="bi bi-chat-dots me-1"></i>Message</button></div>';
+        '<div class="profile-card-actions"><button type="button" class="btn btn-sm btn-primary profile-card-message-btn"><i class="bi bi-chat-dots me-1"></i>Message</button>' +
+          (vip && Number(u.id) !== Number(vip.self) ? '<button type="button" class="btn btn-sm btn-outline-secondary profile-card-vip-btn"></button>' : '') + '</div>';
       const msgBtn = myDialog.querySelector('.profile-card-message-btn');
       if (msgBtn) msgBtn.onclick = () => { myDialog.close(); onMessage(u.id); };
+      // VIP people (vip-rules.js): a star to add or remove this person from your own list.
+      const vipBtn = myDialog.querySelector('.profile-card-vip-btn');
+      const drawVip = () => {
+        const on = vip.has(u.id);
+        vipBtn.innerHTML = '<i class="bi ' + (on ? 'bi-star-fill' : 'bi-star') + ' me-1"></i>' + (on ? 'VIP' : 'Add to VIPs');
+        vipBtn.setAttribute('aria-pressed', String(on));
+        vipBtn.title = on ? 'Their messages always reach you. Click to remove.' : 'Their messages will reach you even while you are Do not disturb or have muted the chat.';
+      };
+      if (vipBtn) {
+        drawVip();
+        vipBtn.onclick = () => { vipBtn.disabled = true; vip.set(u.id, !vip.has(u.id)).then(drawVip).catch(vip.notify).finally(() => { vipBtn.disabled = false; }); };
+      }
     } catch (e) {
       if (myDialog.isConnected) myDialog.querySelector('.profile-card-body').textContent = e.message || 'Could not load this person.';
     }

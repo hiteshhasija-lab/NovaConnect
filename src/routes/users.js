@@ -2,7 +2,7 @@ const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { outOfOfficeSummary, isOutOfOffice, parseOutOfOffice } = require('../presenceRules');
-const { touchPresence } = require('../realtime');
+const { touchPresence, emitToUser } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -89,6 +89,40 @@ router.put('/api/profile/out-of-office', async (req, res) => {
   `).get(v.ooo_enabled, v.ooo_message, v.ooo_start_at, v.ooo_end_at, req.session.user.id);
   touchPresence(req.session.user.id);
   res.json(oooSettings(row));
+});
+
+// VIP people (the avatar menu's "VIP people" and each profile card's star): your own list of people
+// whose messages always reach you (public/js/vip-rules.js). Private: nobody else sees it, and the
+// person added is not told. Your other tabs and devices hear 'vips:changed'.
+const VIP_MAX = 50;
+const vipList = (userId) => db.prepare(`
+  SELECT u.id, u.full_name, u.username, u.title FROM vip_people v JOIN users u ON u.id = v.vip_id
+  WHERE v.user_id = ? AND u.active = 1 ORDER BY u.full_name
+`).all(userId);
+router.get('/api/profile/vips', async (req, res) => res.json(await vipList(req.session.user.id)));
+router.put('/api/profile/vips/:userId', async (req, res) => {
+  const me = req.session.user.id, vipId = Number(req.params.userId);
+  if (!Number.isSafeInteger(vipId) || vipId === me) return res.status(400).json({ error: 'Choose someone else.' });
+  const person = await db.prepare(`
+    SELECT id FROM users WHERE id = ? AND active = 1
+      AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = ?)
+      AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = ?)
+  `).get(vipId, me, me);
+  if (!person) return res.status(404).json({ error: 'Person not found.' });
+  const count = await db.prepare('SELECT COUNT(*) AS c FROM vip_people WHERE user_id = ?').get(me);
+  const already = await db.prepare('SELECT 1 FROM vip_people WHERE user_id = ? AND vip_id = ?').get(me, vipId);
+  if (!already && Number(count.c) >= VIP_MAX) return res.status(400).json({ error: `You can have up to ${VIP_MAX} VIP people.` });
+  await db.prepare('INSERT INTO vip_people (user_id, vip_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').run(me, vipId, nowStr());
+  const list = await vipList(me);
+  emitToUser(me, 'vips:changed', { ids: list.map(v => v.id) });
+  res.json(list);
+});
+router.delete('/api/profile/vips/:userId', async (req, res) => {
+  const me = req.session.user.id;
+  await db.prepare('DELETE FROM vip_people WHERE user_id = ? AND vip_id = ?').run(me, Number(req.params.userId) || 0);
+  const list = await vipList(me);
+  emitToUser(me, 'vips:changed', { ids: list.map(v => v.id) });
+  res.json(list);
 });
 
 // Full profile-card payload — used when clicking someone's avatar/name anywhere in the app.
