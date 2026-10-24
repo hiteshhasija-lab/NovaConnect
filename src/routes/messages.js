@@ -6,10 +6,12 @@ const { emitToChannel, emitToConversation, emitToUser } = require('../realtime')
 const { parseAnnouncement, announcementOf, metadataOf } = require('../announcement');
 const { editVersions } = require('../editHistory');
 const { audit } = require('../audit');
-const { upload, uploadFile } = require('../upload');
+const { upload } = require('../upload');
+const { saveAttachment } = require('../attachments');
+const path = require('path');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
-const { serveStored } = require('../storage');
+const { serveStored, driverOf, readObject, LOCAL_UPLOAD_ROOT } = require('../storage');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -135,9 +137,8 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
   `).get(channel.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
-    let stored;
     try {
-      stored = await uploadFile(req.file);
+      await saveAttachment(req.file, row.id, req.session.user.id);
     } catch (e) {
       // The message was saved a moment ago: take it back, so a failed upload leaves no empty message behind.
       await db.prepare('DELETE FROM messages WHERE id = ?').run(row.id);
@@ -146,10 +147,6 @@ router.post('/api/channels/:id/messages', (req, res, next) => upload.single('fil
       console.error('Saving an attachment failed:', e.message);
       return res.status(502).json({ error: 'File storage is unavailable. Try again in a moment.' });
     }
-    await db.prepare(`
-      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(row.id, stored.key, req.file.originalname, req.file.mimetype, req.file.size, req.session.user.id, stored.driver, stored.key);
   }
 
   const memberIds = await channelMemberIds(channel);
@@ -371,8 +368,11 @@ router.post('/api/messages/:id/forward', async (req, res) => {
   const sourceAttachments = await db.prepare('SELECT * FROM attachments WHERE message_id = ?').all(ctx.msg.id);
   for (const a of sourceAttachments) {
     await db.prepare(`
-      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(row.id, a.filename, a.original_name, a.mime_type, a.size, req.session.user.id);
+      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key,
+        thumb_key, thumb_driver, thumb_mime, image_width, image_height, thumb_state)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(row.id, a.filename, a.original_name, a.mime_type, a.size, req.session.user.id, a.storage_driver, a.storage_key,
+      a.thumb_key, a.thumb_driver, a.thumb_mime, a.image_width, a.image_height, a.thumb_state);
   }
 
   if (targetConversationId) {
@@ -429,6 +429,26 @@ router.get('/api/attachments/:id/download', async (req, res) => {
   if (!ctx) return res.status(403).render('error', { title: 'Access Denied', message: 'You cannot view this file.' });
   // The driver recorded with the file decides where it is read from, whatever STORAGE_DRIVER says now.
   await serveStored(req, res, { key: att.storage_key || att.filename, driver: att.storage_driver, name: att.original_name });
+});
+
+// A picture's thumbnail (src/thumbnails.js), for whoever may see its message; the full file when it has
+// none (so an <img> always shows something). Keys are unique per upload, so it may be cached for good.
+router.get('/api/attachments/:id/thumbnail', async (req, res) => {
+  const att = await db.prepare('SELECT * FROM attachments WHERE id = ?').get(req.params.id);
+  if (!att) return res.status(404).json({ error: 'Attachment not found.' });
+  const ctx = await loadMessageWithAccess(att.message_id, req.session.user.id);
+  if (!ctx) return res.status(403).json({ error: 'You cannot view this file.' });
+  if (!att.thumb_key) return res.redirect(`/api/attachments/${att.id}/download`);
+  res.set('Cache-Control', 'private, max-age=31536000, immutable');
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (driverOf(att.thumb_driver) === 'local') {
+    return res.sendFile(path.join(LOCAL_UPLOAD_ROOT, att.thumb_key), { headers: { 'Content-Type': att.thumb_mime } }, (err) => {
+      if (err && !res.headersSent) res.redirect(`/api/attachments/${att.id}/download`);
+    });
+  }
+  const buf = await readObject(att.thumb_key);
+  if (!buf) return res.redirect(`/api/attachments/${att.id}/download`);
+  res.type(att.thumb_mime).send(buf);
 });
 
 module.exports = router;

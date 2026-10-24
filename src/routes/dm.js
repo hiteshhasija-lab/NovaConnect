@@ -4,7 +4,8 @@ const { requireAuth } = require('../middleware/auth');
 const { participantPresence, PARTICIPANT_PRESENCE_COLUMNS } = require('../presenceRules');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToConversation, emitToUser, resyncUserRooms } = require('../realtime');
-const { upload, uploadFile } = require('../upload');
+const { upload } = require('../upload');
+const { saveAttachment } = require('../attachments');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage } = require('../search');
 
@@ -277,9 +278,8 @@ router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(re
   `).get(convo.id, req.session.user.id, body, parentId, metadata, nowStr(), nowStr());
 
   if (req.file) {
-    let stored;
     try {
-      stored = await uploadFile(req.file);
+      await saveAttachment(req.file, row.id, req.session.user.id);
     } catch (e) {
       // The message was saved a moment ago: take it back, so a failed upload leaves no empty message behind.
       await db.prepare('DELETE FROM messages WHERE id = ?').run(row.id);
@@ -288,10 +288,6 @@ router.post('/api/dm/:id/messages', (req, res, next) => upload.single('file')(re
       console.error('Saving an attachment failed:', e.message);
       return res.status(502).json({ error: 'File storage is unavailable. Try again in a moment.' });
     }
-    await db.prepare(`
-      INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(row.id, stored.key, req.file.originalname, req.file.mimetype, req.file.size, req.session.user.id, stored.driver, stored.key);
   }
 
   await db.prepare('UPDATE dm_participants SET is_hidden = 0, is_unread = CASE WHEN user_id = ? THEN 0 ELSE 1 END WHERE conversation_id = ?').run(req.session.user.id, convo.id);

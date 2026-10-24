@@ -1034,10 +1034,18 @@
     return el('<div class="msg-row-system" data-id="' + msg.id + '"><span>' + escapeHtml(msg.body) + '</span></div>');
   }
 
+  // A picture shows its thumbnail (src/thumbnails.js; the full file when it has none), sized from the
+  // original so nothing jumps as it loads; clicking opens the full picture (openImageViewer).
   function attachmentHtml(a) {
     const isImage = (a.mime_type || '').startsWith('image/');
     const url = '/api/attachments/' + a.id + '/download';
-    if (isImage) return '<a href="' + url + '" target="_blank"><img class="msg-attachment-img" src="' + url + '" alt="' + escapeHtml(a.original_name) + '"></a>';
+    if (isImage) {
+      const src = (a.has_thumbnail || a.thumb_key) ? '/api/attachments/' + a.id + '/thumbnail' : url;
+      const w = Number(a.image_width), h = Number(a.image_height);
+      const size = w > 0 && h > 0 ? ' width="' + w + '" height="' + h + '"' : '';
+      return '<button type="button" class="msg-image-btn" data-full="' + url + '" data-name="' + escapeHtml(a.original_name) + '" aria-label="Open ' + escapeHtml(a.original_name) + '">' +
+        '<img class="msg-attachment-img" src="' + src + '"' + size + ' loading="lazy" decoding="async" alt="' + escapeHtml(a.original_name) + '"></button>';
+    }
     return '<a class="msg-attachment" href="' + url + '"><i class="bi bi-file-earmark-arrow-down"></i>' + escapeHtml(a.original_name) + '</a>';
   }
 
@@ -1158,6 +1166,30 @@
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') wireDecomSkipManualTasksCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') wireDecomPrecheckTaskCard(box, msg);
   }
+
+  // Full-size picture over the page, with its name and a download link; Esc or a click outside closes it.
+  function openImageViewer(url, name) {
+    document.querySelectorAll('.image-viewer-dialog').forEach(d => d.close());
+    const dialog = document.createElement('dialog');
+    dialog.className = 'image-viewer-dialog';
+    dialog.setAttribute('aria-label', name);
+    dialog.innerHTML = '<div class="image-viewer-bar"><span class="image-viewer-name"></span>' +
+      '<a class="btn btn-sm btn-light" href="' + escapeHtml(url) + '" download><i class="bi bi-download"></i> Download</a>' +
+      '<button type="button" class="btn btn-sm btn-light image-viewer-close" aria-label="Close"><i class="bi bi-x-lg"></i></button></div>' +
+      '<img class="image-viewer-img" alt="">';
+    dialog.querySelector('.image-viewer-name').textContent = name;
+    const img = dialog.querySelector('.image-viewer-img');
+    img.alt = name; img.src = url;
+    document.body.appendChild(dialog);
+    dialog.querySelector('.image-viewer-close').onclick = () => dialog.close();
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.showModal();
+  }
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.msg-image-btn');
+    if (btn) { e.preventDefault(); openImageViewer(btn.dataset.full, btn.dataset.name || 'Picture'); }
+  });
 
   // Edit history: every version of a message, newest first, in a dialog (GET /api/messages/:id/history).
   async function openEditHistory(messageId) {

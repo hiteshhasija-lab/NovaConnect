@@ -34,6 +34,8 @@ async function hydrateMessages(rows, currentUserId) {
   `).all(...ids);
   const attachmentsByMessage = {};
   for (const a of attachments) {
+    // Pictures with a thumbnail are shown from /api/attachments/:id/thumbnail (src/thumbnails.js).
+    a.has_thumbnail = !!a.thumb_key;
     (attachmentsByMessage[a.message_id] = attachmentsByMessage[a.message_id] || []).push(a);
   }
 

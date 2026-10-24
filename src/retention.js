@@ -64,7 +64,7 @@ const expiredSql = (scope) => `${SCOPE[scope]} AND m.created_at < ? AND NOT ${PE
 // Files of these messages, then (after the rows are gone) the stored objects nothing else uses.
 async function filesOf(ids) {
   if (!ids.length) return [];
-  return db.prepare(`SELECT id, COALESCE(storage_key, filename) AS key, storage_driver FROM attachments WHERE message_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  return db.prepare(`SELECT id, COALESCE(storage_key, filename) AS key, storage_driver, thumb_key, thumb_driver FROM attachments WHERE message_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
 }
 async function removeStoredFiles(files) {
   let removed = 0;
@@ -75,6 +75,8 @@ async function removeStoredFiles(files) {
     `).get(f.key, f.key);
     if (used) continue;
     try { await deleteFile(f.key, f.storage_driver); removed++; } catch (e) { console.error('retention: could not delete a stored file:', e.message); }
+    // Its thumbnail goes with it (a forwarded copy shares both, so the same check covers it).
+    if (f.thumb_key) await deleteFile(f.thumb_key, f.thumb_driver).catch(e => console.error('retention: could not delete a thumbnail:', e.message));
   }
   return removed;
 }

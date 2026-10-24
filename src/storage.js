@@ -103,6 +103,15 @@ async function writeObject(key, buffer, contentType) {
   await getS3Client().send(new PutObjectCommand({ Bucket: s3Bucket, Key: key, Body: buffer, ContentLength: buffer.length, ContentType: contentType || 'application/octet-stream' }));
 }
 
+// A small made-here object (an image thumbnail) under `key`, with whichever driver is in use now.
+// Returns that driver, to be recorded with the object like an upload's.
+async function storeBuffer(key, buffer, contentType) {
+  if (STORAGE_DRIVER === 's3') { await writeObject(key, buffer, contentType); return 's3'; }
+  if (!fs.existsSync(LOCAL_UPLOAD_ROOT)) fs.mkdirSync(LOCAL_UPLOAD_ROOT, { recursive: true });
+  await fs.promises.writeFile(path.join(LOCAL_UPLOAD_ROOT, key), buffer);
+  return 'local';
+}
+
 // ------------------------------------------------------------------ reading
 const isMissing = (e) => e && (e.name === 'NoSuchKey' || e.name === 'NotFound' || e.$metadata?.httpStatusCode === 404);
 
@@ -185,7 +194,7 @@ async function selfCheck() {
 }
 
 module.exports = {
-  uploadFile, deleteFile, serveStored, readObject, writeObject, headObject, putFileToS3, selfCheck,
+  uploadFile, deleteFile, serveStored, readObject, writeObject, storeBuffer, headObject, putFileToS3, selfCheck,
   driverOf, setS3ClientForTests,
   MAX_FILE_SIZE, STORAGE_DRIVER, LOCAL_UPLOAD_ROOT,
 };

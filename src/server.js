@@ -308,6 +308,10 @@ require('./migrate').runMigrations(logger)
   .then(async ({ seeded } = {}) => {
     await realtime.resetCallPresence();
     require('./scheduler').start();
+    // Pictures sent before thumbnails existed get theirs in the background (once; src/attachments.js).
+    require('./attachments').backfillThumbnails()
+      .then(made => { if (made) logger.info(`Image thumbnails made for ${made} earlier picture(s)`); })
+      .catch(e => logger.error({ err: e.message }, 'thumbnail backfill failed'));
     const servers = [];
 
     servers.push(server.listen(PORT, HOST, () => {

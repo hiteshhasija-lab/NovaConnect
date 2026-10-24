@@ -458,6 +458,45 @@ async function register(c, username, fullName, password) {
 
   section = 'scheduled messages';
   let scheduledId;
+  // A real 900 x 600 PNG (a colour gradient), written with zlib alone so the walk-through needs no image library.
+  const makePng = (w, h) => {
+    const zlib = require('zlib');
+    const crc = (buf) => { let c = ~0; for (const b of buf) { c ^= b; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return ~c >>> 0; };
+    const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const raw = Buffer.alloc((w * 3 + 1) * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = y * (w * 3 + 1) + 1 + x * 3; raw[o] = (x * 255 / w) | 0; raw[o + 1] = (y * 255 / h) | 0; raw[o + 2] = ((x ^ y) & 255); }
+    return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  };
+  await step('image thumbnails: a picture gets a small thumbnail with its size, only for people who can see it; other files and fake pictures get none', async () => {
+    const send = async (who, url, name, type, bytes) => {
+      const fd = new FormData(); fd.append('body', ''); fd.append('file', new Blob([bytes], { type }), name);
+      const r = await who.req('POST', url, { multipart: fd });
+      must(r.status === 201, `${name}: ${r.status} ${r.text.slice(0, 160)}`);
+      return r.data.attachments[0];
+    };
+    const png = makePng(900, 600);
+    const a = await send(alice, `/api/channels/${general.id}/messages`, 'chart.png', 'image/png', png);
+    must(a.has_thumbnail && a.image_width === 900 && a.image_height === 600, 'attachment: ' + JSON.stringify(a).slice(0, 300));
+    const t = await fetch(`${BASE}/api/attachments/${a.id}/thumbnail`, { headers: { Cookie: bob.cookie }, redirect: 'manual' });
+    const thumb = Buffer.from(await t.arrayBuffer());
+    must(t.status === 200 && /^image\/(webp|jpeg)/.test(t.headers.get('content-type') || '') && /immutable/.test(t.headers.get('cache-control') || ''), `thumbnail ${t.status} ${t.headers.get('content-type')}`);
+    must(thumb.length > 100 && thumb.length < png.length, `thumbnail ${thumb.length} bytes vs original ${png.length}`);
+    const full = await fetch(`${BASE}/api/attachments/${a.id}/download`, { headers: { Cookie: bob.cookie } });
+    must(Buffer.from(await full.arrayBuffer()).equals(png), 'the full picture changed');
+    const hidden = await send(alice, `/api/dm/${dm}/messages`, 'private.png', 'image/png', makePng(64, 64));
+    must(hidden.has_thumbnail, 'small picture in a chat got no thumbnail');
+    const outsider = await fetch(`${BASE}/api/attachments/${hidden.id}/thumbnail`, { headers: { Cookie: carol.cookie }, redirect: 'manual' });
+    must(outsider.status === 403, 'someone outside the chat got its thumbnail: ' + outsider.status);
+    const fake = await send(alice, `/api/channels/${general.id}/messages`, 'fake.png', 'image/png', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
+    must(!fake.has_thumbnail, 'a fake picture got a thumbnail');
+    const fallback = await fetch(`${BASE}/api/attachments/${fake.id}/thumbnail`, { headers: { Cookie: bob.cookie }, redirect: 'manual' });
+    must(fallback.status === 302 && /\/download$/.test(fallback.headers.get('location') || ''), 'no thumbnail should send to the file: ' + fallback.status);
+    const doc = await send(alice, `/api/channels/${general.id}/messages`, 'notes.txt', 'text/plain', Buffer.from('text'));
+    must(!doc.has_thumbnail && !doc.image_width, 'a text file got a thumbnail');
+    const fwd = await alice.post(`/api/messages/${(await alice.get(`/api/channels/${general.id}/messages`)).data.messages.find((m) => m.attachments.some((x) => x.id === a.id)).id}/forward`, { conversation_id: dm });
+    return must(fwd.status === 201 && fwd.data.attachments[0].has_thumbnail && fwd.data.attachments[0].image_width === 900, 'a forwarded picture lost its thumbnail: ' + fwd.text.slice(0, 200));
+  });
   await step('edit history: every version kept newest first, an unchanged save is not an edit, others in the chat see it, outsiders and deleted do not', async () => {
     const p = await alice.post(`/api/channels/${general.id}/messages`, { body: `draft one ${tag}` });
     must(p.status === 201, p.text.slice(0, 120));

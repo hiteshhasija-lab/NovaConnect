@@ -152,7 +152,7 @@ own backup or versioning, in addition to the database dump.
 - **Threads** — reply-in-thread on any message, separate from the main channel flow.
 - **Reactions** — quick emoji reactions, toggle on click.
 - **@Mentions** — autocomplete in the composer; mentioned users get an in-app notification (Activity tab), live-updated over the socket.
-- **File sharing** — attach a file to any message (channel or DM), 15MB limit, a denylist on executable extensions.
+- **File sharing** — attach a file to any message (channel or DM), 15MB limit, a denylist on executable extensions. Pictures (PNG, JPEG, GIF, WebP, recognised by their content) show as thumbnails of at most 640 px, made with ffmpeg at upload (older pictures get theirs in the background after a start); clicking one opens the full picture.
 - **Admin** — `/admin/users`: role changes, activate/deactivate accounts.
 - **Audit log** — `/admin/audit`: sign-ins (failed ones too), user administration, team and channel changes, message deletions and retention, with who, when and from which address; filter by kind, person and dates, export as CSV (the export is logged too). Append-only; it never holds message text or passwords.
 - **Message retention** — `/admin/retention`: delete channel messages and chat messages after a chosen period (30 days to 7 years, separately). Off until an admin saves a policy; the page shows how many messages a new policy deletes before it is saved. Runs hourly (or "Run now"); deleted messages take their files, reactions and edit history with them, and cannot be restored except from a database backup taken before.

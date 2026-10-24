@@ -806,3 +806,14 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .audit-table td { font-size: 0.85rem; vertical-align: top; }
 .audit-table .audit-details { color: var(--text-muted); overflow-wrap: anywhere; max-width: 28rem; }
 .audit-table tr.audit-failed td { background: rgba(209, 73, 79, 0.08); }
+
+/* Pictures in messages: the thumbnail (workspace.js attachmentHtml) and the full-size viewer. */
+.msg-image-btn { display: block; border: 0; padding: 0; background: none; cursor: zoom-in; margin-top: 0.4rem; max-width: 100%; }
+.msg-image-btn .msg-attachment-img { margin-top: 0; width: auto; height: auto; max-width: min(320px, 100%); max-height: 240px; object-fit: cover; background: var(--surface-2); }
+.msg-image-btn:focus-visible { outline: 2px solid var(--brand, #3d82d6); outline-offset: 2px; border-radius: 0.6rem; }
+.image-viewer-dialog { border: 0; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh; width: 100vw; height: 100vh; }
+.image-viewer-dialog::backdrop { background: rgba(0, 0, 0, 0.85); }
+.image-viewer-dialog[open] { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.image-viewer-bar { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; color: #fff; }
+.image-viewer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-viewer-img { max-width: calc(100vw - 32px); max-height: calc(100vh - 80px); object-fit: contain; margin-top: 2.5rem; }
