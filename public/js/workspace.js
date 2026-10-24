@@ -1131,9 +1131,11 @@
     if (msg.pinned) html += '<div class="msg-pinned-flag"><i class="bi bi-pin-angle-fill"></i> Pinned' + (msg.pinned_by ? ' by ' + escapeHtml(msg.pinned_by.full_name) : '') + '</div>';
     if (msg.metadata && msg.metadata.forwardedFrom) html += '<div class="msg-forwarded-flag"><i class="bi bi-arrow-90deg-right"></i> Forwarded from ' + escapeHtml(msg.metadata.forwardedFrom.authorName) + '</div>';
     if (isAnnouncement(msg)) html += announcementHtml(msg.metadata.announcement);
+    // "(edited)" opens the message's edit history (openEditHistory).
+    const editedHtml = msg.edited ? ' <button type="button" class="msg-edited" title="See edit history">(edited)</button>' : '';
     if (msg.body.trim() || !(msg.metadata && (msg.metadata.gifUrl || msg.metadata.announcement))) {
-      html += '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + (msg.edited ? ' <span class="msg-edited">(edited)</span>' : '') + '</div>';
-    }
+      html += '<div class="msg-text">' + renderBody(msg.body, state.mentionMembers) + editedHtml + '</div>';
+    } else if (editedHtml) html += '<div class="msg-text">' + editedHtml + '</div>';
     if (msg.metadata && msg.metadata.gifUrl) html += '<img class="msg-gif" src="' + escapeHtml(msg.metadata.gifUrl) + '" alt="GIF">';
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') html += decomApprovalCardHtml(msg.metadata);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') html += decomConfirmDestroyCardHtml(msg.metadata);
@@ -1150,10 +1152,39 @@
     }
     box.innerHTML = html;
     box.querySelector('.thread-link')?.addEventListener('click', () => openThread(msg.id));
+    box.querySelector('.msg-edited')?.addEventListener('click', () => openEditHistory(msg.id));
     if (msg.metadata && msg.metadata.cardType === 'decom_approval') wireDecomApprovalCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_confirm_destroy') wireDecomConfirmDestroyCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_skip_manual_tasks') wireDecomSkipManualTasksCard(box, msg);
     if (msg.metadata && msg.metadata.cardType === 'decom_precheck_task') wireDecomPrecheckTaskCard(box, msg);
+  }
+
+  // Edit history: every version of a message, newest first, in a dialog (GET /api/messages/:id/history).
+  async function openEditHistory(messageId) {
+    document.querySelectorAll('.edit-history-dialog').forEach(d => d.close());
+    const dialog = document.createElement('dialog');
+    dialog.className = 'edit-history-dialog';
+    dialog.setAttribute('aria-labelledby', 'editHistoryTitle');
+    dialog.innerHTML = '<div class="edit-history-head"><h2 id="editHistoryTitle">Edit history</h2><button type="button" class="profile-card-close" aria-label="Close">×</button></div><div class="edit-history-body">Loading…</div>';
+    document.body.appendChild(dialog);
+    dialog.querySelector('.profile-card-close').onclick = () => dialog.close();
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.showModal();
+    const when = (t) => t ? toDate(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Time not recorded';
+    try {
+      const { versions, untracked } = await api('/api/messages/' + messageId + '/history');
+      if (!dialog.isConnected) return;
+      dialog.querySelector('.edit-history-body').innerHTML = versions.map(v =>
+        '<section class="edit-history-version' + (v.current ? ' current' : '') + '">' +
+          '<div class="edit-history-meta">' + (v.current ? 'Current' : v.original ? 'Original' : 'Earlier version') + ' · ' + escapeHtml(when(v.written_at)) + '</div>' +
+          (v.announcement ? announcementHtml(v.announcement) : '') +
+          (v.body ? '<div class="msg-text">' + renderBody(v.body, state.mentionMembers) + '</div>' : (v.announcement ? '' : '<div class="text-muted small">(no text)</div>')) +
+        '</section>').join('') +
+        (untracked ? '<p class="edit-history-note">This message was also edited before edit history was kept; those versions weren\'t saved.</p>' : '');
+    } catch (e) {
+      if (dialog.isConnected) dialog.querySelector('.edit-history-body').textContent = e.message || 'Could not load the edit history.';
+    }
   }
 
   // A small "forward to…" picker listing every channel and DM the user can see, filterable

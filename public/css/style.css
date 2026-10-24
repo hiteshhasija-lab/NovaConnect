@@ -787,3 +787,17 @@ body.profile-page { height:auto; min-height:100vh; overflow-y:auto; }
 .announce-theme { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.55); background: var(--ann-bg); padding: 0; }
 .announce-theme[aria-checked="true"] { border-color: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
 #composerAnnounceBtn.active { color: var(--brand, #3d82d6); background: var(--surface-2); border-radius: 0.3rem; }
+
+/* Edit history ("(edited)" in a message; workspace.js openEditHistory). */
+button.msg-edited { border: 0; background: none; padding: 0; font-family: inherit; cursor: pointer; text-decoration: underline dotted; }
+button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #3d82d6); }
+.edit-history-dialog { padding: 0; border: 0; border-radius: 14px; width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 640px); background: var(--surface); color: var(--text); }
+.edit-history-dialog::backdrop { background: #0006; }
+.edit-history-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1rem 0.4rem; position: sticky; top: 0; background: var(--surface); }
+.edit-history-head h2 { font-size: 1.05rem; margin: 0; }
+.edit-history-head .profile-card-close { position: static; }
+.edit-history-body { padding: 0 1rem 1rem; display: grid; gap: 0.6rem; }
+.edit-history-version { border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.6rem 0.75rem; overflow-wrap: anywhere; }
+.edit-history-version.current { border-color: var(--brand, #3d82d6); }
+.edit-history-meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+.edit-history-note { font-size: 0.8rem; color: var(--text-muted); margin: 0; }

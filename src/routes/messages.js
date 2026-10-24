@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToChannel, emitToConversation, emitToUser } = require('../realtime');
 const { parseAnnouncement, announcementOf, metadataOf } = require('../announcement');
+const { editVersions } = require('../editHistory');
 const { upload, uploadFile } = require('../upload');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage, removeMessage } = require('../search');
@@ -238,10 +239,18 @@ router.put('/api/messages/:id', async (req, res) => {
     metadata = JSON.stringify({ ...metadataOf(ctx.msg), announcement: a.value });
   }
   if (!body && !existing) return res.status(400).json({ error: 'Message cannot be empty.' });
+  // Saving it unchanged is not an edit: no "(edited)", no history entry.
+  if (body === ctx.msg.body && metadata === ctx.msg.metadata) return res.json(await hydrateOne(ctx.msg, req.session.user.id));
 
-  const updated = await db.prepare(`
-    UPDATE messages SET body = ?, metadata = ?, edited = 1, updated_at = ? WHERE id = ? RETURNING *
-  `).get(body, metadata, nowStr(), ctx.msg.id);
+  // Keep the version being replaced (edit history), read under a row lock so two edits at once each
+  // keep the version they really replaced.
+  const updated = await db.transaction(async (trx) => {
+    const now = nowStr();
+    const current = (await trx.raw('SELECT body, metadata FROM messages WHERE id = ? FOR UPDATE', [ctx.msg.id])).rows[0];
+    await trx('message_edits').insert({ message_id: ctx.msg.id, body: current.body || '', metadata: current.metadata, replaced_at: now });
+    const [row] = await trx('messages').where({ id: ctx.msg.id }).update({ body, metadata, edited: 1, updated_at: now }).returning('*');
+    return row;
+  });
   const message = await hydrateOne(updated, req.session.user.id);
   const event = updated.parent_message_id ? 'thread:message:update' : 'message:update';
   if (ctx.channel) emitToChannel(ctx.channel.id, event, message);
@@ -251,6 +260,14 @@ router.put('/api/messages/:id', async (req, res) => {
   const author = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.user.id);
   const team = ctx.channel?.team_id ? await db.prepare('SELECT id FROM teams WHERE id = ?').get(ctx.channel.team_id) : null;
   updateMessage(updated, author, ctx.channel, ctx.conversation, team).catch(() => {});
+});
+
+// Edit history ("(edited)" opens it): every version, newest first, for anyone who can see the message.
+router.get('/api/messages/:id/history', async (req, res) => {
+  const ctx = await loadMessageWithAccess(req.params.id, req.session.user.id);
+  if (!ctx || ctx.msg.deleted) return res.status(404).json({ error: 'Message not found or inaccessible.' });
+  const edits = await db.prepare('SELECT body, metadata, replaced_at FROM message_edits WHERE message_id = ? ORDER BY id').all(ctx.msg.id);
+  res.json({ versions: editVersions(ctx.msg, edits), untracked: !!Number(ctx.msg.edits_untracked) });
 });
 
 router.delete('/api/messages/:id', async (req, res) => {
@@ -265,6 +282,8 @@ router.delete('/api/messages/:id', async (req, res) => {
   if (!canDelete) return res.status(403).json({ error: 'You can only delete your own messages.' });
 
   await db.prepare("UPDATE messages SET deleted = 1, body = '', updated_at = ? WHERE id = ?").run(nowStr(), ctx.msg.id);
+  // Its earlier versions go with it: a deleted message's text is not kept anywhere else either.
+  await db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(ctx.msg.id);
   const payload = { id: ctx.msg.id, parent_message_id: ctx.msg.parent_message_id };
   const event = ctx.msg.parent_message_id ? 'thread:message:delete' : 'message:delete';
   if (ctx.channel) emitToChannel(ctx.channel.id, event, payload);

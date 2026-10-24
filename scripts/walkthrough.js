@@ -458,6 +458,31 @@ async function register(c, username, fullName, password) {
 
   section = 'scheduled messages';
   let scheduledId;
+  await step('edit history: every version kept newest first, an unchanged save is not an edit, others in the chat see it, outsiders and deleted do not', async () => {
+    const p = await alice.post(`/api/channels/${general.id}/messages`, { body: `draft one ${tag}` });
+    must(p.status === 201, p.text.slice(0, 120));
+    for (const b of ['draft two', 'draft three']) { const e = await alice.put(`/api/messages/${p.data.id}`, { body: b }); must(e.status === 200 && e.data.edited, `edit ${e.status}`); }
+    const same = await alice.put(`/api/messages/${p.data.id}`, { body: 'draft three' });
+    must(same.status === 200, 'unchanged save ' + same.status);
+    const h = await bob.get(`/api/messages/${p.data.id}/history`);
+    must(h.status === 200, 'history ' + h.status + ' ' + h.text.slice(0, 120));
+    const v = h.data.versions;
+    must(v.map((x) => x.body).join('|') === `draft three|draft two|draft one ${tag}`, 'versions: ' + v.map((x) => x.body).join('|'));
+    must(v[0].current && !v[2].current && v[2].original && v[2].written_at === p.data.created_at && v[0].written_at >= v[1].written_at && !h.data.untracked, JSON.stringify(v).slice(0, 300));
+    const fresh = await alice.post(`/api/channels/${general.id}/messages`, { body: 'never edited' });
+    const one = await bob.get(`/api/messages/${fresh.data.id}/history`);
+    must(one.status === 200 && one.data.versions.length === 1 && one.data.versions[0].current && one.data.versions[0].original, JSON.stringify(one.data).slice(0, 200));
+    const d = await alice.post(`/api/dm/${dm}/messages`, { body: 'private first' });
+    await alice.put(`/api/messages/${d.data.id}`, { body: 'private second' });
+    const outsider = await carol.get(`/api/messages/${d.data.id}/history`);
+    must(outsider.status === 404, 'someone outside the chat read its history: ' + outsider.status);
+    const inside = await bob.get(`/api/messages/${d.data.id}/history`);
+    must(inside.status === 200 && inside.data.versions.length === 2, 'chat member: ' + inside.status);
+    const del = await alice.del(`/api/messages/${p.data.id}`);
+    must(del.status === 200, 'delete ' + del.status);
+    const gone = await bob.get(`/api/messages/${p.data.id}/history`);
+    return must(gone.status === 404, 'a deleted message still shows its history: ' + gone.status);
+  });
   await step('announcement: headline banner posted and delivered live, validated, editable, searchable, forwarded as text; not in chats', async () => {
     const headline = `Maintenance ${tag}x Saturday <b>`;
     const r = await alice.post(`/api/channels/${general.id}/messages`, { body: 'Details below', announcement_headline: headline, announcement_subhead: '02:00 to 04:00 UTC', announcement_theme: 'orange' });
