@@ -3,8 +3,13 @@
 // that's how Teams itself presents it. Fetches fresh from /api/users/:id/profile every open
 // so it always reflects current status/status message, never a stale cached copy.
 window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, onMessage }) {
-  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting' };
+  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
   let dialog = null;
+  // ' until Fri, Oct 30, 5:00 PM' in this browser's time zone, from the database's UTC text time.
+  function untilLabel(until) {
+    const d = until ? new Date(String(until).replace(' ', 'T') + 'Z') : null;
+    return d && !Number.isNaN(d.getTime()) ? ' until ' + d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  }
 
   function close() { if (dialog) dialog.close(); }
 
@@ -30,6 +35,8 @@ window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, on
         '</div>' +
         '<div class="profile-card-status"><span class="presence-dot presence-' + status + '"></span>' + escapeHtml(label) + '</div>' +
         (u.status_message ? '<div class="profile-card-status-message"><i class="bi bi-chat-left-quote"></i> ' + escapeHtml(u.status_message) + '</div>' : '') +
+        (u.out_of_office ? '<div class="profile-card-ooo"><i class="bi bi-airplane"></i> <div><strong>Out of office' + escapeHtml(untilLabel(u.out_of_office.until)) + '</strong>' +
+          (u.out_of_office.message ? '<div>' + escapeHtml(u.out_of_office.message) + '</div>' : '') + '</div></div>' : '') +
         '<div class="profile-card-contact">' +
           (u.email ? '<div><i class="bi bi-envelope"></i> <a href="mailto:' + escapeHtml(u.email) + '">' + escapeHtml(u.email) + '</a></div>' : '') +
           '<div><i class="bi bi-at"></i> ' + escapeHtml(u.username) + '</div>' +

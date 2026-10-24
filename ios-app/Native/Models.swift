@@ -142,6 +142,7 @@ extension Person {
         case "incall": return "In a call"
         case "inmeeting": return "In a meeting"
         case "presenting": return "Presenting"
+        case "ooo": return "Out of office"
         default:
             guard let last_seen_at, let date = Timeline.date(last_seen_at) else { return "Last seen unavailable" }
             return "Last seen " + date.formatted(date: .abbreviated, time: .shortened)

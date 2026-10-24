@@ -303,11 +303,12 @@ struct PersonAvatar: View {
         case "dnd": return "minus.circle.fill"
         case "busy", "incall", "inmeeting", "presenting": return "circle.fill"
         case "away", "brb": return "clock.fill"
+        case "ooo": return "arrow.left.circle.fill"
         default: return "xmark.circle"
         }
     }
     private var presenceColor: Color {
-        switch person.status { case "online": return .green; case "busy", "dnd", "incall", "inmeeting", "presenting": return .red; case "away", "brb": return .orange; default: return .gray }
+        switch person.status { case "online": return .green; case "busy", "dnd", "incall", "inmeeting", "presenting": return .red; case "away", "brb": return .orange; case "ooo": return .purple; default: return .gray }
     }
 }
 struct InlineError: View {

@@ -2,7 +2,7 @@ const createAsyncRouter = require('../asyncRouter');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { emitToUser } = require('../realtime');
+const { emitToUser, touchPresence } = require('../realtime');
 const { occurrences } = require('../meeting-time');
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -42,6 +42,8 @@ router.post('/api/meetings', async (req,res) => {
     return ids;
   });
   attendees.forEach(id => emitToUser(id,'notification:new',{}));
+  // A meeting that is on right now changes who shows "In a meeting" (presenceRules.js).
+  attendees.forEach(touchPresence);
   res.status(201).json({id:saved[0],count:saved.length});
 });
 router.get('/api/meetings/:id', async(req,res)=>{
@@ -54,11 +56,14 @@ router.post('/api/meetings/:id/response',async(req,res)=>{
   if(!['accepted','declined','tentative'].includes(req.body.response)) return res.status(400).json({error:'Invalid response.'});
   const row=await db.prepare('UPDATE meeting_attendees SET response=? WHERE meeting_id=? AND user_id=? RETURNING meeting_id').get(req.body.response,req.params.id,req.session.user.id);
   if(!row) return res.status(404).json({error:'Meeting not found.'});
+  touchPresence(req.session.user.id);
   res.json({ok:true});
 });
 router.delete('/api/meetings/:id',async(req,res)=>{
+  const attendees=await db.prepare('SELECT user_id FROM meeting_attendees WHERE meeting_id=?').all(req.params.id);
   const result=await db.prepare('DELETE FROM meetings WHERE id=? AND created_by=?').run(req.params.id,req.session.user.id);
   if(!result.changes) return res.status(403).json({error:'Only the organizer can cancel this meeting.'});
+  attendees.forEach(a=>touchPresence(a.user_id));
   res.json({ok:true});
 });
 module.exports=router;

@@ -3,7 +3,7 @@
   const NC = window.__NC__;
   const AVATAR_PALETTE = ['#0755d9', '#009edb', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
   // The last three are set by the server while you're in a call or sharing (realtime.js).
-  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting' };
+  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
 
   const state = {
     view: NC.active?.type === 'dm' ? 'chat' : 'teams',
@@ -365,7 +365,7 @@
       const rowLabel=document.getElementById('statusRowLabel'); if(rowLabel) rowLabel.textContent=STATUS_LABELS[payload.status]||'Appear offline';
     }
     document.querySelectorAll('.presence-live-' + payload.userId).forEach(node => {
-      node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline|incall|inmeeting|presenting)/, 'presence-' + payload.status);
+      node.className = node.className.replace(/presence-(online|away|brb|busy|dnd|offline|incall|inmeeting|presenting|ooo)\b/, 'presence-' + payload.status);
       if(node.classList.contains('member-presence')||node.classList.contains('people-presence')||node.classList.contains('dm-header-presence')) { node.title=STATUS_LABELS[payload.status]||'Offline';node.setAttribute('aria-label',node.title); }
     });
 
@@ -941,6 +941,7 @@
       const others = detail.participants.filter(p => p.id !== NC.currentUser.id);
       const node = document.getElementById('dmHeaderLastSeen');
       if (node && others.length === 1) node.textContent = lastSeenLabel(others[0]);
+      renderOooNotice();
     } catch (_) { /* Preserve the last verified value until the connection recovers. */ }
   }
   function renderMainHeader() {
@@ -976,6 +977,7 @@
     } else {
       header.innerHTML = '<div class="main-header-title text-muted">NovaConnect</div>';
     }
+    renderOooNotice();
   }
 
   // ---------------- messages ----------------
@@ -2324,6 +2326,68 @@
     renderMyStatusMessage(u.status_message);
     document.getElementById('userMenuEmail').textContent = u.email || '';
   }).catch(() => {});
+
+  // ---------------- out of office ----------------
+  // The avatar menu's "Schedule out of office" dialog (routes/users.js). Times are the database's UTC
+  // 'YYYY-MM-DD HH:MM:SS'; the form shows and takes them in this browser's own time zone.
+  const oooForm = document.getElementById('oooForm');
+  const oooEnabled = document.getElementById('oooEnabled');
+  const oooMessage = document.getElementById('oooMessage');
+  const oooScheduled = document.getElementById('oooScheduled');
+  const oooStart = document.getElementById('oooStart');
+  const oooEnd = document.getElementById('oooEnd');
+  const oooError = document.getElementById('oooError');
+  function fromDbTime(v) { return v ? new Date(String(v).replace(' ', 'T') + 'Z') : null; }
+  const toLocalInput = (d) => {
+    if (!d || Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  };
+  function renderOooMenu(settings) {
+    document.getElementById('oooMenuLabel').textContent = settings.enabled ? 'Out of office (on)' : 'Schedule out of office';
+  }
+  function fillOooForm(settings) {
+    oooEnabled.checked = settings.enabled;
+    oooMessage.value = settings.message || '';
+    document.getElementById('oooMessageCount').textContent = oooMessage.value.length;
+    oooScheduled.checked = !!(settings.start_at || settings.end_at);
+    oooStart.value = toLocalInput(fromDbTime(settings.start_at));
+    oooEnd.value = toLocalInput(fromDbTime(settings.end_at));
+    document.getElementById('oooPeriod').classList.toggle('d-none', !oooScheduled.checked);
+    oooError.classList.add('d-none');
+  }
+  document.getElementById('oooModal').addEventListener('show.bs.modal', () => {
+    api('/api/profile/out-of-office').then(fillOooForm).catch(showToastError);
+  });
+  oooMessage.addEventListener('input', () => { document.getElementById('oooMessageCount').textContent = oooMessage.value.length; });
+  oooScheduled.addEventListener('change', () => {
+    document.getElementById('oooPeriod').classList.toggle('d-none', !oooScheduled.checked);
+    if (oooScheduled.checked && !oooStart.value) oooStart.value = toLocalInput(new Date());
+  });
+  oooForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const iso = (input) => (oooScheduled.checked && input.value) ? new Date(input.value).toISOString() : null;
+    api('/api/profile/out-of-office', { method: 'PUT', body: { enabled: oooEnabled.checked, message: oooMessage.value, start_at: iso(oooStart), end_at: iso(oooEnd) } })
+      .then(settings => {
+        renderOooMenu(settings);
+        bootstrap.Modal.getInstance(document.getElementById('oooModal'))?.hide();
+      })
+      .catch(err => { oooError.textContent = err.message || 'Could not save.'; oooError.classList.remove('d-none'); });
+  });
+  api('/api/profile/out-of-office').then(renderOooMenu).catch(() => {});
+
+  // Above the composer in a chat with someone who is out of office: who, until when, their message.
+  function oooUntilLabel(until) {
+    const d = fromDbTime(until);
+    return d && !Number.isNaN(d.getTime()) ? ' until ' + d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  }
+  function renderOooNotice() {
+    const notice = document.getElementById('oooNotice');
+    const away = state.active.type === 'dm' ? (state.active.participants || []).filter(p => p.id !== NC.currentUser.id && p.out_of_office) : [];
+    notice.classList.toggle('d-none', !away.length);
+    notice.innerHTML = away.map(p => '<div><i class="bi bi-airplane" aria-hidden="true"></i> <strong>' + escapeHtml(p.full_name) + '</strong> is out of office' + escapeHtml(oooUntilLabel(p.out_of_office.until)) + '.' +
+      (p.out_of_office.message ? '<div class="ooo-notice-message">' + escapeHtml(p.out_of_office.message) + '</div>' : '') + '</div>').join('');
+  }
 
   // ---------------- boot ----------------
   document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));

@@ -1,6 +1,7 @@
 const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { participantPresence, PARTICIPANT_PRESENCE_COLUMNS } = require('../presenceRules');
 const { hydrateMessages, hydrateOne } = require('../messageUtils');
 const { emitToConversation, emitToUser, resyncUserRooms } = require('../realtime');
 const { upload, uploadFile } = require('../upload');
@@ -113,15 +114,12 @@ router.get('/api/dm/:id', async (req, res) => {
   const convo = await loadConversationForUser(req.params.id, req.session.user.id);
   if (!convo) return res.status(403).json({ error: 'You are not part of this conversation.' });
   const participants = await db.prepare(`
-    SELECT u.id, u.full_name, u.username, u.last_seen_at, u.status, u.title, u.status_message, u.status_message_expires_at, dp.last_read_message_id
+    SELECT u.id, u.full_name, u.username, u.last_seen_at, u.status, u.title, ${PARTICIPANT_PRESENCE_COLUMNS}, dp.last_read_message_id
     FROM dm_participants dp JOIN users u ON u.id = dp.user_id
     WHERE dp.conversation_id = ? ORDER BY u.full_name
   `).all(convo.id);
   const now = nowStr();
-  participants.forEach(p => {
-    if (p.status_message_expires_at && p.status_message_expires_at <= now) p.status_message = null;
-    delete p.status_message_expires_at;
-  });
+  participants.forEach(p => participantPresence(p, now));
   res.json({ conversation: convo, participants });
 });
 

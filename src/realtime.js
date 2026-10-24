@@ -3,6 +3,7 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const { redis } = require('./redis');
 const { db, nowStr } = require('./db');
 const { createGroupCalls } = require('./group-calls');
+const { isOutOfOffice, shownStatus, CALENDAR_BUSY_SQL } = require('./presenceRules');
 
 let io = null;
 let endAllCalls = async () => {}; // set in attach(): ends running calls cleanly on shutdown
@@ -11,7 +12,10 @@ const onlineSockets = new Map();
 const { createPresenceGrace } = require('./presence-grace');
 const presenceGrace = createPresenceGrace({
   isConnected: id => !!onlineSockets.get(id)?.size,
-  write: async (id, status, lastSeen) => {
+  // Gone offline: people see Offline, or Out of office while that is on (presenceRules.js).
+  write: async (id, _offline, lastSeen) => {
+    const row = await db.prepare('SELECT ooo_enabled, ooo_start_at, ooo_end_at FROM users WHERE id = ?').get(id);
+    const status = shownStatus({ connected: false, outOfOffice: isOutOfOffice(row, nowStr()) });
     await db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run(status, lastSeen, id);
     await broadcastPresence(id, status);
   }
@@ -37,12 +41,15 @@ async function broadcastPresence(userId, status) {
   io.emit('presence:update', { userId, status });
 }
 
-// Presence from calls (Teams-style): while you're in a call your status reads "In a call" (1:1 and
-// group chats) or "In a meeting" (channel meetings, meeting links), and "Presenting" while you share
-// your screen — unless you chose Do not disturb or Appear offline, which win. It's written to
-// users.status like any status, so every view shows it, and your chosen status (presence_preference)
-// comes back when the call ends. Recomputed shortly after anything that could change it: the call
-// room map (CallRoomMap below), a lobby admit, a screen share starting or stopping.
+// Presence from calls, the calendar and out of office (Teams-style): while you're in a call your
+// status reads "In a call" (1:1 and group chats) or "In a meeting" (channel meetings, meeting links),
+// and "Presenting" while you share your screen; a busy meeting on your calendar reads "In a meeting"
+// and out of office reads "Out of office". The order between them, and which chosen statuses win, is
+// in presenceRules.js. The result is written to users.status like any status, so every view shows it,
+// and your chosen status (presence_preference) comes back when the call, meeting or absence ends.
+// Recomputed shortly after anything that could change it (the call room map, CallRoomMap below; a
+// lobby admit; a screen share; a meeting or out-of-office change), and by the scheduler's sweep when
+// a meeting or an absence starts or ends (refreshScheduledPresence).
 let callActivity = () => null; // userId -> 'presenting' | 'inmeeting' | 'incall' | null; set in attach()
 const presenceTimers = new Map();
 function touchPresence(userId) {
@@ -50,20 +57,54 @@ function touchPresence(userId) {
   clearTimeout(presenceTimers.get(userId));
   presenceTimers.set(userId, setTimeout(() => {
     presenceTimers.delete(userId);
-    refreshCallPresence(userId).catch(err => console.error('call presence failed:', err.message));
+    refreshPresence(userId).catch(err => console.error('presence refresh failed:', err.message));
   }, 300));
 }
-function effectiveStatus(userId, chosen) {
-  return (!['dnd', 'offline'].includes(chosen) && callActivity(userId)) || chosen;
+const PRESENCE_COLUMNS = 'id, status, presence_preference, ooo_enabled, ooo_start_at, ooo_end_at';
+// The status to show for one person; `chosen` replaces their saved choice (presence:set).
+async function presenceFor(userId, chosen) {
+  const now = nowStr();
+  const row = await db.prepare(`SELECT ${PRESENCE_COLUMNS} FROM users WHERE id = ?`).get(userId);
+  if (!row) return null;
+  const meeting = await db.prepare(CALENDAR_BUSY_SQL + ' AND a.user_id = ? LIMIT 1').get(now, now, userId);
+  const shown = shownStatus({
+    connected: isOnline(userId), chosen: chosen === undefined ? row.presence_preference : chosen,
+    call: callActivity(userId), calendarMeeting: !!meeting, outOfOffice: isOutOfOffice(row, now)
+  });
+  return { row, shown };
 }
-async function refreshCallPresence(userId) {
-  if (!onlineSockets.get(userId)?.size) return; // going offline: the disconnect handler sets that
-  const row = await db.prepare('SELECT status, presence_preference FROM users WHERE id = ?').get(userId);
-  if (!row) return;
-  const next = effectiveStatus(userId, row.presence_preference || 'online');
-  if (next === row.status) return;
-  await db.prepare('UPDATE users SET status = ? WHERE id = ?').run(next, userId);
-  await broadcastPresence(userId, next);
+// Writes the status only if nothing changed it since it was read (a status change or another refresh
+// in between wins), and tells everyone.
+async function writePresence(row, shown) {
+  if (shown === row.status) return;
+  const result = await db.prepare('UPDATE users SET status = ? WHERE id = ? AND status = ? AND presence_preference IS NOT DISTINCT FROM ?')
+    .run(shown, row.id, row.status, row.presence_preference);
+  if (result.changes) await broadcastPresence(row.id, shown);
+}
+async function refreshPresence(userId) {
+  if (!isOnline(userId)) return; // going offline: the disconnect handler (presence grace) sets that
+  const r = await presenceFor(userId);
+  if (r) await writePresence(r.row, r.shown);
+}
+// The scheduler's sweep (every 15 s): meetings and absences start and end on the clock, with no
+// event to react to. Looks at everyone connected plus everyone with out of office on (or showing).
+// A person who isn't connected is only changed once they have settled as Offline / Out of office,
+// so this never cuts short the reconnect grace (presence-grace.js).
+async function refreshScheduledPresence() {
+  const now = nowStr();
+  const connected = [...onlineSockets].filter(([, sockets]) => sockets.size).map(([id]) => id);
+  const busy = new Set((await db.prepare(CALENDAR_BUSY_SQL).all(now, now)).map(r => r.user_id));
+  const rows = await db.prepare(`SELECT ${PRESENCE_COLUMNS} FROM users WHERE ooo_enabled = 1 OR status = 'ooo'` +
+    (connected.length ? ` OR id IN (${connected.map(() => '?').join(',')})` : '')).all(...connected);
+  for (const row of rows) {
+    const online = isOnline(row.id);
+    if (!online && !['offline', 'ooo'].includes(row.status)) continue;
+    const shown = shownStatus({
+      connected: online, chosen: row.presence_preference, call: callActivity(row.id),
+      calendarMeeting: busy.has(row.id), outOfOffice: isOutOfOffice(row, now)
+    });
+    await writePresence(row, shown);
+  }
 }
 // socket.id -> { roomId, peerId, userId, inLobby, ... } for every call/meeting room a socket is in,
 // shared by group-calls.js and meet-signaling.js; joining or leaving one updates call presence.
@@ -145,8 +186,7 @@ function attach(server, sessionMiddleware) {
       socket.join(`user:${userId}`);
 
       if (wasOffline) {
-        const row = await db.prepare('SELECT status, presence_preference FROM users WHERE id = ?').get(userId);
-        const nextStatus = row?.presence_preference || 'online';
+        const nextStatus = (await presenceFor(userId))?.shown || 'online';
         await db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run(nextStatus, nowStr(), userId);
         await broadcastPresence(userId, nextStatus);
       } else {
@@ -165,10 +205,13 @@ function attach(server, sessionMiddleware) {
       const allowed = ['online', 'away', 'brb', 'busy', 'dnd', 'offline', 'reset'];
       if (!allowed.includes(status)) return;
       // In a call, a chosen status other than Do not disturb / Appear offline shows once it ends.
-      const chosen = status === 'reset' ? 'online' : status;
-      const shown = effectiveStatus(userId, chosen);
-      db.prepare('UPDATE users SET status = ?, presence_preference = ? WHERE id = ?').run(shown, status === 'reset' ? null : status, userId)
-        .then(() => broadcastPresence(userId, shown))
+      const chosen = status === 'reset' ? null : status;
+      presenceFor(userId, chosen)
+        .then(async (r) => {
+          if (!r) return;
+          await db.prepare('UPDATE users SET status = ?, presence_preference = ? WHERE id = ?').run(r.shown, chosen, userId);
+          await broadcastPresence(userId, r.shown);
+        })
         .catch((err) => console.error('presence:set failed:', err.message));
     });
 
@@ -247,4 +290,4 @@ function disconnectUser(userId) {
   if (io) io.in(`user:${userId}`).disconnectSockets(true);
 }
 
-module.exports = { disconnectUser, resetCallPresence, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };
+module.exports = { disconnectUser, resetCallPresence, touchPresence, refreshScheduledPresence, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };

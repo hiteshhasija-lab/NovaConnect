@@ -536,6 +536,69 @@ async function register(c, username, fullName, password) {
     const p = await bob.get(`/api/users/${alice.user.id}/profile`);
     return must(p.status === 200 && JSON.stringify(p.data).includes('Heads down'), p.text.slice(0, 160));
   });
+  // Presence changes everyone hears (io.emit); bob watches. Only events after `from` count.
+  const presenceSeen = async (userId, status, from, ms = 5000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (bob.events.slice(from).some((e) => e.name === 'presence:update' && e.payload.userId === userId && e.payload.status === status)) return true;
+      await sleep(50);
+    }
+    throw new Error(`no presence "${status}" for user ${userId} within ${ms} ms`);
+  };
+  const utcLocal = (ms) => new Date(ms).toISOString().slice(0, 16);   // 'YYYY-MM-DDTHH:MM' for timezone 'UTC'
+  await step('calendar: a busy meeting on now reads "In a meeting", a chosen status wins, cancelling gives Available back', async () => {
+    let from = bob.events.length;
+    carol.emit('presence:set', { status: 'reset' });
+    await presenceSeen(carol.user.id, 'online', from);
+    from = bob.events.length;
+    const now = Date.now();
+    const r = await alice.post('/api/meetings', { title: 'On now', attendee_ids: [carol.user.id], timezone: 'UTC', start_local: utcLocal(now - 5 * 60000), end_local: utcLocal(now + 30 * 60000), all_day: false, recurrence: 'none', count: 1, request_rsvp: false, show_as: 'busy', location: '', details: '', conversation_id: null });
+    must(r.status === 201, `${r.status} ${r.text.slice(0, 160)}`);
+    await presenceSeen(carol.user.id, 'inmeeting', from);
+    from = bob.events.length;
+    carol.emit('presence:set', { status: 'busy' });
+    await presenceSeen(carol.user.id, 'busy', from);
+    from = bob.events.length;
+    carol.emit('presence:set', { status: 'reset' });
+    await presenceSeen(carol.user.id, 'inmeeting', from);
+    from = bob.events.length;
+    const d = await alice.del(`/api/meetings/${r.data.id}`);
+    must(d.status === 200, 'delete ' + d.status);
+    await presenceSeen(carol.user.id, 'online', from);
+    const free = await alice.post('/api/meetings', { title: 'Free time', attendee_ids: [carol.user.id], timezone: 'UTC', start_local: utcLocal(now - 5 * 60000), end_local: utcLocal(now + 30 * 60000), all_day: false, recurrence: 'none', count: 1, request_rsvp: false, show_as: 'free', location: '', details: '', conversation_id: null });
+    must(free.status === 201, 'free ' + free.status);
+    await sleep(800);
+    const p = await bob.get(`/api/users/${carol.user.id}/profile`);
+    await alice.del(`/api/meetings/${free.data.id}`);
+    return must(p.data.status === 'online', 'a meeting shown as free changed the status to ' + p.data.status);
+  });
+  await step('out of office: status, profile card and chat show it with the message and end; a later window waits; off restores', async () => {
+    let from = bob.events.length;
+    const end = new Date(Date.now() + 2 * 86400000).toISOString();
+    const on = await carol.put('/api/profile/out-of-office', { enabled: true, message: 'Back Monday', start_at: null, end_at: end });
+    must(on.status === 200 && on.data.enabled && on.data.active, JSON.stringify(on.data));
+    await presenceSeen(carol.user.id, 'ooo', from);
+    const p = await bob.get(`/api/users/${carol.user.id}/profile`);
+    must(p.data.status === 'ooo' && p.data.out_of_office && p.data.out_of_office.message === 'Back Monday' && p.data.out_of_office.until === end.slice(0, 19).replace('T', ' '), JSON.stringify(p.data));
+    must(!Object.keys(p.data).some((k) => k.startsWith('ooo_')), 'raw settings leaked: ' + Object.keys(p.data).join(','));
+    const dmr = await bob.post('/api/dm', { user_ids: [carol.user.id] });
+    must(dmr.status === 200 || dmr.status === 201, 'dm ' + dmr.status);
+    const convo = await bob.get(`/api/dm/${dmr.data.id}`);
+    const c = convo.data.participants.find((x) => x.id === carol.user.id);
+    must(c && c.out_of_office && c.out_of_office.message === 'Back Monday', JSON.stringify(c));
+    const page = await bob.get(`/app/dm/${dmr.data.id}`);
+    must(page.status === 200 && page.text.includes('id="oooNotice"'), 'chat page ' + page.status);
+    const bad = await carol.put('/api/profile/out-of-office', { enabled: true, message: '', start_at: end, end_at: new Date().toISOString() });
+    must(bad.status === 400, 'end before start: ' + bad.status);
+    from = bob.events.length;
+    const later = await carol.put('/api/profile/out-of-office', { enabled: true, message: 'Next week', start_at: new Date(Date.now() + 86400000).toISOString(), end_at: end });
+    must(later.status === 200 && later.data.enabled && !later.data.active, JSON.stringify(later.data));
+    await presenceSeen(carol.user.id, 'online', from);
+    const p2 = await bob.get(`/api/users/${carol.user.id}/profile`);
+    must(p2.data.out_of_office === null, 'a window that has not started shows ' + JSON.stringify(p2.data.out_of_office));
+    const off = await carol.put('/api/profile/out-of-office', { enabled: false, message: '', start_at: null, end_at: null });
+    return must(off.status === 200 && !off.data.enabled, JSON.stringify(off.data));
+  });
   await step('profile page renders; update name and title; password change needs the current password', async () => {
     const page = await alice.get('/profile');
     must(page.status === 200, 'page ' + page.status);

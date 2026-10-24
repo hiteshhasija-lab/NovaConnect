@@ -1,6 +1,8 @@
 const createAsyncRouter = require('../asyncRouter');
-const { db } = require('../db');
+const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { outOfOfficeSummary, isOutOfOffice, parseOutOfOffice } = require('../presenceRules');
+const { touchPresence } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -66,6 +68,29 @@ router.patch('/api/profile/status-message', async (req, res) => {
   res.json({ status_message: statusMessage, status_message_expires_at: expiresAt });
 });
 
+// Out of office (the avatar menu's "Schedule out of office" dialog): on/off, a message, an optional
+// window. While it's on, people see "Out of office" as your status (presenceRules.js), and the
+// message on your profile card and above the composer when they write to you.
+const oooSettings = (row) => ({
+  enabled: !!Number(row.ooo_enabled), message: row.ooo_message || '', start_at: row.ooo_start_at, end_at: row.ooo_end_at,
+  active: isOutOfOffice(row, nowStr())
+});
+router.get('/api/profile/out-of-office', async (req, res) => {
+  const row = await db.prepare('SELECT ooo_enabled, ooo_message, ooo_start_at, ooo_end_at FROM users WHERE id = ?').get(req.session.user.id);
+  res.json(oooSettings(row));
+});
+router.put('/api/profile/out-of-office', async (req, res) => {
+  const parsed = parseOutOfOffice(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const v = parsed.value;
+  const row = await db.prepare(`
+    UPDATE users SET ooo_enabled = ?, ooo_message = ?, ooo_start_at = ?, ooo_end_at = ? WHERE id = ?
+    RETURNING ooo_enabled, ooo_message, ooo_start_at, ooo_end_at
+  `).get(v.ooo_enabled, v.ooo_message, v.ooo_start_at, v.ooo_end_at, req.session.user.id);
+  touchPresence(req.session.user.id);
+  res.json(oooSettings(row));
+});
+
 // Full profile-card payload — used when clicking someone's avatar/name anywhere in the app.
 router.get('/api/users/:id/profile', async (req, res) => {
   const targetId = Number(req.params.id);
@@ -75,13 +100,15 @@ router.get('/api/users/:id/profile', async (req, res) => {
   `).get(req.session.user.id, targetId, targetId, req.session.user.id);
   if (blocked) return res.status(404).json({ error: 'Person not found.' });
   const user = await db.prepare(`
-    SELECT id, full_name, username, email, title, status, status_message, status_message_expires_at FROM users WHERE id = ? AND active = 1
+    SELECT id, full_name, username, email, title, status, status_message, status_message_expires_at,
+      ooo_enabled, ooo_message, ooo_start_at, ooo_end_at FROM users WHERE id = ? AND active = 1
   `).get(targetId);
   if (!user) return res.status(404).json({ error: 'Person not found.' });
-  if (user.status_message_expires_at && user.status_message_expires_at < new Date().toISOString().slice(0, 19).replace('T', ' ')) {
+  if (user.status_message_expires_at && user.status_message_expires_at < nowStr()) {
     user.status_message = null;
   }
-  delete user.status_message_expires_at;
+  user.out_of_office = outOfOfficeSummary(user, nowStr());
+  for (const k of ['status_message_expires_at', 'ooo_enabled', 'ooo_message', 'ooo_start_at', 'ooo_end_at']) delete user[k];
   res.json(user);
 });
 

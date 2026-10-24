@@ -1,6 +1,7 @@
 const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { participantPresence, PARTICIPANT_PRESENCE_COLUMNS } = require('../presenceRules');
 const { hydrateMessages } = require('../messageUtils');
 
 const router = createAsyncRouter();
@@ -94,15 +95,12 @@ router.get('/dm/:id', async (req, res) => {
   if (!inConvo) return res.status(403).render('error', { title: 'Access Denied', message: 'You are not part of this conversation.' });
   const conversation = await db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(req.params.id);
   const participants = await db.prepare(`
-    SELECT u.id, u.full_name, u.username, u.last_seen_at, u.status, u.title, u.status_message, u.status_message_expires_at, dp.last_read_message_id
+    SELECT u.id, u.full_name, u.username, u.last_seen_at, u.status, u.title, ${PARTICIPANT_PRESENCE_COLUMNS}, dp.last_read_message_id
     FROM dm_participants dp JOIN users u ON u.id = dp.user_id
     WHERE dp.conversation_id = ? ORDER BY u.full_name
   `).all(conversation.id);
   const now = nowStr();
-  participants.forEach(p => {
-    if (p.status_message_expires_at && p.status_message_expires_at <= now) p.status_message = null;
-    delete p.status_message_expires_at;
-  });
+  participants.forEach(p => participantPresence(p, now));
 
   const rows = await db.prepare(`
     SELECT * FROM messages WHERE conversation_id = ? AND parent_message_id IS NULL ORDER BY id DESC LIMIT 50

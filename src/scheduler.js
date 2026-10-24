@@ -4,7 +4,7 @@
 // may not be the one still running when a message eventually comes due.
 const { db, nowStr, offsetStr } = require('./db');
 const { hydrateOne } = require('./messageUtils');
-const { emitToChannel, emitToConversation } = require('./realtime');
+const { emitToChannel, emitToConversation, refreshScheduledPresence } = require('./realtime');
 const { recordMentions, channelMemberIds } = require('./routes/messages');
 const { getConfig } = require('./config');
 const { deleteFile } = require('./storage');
@@ -87,7 +87,9 @@ function start() {
   const tick = () => Promise.all([
     deliverDue().catch(e => console.error('scheduler run failed:', e.message)),
     clearExpiredStatusMessages().catch(e => console.error('status-message expiry sweep failed:', e.message)),
-    cleanupExpiredRecordings().catch(e => console.error('recording retention sweep failed:', e.message))
+    cleanupExpiredRecordings().catch(e => console.error('recording retention sweep failed:', e.message)),
+    // Calendar meetings and out of office start and end on the clock: "In a meeting" / "Out of office".
+    refreshScheduledPresence().catch(e => console.error('presence sweep failed:', e.message))
   ]);
   tick();
   setInterval(tick, POLL_INTERVAL_MS);
