@@ -595,24 +595,51 @@
     if (state.view === 'search') {
       title.textContent = 'Search';
       const input = el('<input class="people-search" type="search" aria-label="Search messages, files and people" placeholder="Search messages, files and people">');
+      // The filters the search bar understands (src/searchQuery.js), shown until something is typed.
+      const help = el('<div class="global-search-help"><strong>Filters</strong><span><code>from:me</code> <code>from:"Jane Doe"</code> <code>in:#general</code> <code>in:@jdoe</code> <code>after:2026-10-01</code> <code>before:2026-10-15</code> <code>on:2026-10-20</code> <code>has:file</code> <code>has:link</code></span></div>');
       const results = el('<div class="global-search-results" aria-live="polite"></div>');
-      body.append(input, results);
+      body.append(input, help, results);
       let timer, generation = 0;
       function chatLabelFor(row) {
         return row.channel_id ? '#' + row.channel_name : (row.dm_is_group ? 'Group chat' : 'Direct message');
       }
       function openResultChat(row) { if (row.channel_id) navigateToChannel(row.channel_id); else navigateToDm(row.conversation_id); }
+      // Wraps the search words in <mark>. The ORIGINAL text is split on the words and every piece is
+      // escaped on its own, so nothing in a message can turn into markup.
+      function highlighted(text, terms) {
+        const words = (terms || []).filter(Boolean).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        if (!words.length) return escapeHtml(text);
+        const re = new RegExp('(' + words.join('|') + ')', 'ig');
+        return String(text).split(re).map((part, i) => i % 2 ? '<mark>' + escapeHtml(part) + '</mark>' : escapeHtml(part)).join('');
+      }
+      // A long message is cut to the part around the first match.
+      function snippet(text, terms) {
+        const t = String(text || '');
+        if (t.length <= 280) return t;
+        const lower = t.toLowerCase();
+        const hits = (terms || []).map(w => lower.indexOf(w)).filter(i => i >= 0);
+        const at = hits.length ? Math.min(...hits) : 0;
+        const start = Math.max(0, at - 100);
+        return (start ? '…' : '') + t.slice(start, start + 260) + (start + 260 < t.length ? '…' : '');
+      }
       async function runSearch() {
         const g = ++generation;
         const q = input.value.trim();
         results.innerHTML = '';
+        help.hidden = !!q;
         if (!q) return;
         results.textContent = 'Searching…';
         try {
-          const data = await api('/api/search?q=' + encodeURIComponent(q));
+          const data = await api('/api/search?q=' + encodeURIComponent(q) + '&tz=' + new Date().getTimezoneOffset());
           if (g !== generation || !results.isConnected) return;
           results.innerHTML = '';
-          if (!data.messages.length && !data.files.length && !data.people.length) { results.innerHTML = '<div class="p-3 text-muted small">No results.</div>'; return; }
+          if (data.filters.length || data.notes.length) {
+            const bar = el('<div class="global-search-filters"></div>');
+            data.filters.forEach(f => { const chip = document.createElement('span'); chip.className = 'global-search-chip'; chip.textContent = f.label; bar.appendChild(chip); });
+            data.notes.forEach(n => { const note = document.createElement('div'); note.className = 'global-search-note'; note.textContent = n; bar.appendChild(note); });
+            results.appendChild(bar);
+          }
+          if (!data.messages.length && !data.files.length && !data.people.length) { results.appendChild(el('<div class="p-3 text-muted small">No results.</div>')); return; }
           if (data.people.length) {
             const section = el('<div class="global-search-section"><h3>People</h3></div>');
             data.people.forEach(u => {
@@ -627,7 +654,7 @@
             data.messages.forEach(m => {
               const row = el('<button type="button" class="chat-search-result global-search-result"></button>');
               const meta = document.createElement('strong'); meta.textContent = (m.author_name || 'Former member') + ' · ' + chatLabelFor(m) + ' · ' + new Date(m.created_at.replace(' ', 'T') + 'Z').toLocaleString();
-              const bodyP = document.createElement('p'); bodyP.textContent = m.body;
+              const bodyP = document.createElement('p'); bodyP.innerHTML = highlighted(snippet(m.body, data.terms), data.terms);
               row.append(meta, bodyP);
               row.onclick = () => openResultChat(m);
               section.appendChild(row);
@@ -637,7 +664,7 @@
           if (data.files.length) {
             const section = el('<div class="global-search-section"><h3>Files</h3></div>');
             data.files.forEach(a => {
-              const row = el('<a class="global-search-result msg-attachment" href="/api/attachments/' + a.id + '/download" target="_blank"><i class="bi bi-file-earmark-arrow-down"></i>' + escapeHtml(a.original_name) + '<small class="d-block text-muted">' + escapeHtml(chatLabelFor(a)) + '</small></a>');
+              const row = el('<a class="global-search-result msg-attachment" href="/api/attachments/' + a.id + '/download" target="_blank"><i class="bi bi-file-earmark-arrow-down"></i>' + highlighted(a.original_name, data.terms) + '<small class="d-block text-muted">' + escapeHtml(chatLabelFor(a)) + '</small></a>');
               section.appendChild(row);
             });
             results.appendChild(section);

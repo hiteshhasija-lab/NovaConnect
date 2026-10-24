@@ -339,6 +339,11 @@ router.post('/api/messages/:id/forward', async (req, res) => {
   if (targetChannelId) emitToChannel(targetChannelId, 'message:new', message);
   else emitToConversation(targetConversationId, 'message:new', message);
   res.status(201).json(message);
+
+  // Searchable like any new message (it wasn't indexed until the next restart's full reindex).
+  const forwarder = await db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.user.id);
+  const targetConvo = targetChannel ? null : await db.prepare('SELECT id, name FROM dm_conversations WHERE id = ?').get(targetConversationId);
+  indexMessage(row, forwarder, targetChannel, targetConvo, targetChannel && targetChannel.team_id ? { id: targetChannel.team_id } : null).catch(() => {});
 });
 
 // No GOOGLE_TRANSLATE_API_KEY set yet — mirrors ai.js's own placeholder-until-configured

@@ -461,6 +461,14 @@ li .presence-dot { position: static; border: none; margin-right: 0.4rem; }
 .global-search-section:first-child h3 { margin-top: 0; }
 button.global-search-result { display: block; width: 100%; text-align: left; background: none; border: none; padding: 0; }
 a.global-search-result { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; margin-bottom: 0.4rem; }
+/* Search filters (Phase 3): the help line, applied-filter chips, "matched nothing" notes, highlighted words. */
+.global-search-help { padding: 0.4rem 1rem 0; font-size: 0.75rem; color: var(--text-muted); line-height: 1.6; }
+.global-search-help strong { display: block; font-weight: 700; }
+.global-search-help code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 0.25rem; padding: 0 0.25rem; color: var(--text); white-space: nowrap; }
+.global-search-filters { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.5rem; }
+.global-search-chip { background: rgba(var(--brand-rgb), 0.12); color: var(--brand); border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.75rem; font-weight: 600; }
+.global-search-note { flex-basis: 100%; font-size: 0.75rem; color: var(--text-muted); }
+.global-search-results mark { background: rgba(var(--brand-rgb), 0.22); color: inherit; border-radius: 0.15rem; padding: 0 0.05rem; }
 
 .mention-popover {
   position: absolute; bottom: 100%; left: 1rem; margin-bottom: 0.4rem; background: var(--surface); border: 1px solid var(--border);

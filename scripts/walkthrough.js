@@ -433,6 +433,28 @@ async function register(c, username, fullName, password) {
     must(f.data.files.some((x) => x.original_name === 'notes.txt'), 'files ' + JSON.stringify(f.data.files).slice(0, 100));
     return must(gone.data.messages.length === 0, 'deleted message found');
   });
+  await step('search filters: from:, in:, has:file, has:link, dates, unknown person, and in: cannot widen access', async () => {
+    const q = (text) => `/api/search?q=${encodeURIComponent(text)}&tz=0`;
+    await alice.post(`/api/channels/${general.id}/messages`, { body: `link ${tag}ll https://example.com/walk` });
+    let link;
+    for (let i = 0; i < 20; i++) { link = await alice.get(q(`${tag}ll has:link`)); if (link.data.messages && link.data.messages.length) break; await sleep(500); }
+    must(link.data.messages.length === 1 && /https:\/\//.test(link.data.messages[0].body), 'has:link ' + JSON.stringify(link.data.messages).slice(0, 120));
+    must(link.data.filters.some((f) => f.type === 'has' && f.value === 'link') && link.data.terms.includes(`${tag}ll`), 'chips/terms ' + JSON.stringify(link.data).slice(0, 160));
+    const mine = await alice.get(q(`${tag} from:me`));
+    must(mine.data.messages.length >= 1 && mine.data.messages.every((m) => m.author_name === 'Alice Anders'), 'from:me ' + JSON.stringify(mine.data.messages.map((m) => m.author_name)));
+    const inGeneral = await alice.get(q(`${tag} in:#general`));
+    must(inGeneral.data.messages.length >= 1 && inGeneral.data.messages.every((m) => m.channel_name === 'general'), 'in:#general');
+    const files = await alice.get(q('has:file from:me'));
+    must(files.data.messages.some((m) => m.body === 'see attached') && files.data.files.some((f) => f.original_name === 'notes.txt'), 'has:file ' + JSON.stringify(files.data).slice(0, 160));
+    const old = await alice.get(q(`${tag} before:2000-01-01`));
+    const recent = await alice.get(q(`${tag} after:2000-01-01`));
+    must(old.data.messages.length === 0 && recent.data.messages.length >= 1, `before ${old.data.messages.length} after ${recent.data.messages.length}`);
+    const nobody = await alice.get(q(`${tag} from:nobody${tag}`));
+    must(nobody.data.messages.length === 0 && nobody.data.notes.length === 1, 'unknown person ' + JSON.stringify(nobody.data.notes));
+    const sneaky = await carol.get(q(`${tag}zz in:#${secretTeamChannel.name}`));
+    must(sneaky.data.messages.length === 0, 'in: widened access to a private channel');
+    return `has:link 1, from:me ${mine.data.messages.length}, in:#general ${inGeneral.data.messages.length}, has:file ${files.data.messages.length}, source ${link.data.source}`;
+  });
 
   section = 'scheduled messages';
   let scheduledId;

@@ -1,6 +1,7 @@
 const { MeiliSearch } = require('meilisearch');
 const { db } = require('./db');
-const { INDEX_SETTINGS, buildFilter } = require('./searchFilter');
+const { INDEX_SETTINGS, buildFilter, sqlConditions, hasLink } = require('./searchFilter');
+const { parseSearchQuery } = require('./searchQuery');
 
 const MEILI_HOST = process.env.MEILI_HOST || 'http://localhost:7700';
 const MEILI_API_KEY = process.env.MEILI_API_KEY || '';
@@ -52,9 +53,17 @@ async function selfCheck() {
   }
 }
 
+// The fields every indexed message carries for the search bar's filters (see searchFilter.js).
+function filterFields(createdAt, body, hasFile) {
+  const ms = Date.parse(String(createdAt || '').replace(' ', 'T') + 'Z');
+  return { created_ts: Number.isFinite(ms) ? Math.floor(ms / 1000) : 0, has_file: !!hasFile, has_link: hasLink(body) };
+}
+
 async function indexMessage(message, author, channel, conversation, team) {
   const idx = await getIndex();
+  const attached = await db.prepare('SELECT 1 AS x FROM attachments WHERE message_id = ? LIMIT 1').get(message.id);
   const doc = {
+    ...filterFields(message.created_at, message.body, !!attached),
     id: message.id,
     body: message.body || '',
     author_id: message.user_id,
@@ -96,7 +105,8 @@ async function reindexAll() {
     const rows = await db.prepare(`
       SELECT m.*, u.full_name as author_name,
         c.name as channel_name, c.team_id,
-        dc.name as conversation_name, dc.is_group
+        dc.name as conversation_name, dc.is_group,
+        EXISTS (SELECT 1 FROM attachments a WHERE a.message_id = m.id) AS has_file
       FROM messages m
       LEFT JOIN users u ON u.id = m.user_id
       LEFT JOIN channels c ON c.id = m.channel_id
@@ -108,6 +118,7 @@ async function reindexAll() {
     if (!rows.length) break;
 
     const docs = rows.map(r => ({
+      ...filterFields(r.created_at, r.body, r.has_file),
       id: r.id,
       body: r.body || '',
       author_id: r.user_id,
@@ -241,48 +252,57 @@ async function hydrateMessages(ids, scope) {
   return ids.map(id => byId.get(Number(id))).filter(Boolean);
 }
 
-async function messagesFromMeilisearch(q, scope, limit) {
-  const filter = buildFilter(scope.channelIds, scope.convoIds);
+async function messagesFromMeilisearch(q, scope, limit, extra = {}) {
+  const filter = buildFilter(scope.channelIds, scope.convoIds, {
+    authorIds: extra.authorIds, afterTs: extra.afterTs, beforeTs: extra.beforeTs, hasFile: extra.hasFile, hasLink: extra.hasLink,
+  });
   if (!filter) return [];
   const idx = await getIndex();
-  const result = await withTimeout(idx.search(q, { filter, limit, attributesToRetrieve: ['id'] }), MEILI_TIMEOUT_MS);
+  // Filters with no words (e.g. "from:me has:file"): newest first instead of relevance.
+  const options = { filter, limit, attributesToRetrieve: ['id'] };
+  if (!q) options.sort = ['created_at:desc'];
+  const result = await withTimeout(idx.search(q, options), MEILI_TIMEOUT_MS);
   return hydrateMessages(result.hits.map(h => h.id), scope);
 }
 
 // The search used before Meilisearch: newest first, case-insensitive substring of the body.
-async function messagesFromPostgres(q, scope, limit) {
+async function messagesFromPostgres(q, scope, limit, extra = {}) {
   const parts = [];
   const params = [];
+  const cond = sqlConditions(extra);
+  const more = cond.sql.map((c) => ` AND ${c}`).join('');
   if (scope.channelIds.length) {
     parts.push(`SELECT m.id, m.body, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name, c.name AS channel_name, NULL AS dm_is_group
           FROM messages m LEFT JOIN users u ON u.id = m.user_id LEFT JOIN channels c ON c.id = m.channel_id
-          WHERE m.deleted = 0 AND m.channel_id IN (${placeholders(scope.channelIds.length)}) AND strpos(lower(m.body), lower(?)) > 0`);
-    params.push(...scope.channelIds, q);
+          WHERE m.deleted = 0 AND m.channel_id IN (${placeholders(scope.channelIds.length)}) AND strpos(lower(m.body), lower(?)) > 0${more}`);
+    params.push(...scope.channelIds, q, ...cond.params);
   }
   if (scope.convoIds.length) {
     parts.push(`SELECT m.id, m.body, m.created_at, m.channel_id, m.conversation_id, u.full_name AS author_name, NULL AS channel_name, dc.is_group AS dm_is_group
           FROM messages m LEFT JOIN users u ON u.id = m.user_id LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
-          WHERE m.deleted = 0 AND m.conversation_id IN (${placeholders(scope.convoIds.length)}) AND strpos(lower(m.body), lower(?)) > 0`);
-    params.push(...scope.convoIds, q);
+          WHERE m.deleted = 0 AND m.conversation_id IN (${placeholders(scope.convoIds.length)}) AND strpos(lower(m.body), lower(?)) > 0${more}`);
+    params.push(...scope.convoIds, q, ...cond.params);
   }
   if (!parts.length) return [];
   return db.prepare(`${parts.join(' UNION ALL ')} ORDER BY created_at DESC LIMIT ${Math.max(1, Math.min(Number(limit) || 25, 100))}`).all(...params);
 }
 
-async function filesFromPostgres(q, scope, limit) {
+async function filesFromPostgres(q, scope, limit, extra = {}) {
   const parts = [];
   const params = [];
+  const cond = sqlConditions(extra, { forFiles: true });
+  const more = cond.sql.map((c) => ` AND ${c}`).join('');
   if (scope.channelIds.length) {
     parts.push(`SELECT a.id, a.original_name, a.mime_type, a.created_at, m.channel_id, m.conversation_id, c.name AS channel_name, NULL AS dm_is_group
           FROM attachments a JOIN messages m ON m.id = a.message_id LEFT JOIN channels c ON c.id = m.channel_id
-          WHERE m.deleted = 0 AND m.channel_id IN (${placeholders(scope.channelIds.length)}) AND strpos(lower(a.original_name), lower(?)) > 0`);
-    params.push(...scope.channelIds, q);
+          WHERE m.deleted = 0 AND m.channel_id IN (${placeholders(scope.channelIds.length)}) AND strpos(lower(a.original_name), lower(?)) > 0${more}`);
+    params.push(...scope.channelIds, q, ...cond.params);
   }
   if (scope.convoIds.length) {
     parts.push(`SELECT a.id, a.original_name, a.mime_type, a.created_at, m.channel_id, m.conversation_id, NULL AS channel_name, dc.is_group AS dm_is_group
           FROM attachments a JOIN messages m ON m.id = a.message_id LEFT JOIN dm_conversations dc ON dc.id = m.conversation_id
-          WHERE m.deleted = 0 AND m.conversation_id IN (${placeholders(scope.convoIds.length)}) AND strpos(lower(a.original_name), lower(?)) > 0`);
-    params.push(...scope.convoIds, q);
+          WHERE m.deleted = 0 AND m.conversation_id IN (${placeholders(scope.convoIds.length)}) AND strpos(lower(a.original_name), lower(?)) > 0${more}`);
+    params.push(...scope.convoIds, q, ...cond.params);
   }
   if (!parts.length) return [];
   return db.prepare(`${parts.join(' UNION ALL ')} ORDER BY created_at DESC LIMIT ${Math.max(1, Math.min(Number(limit) || 25, 100))}`).all(...params);
@@ -299,23 +319,98 @@ async function peopleFromPostgres(userId, q) {
   `).all(userId, like, like, like, userId, userId);
 }
 
+// from:<values> -> user ids. "me" is the searcher; otherwise an exact username or full name, or a
+// first name ("from:jane" finds "Jane Doe"), case-insensitive; a leading @ is ignored.
+async function resolvePeople(userId, values) {
+  const found = new Set();
+  const unmatched = [];
+  for (const raw of values) {
+    const v = raw.replace(/^@/, '').trim();
+    if (v.toLowerCase() === 'me') { found.add(Number(userId)); continue; }
+    const rows = await db.prepare(`
+      SELECT id FROM users
+      WHERE lower(username) = lower(?) OR lower(full_name) = lower(?) OR lower(full_name) LIKE lower(?) || ' %'
+    `).all(v, v, v);
+    if (rows.length) rows.forEach((r) => found.add(Number(r.id))); else unmatched.push(raw);
+  }
+  return { ids: [...found], unmatched };
+}
+
+// in:<values> -> the channels and chats they name, ONLY among those the searcher may see.
+// "#name" means a channel, "@name" a chat (with that person, or a group chat called that), and a bare
+// name either one.
+async function resolvePlaces(userId, values, scope) {
+  const channelIds = new Set();
+  const convoIds = new Set();
+  const unmatched = [];
+  for (const raw of values) {
+    const kind = raw.startsWith('#') ? 'channel' : raw.startsWith('@') ? 'chat' : 'any';
+    const v = raw.replace(/^[#@]/, '').trim();
+    let hit = false;
+    if (kind !== 'chat' && scope.channelIds.length) {
+      const rows = await db.prepare(`SELECT id FROM channels WHERE id IN (${placeholders(scope.channelIds.length)}) AND lower(name) = lower(?)`).all(...scope.channelIds, v);
+      rows.forEach((r) => channelIds.add(Number(r.id))); hit = hit || rows.length > 0;
+    }
+    if (kind !== 'channel' && scope.convoIds.length) {
+      const rows = await db.prepare(`
+        SELECT DISTINCT dc.id FROM dm_conversations dc
+        JOIN dm_participants p ON p.conversation_id = dc.id
+        JOIN users u ON u.id = p.user_id
+        WHERE dc.id IN (${placeholders(scope.convoIds.length)})
+          AND (lower(coalesce(dc.name, '')) = lower(?)
+               OR (u.id <> ? AND (lower(u.username) = lower(?) OR lower(u.full_name) = lower(?) OR lower(u.full_name) LIKE lower(?) || ' %')))
+      `).all(...scope.convoIds, v, userId, v, v, v);
+      rows.forEach((r) => convoIds.add(Number(r.id))); hit = hit || rows.length > 0;
+    }
+    if (!hit) unmatched.push(raw);
+  }
+  return { channelIds: [...channelIds], convoIds: [...convoIds], unmatched };
+}
+
+// GET /api/search. Answers { messages, files, people, source, filters, terms, notes }:
+//   filters  the filters understood, as { type, value, label } (shown as chips)
+//   terms    the free-text words, for highlighting
+//   notes    plain-language reasons a filter matched nothing ("No one matches from:bob")
+// options.tz: the browser's Date.getTimezoneOffset(), so dates mean the searcher's own days.
 async function globalSearch(userId, rawQuery, options = {}) {
-  const q = String(rawQuery || '').trim().slice(0, 200);
-  if (!q) return { messages: [], files: [], people: [], source: 'none' };
+  const raw = String(rawQuery || '').trim().slice(0, 200);
+  const tz = Number.parseInt(options.tz, 10);
+  const parsed = parseSearchQuery(raw, { tzOffsetMinutes: Number.isInteger(tz) ? tz : 0 });
+  const empty = { messages: [], files: [], people: [], source: 'none', filters: parsed.applied, terms: parsed.terms, notes: [] };
+  if (!parsed.text && !parsed.hasFilters) return empty;
   const limit = Math.max(1, Math.min(Number(options.limit) || 25, 100));
-  const scope = await visibleScope(userId);
+  let scope = await visibleScope(userId);
+  const notes = [];
+  const extra = {
+    hasFile: parsed.has.file, hasLink: parsed.has.link,
+    afterTs: parsed.after ? parsed.after.ts : undefined, beforeTs: parsed.before ? parsed.before.ts : undefined,
+    afterSql: parsed.after ? parsed.after.sql : undefined, beforeSql: parsed.before ? parsed.before.sql : undefined,
+  };
+  if (parsed.from.length) {
+    const people = await resolvePeople(userId, parsed.from);
+    people.unmatched.forEach((v) => notes.push(`No one matches from:${v}`));
+    extra.authorIds = people.ids;   // [] -> nothing can match
+  }
+  if (parsed.in.length) {
+    const places = await resolvePlaces(userId, parsed.in, scope);
+    places.unmatched.forEach((v) => notes.push(`No channel or chat you can see matches in:${v}`));
+    scope = { channelIds: places.channelIds, convoIds: places.convoIds };
+  }
 
   let messages;
   let source = 'meilisearch';
   try {
-    messages = await messagesFromMeilisearch(q, scope, limit);
+    messages = await messagesFromMeilisearch(parsed.text, scope, limit, extra);
   } catch (e) {
     console.error('Meilisearch search failed, using the database instead:', e.message);
     source = 'postgres';
-    messages = await messagesFromPostgres(q, scope, limit);
+    messages = await messagesFromPostgres(parsed.text, scope, limit, extra);
   }
-  const [files, people] = await Promise.all([filesFromPostgres(q, scope, limit), peopleFromPostgres(userId, q)]);
-  return { messages, files, people, source };
+  // Files: by name, narrowed by from:/in:/dates. has:link is about messages, so no files then.
+  const files = parsed.has.link ? [] : await filesFromPostgres(parsed.text, scope, limit, extra);
+  // People: only for a plain search; filters are about messages and files.
+  const people = parsed.text && !parsed.hasFilters ? await peopleFromPostgres(userId, parsed.text) : [];
+  return { messages, files, people, source, filters: parsed.applied, terms: parsed.terms, notes };
 }
 
 module.exports = {
