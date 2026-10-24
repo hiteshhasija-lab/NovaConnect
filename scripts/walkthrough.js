@@ -708,7 +708,7 @@ async function register(c, username, fullName, password) {
     const blocked = await bob.put(`/api/profile/vips/${carol.user.id}`, {});
     await bob.del(`/api/users/${carol.user.id}/block`);
     must(blocked.status === 404, 'a blocked person became a VIP: ' + blocked.status);
-    const page = await bob.get('/app');
+    const page = await bob.get(`/app/dm/${dm}`);   // (/app itself redirects to a channel)
     must(page.status === 200 && page.text.includes('id="vipModal"') && page.text.includes('/js/vip-rules.js'), 'VIP dialog missing from the app page');
     const off = await bob.del(`/api/profile/vips/${alice.user.id}`);
     return must(off.status === 200 && off.data.length === 0, 'remove: ' + off.text.slice(0, 120));
