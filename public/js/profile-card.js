@@ -3,8 +3,9 @@
 // that's how Teams itself presents it. Fetches fresh from /api/users/:id/profile every open
 // so it always reflects current status/status message, never a stale cached copy.
 window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, onMessage, vip }) {
-  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
+  const STATUS_LABELS = { online: 'Available', away: 'Away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
   let dialog = null;
+  const DEVICE_LABELS = { iphone: 'the iPhone app', desktop: 'the desktop app', mobile: 'a phone browser', web: 'the web' };
   // ' until Fri, Oct 30, 5:00 PM' in this browser's time zone, from the database's UTC text time.
   function untilLabel(until) {
     const d = until ? new Date(String(until).replace(' ', 'T') + 'Z') : null;
@@ -34,6 +35,8 @@ window.createProfileCard = function ({ api, escapeHtml, avatarHtml, presence, on
           '<div><h2>' + escapeHtml(u.full_name) + '</h2>' + (u.title ? '<div class="profile-card-title">' + escapeHtml(u.title) + '</div>' : '') + '</div>' +
         '</div>' +
         '<div class="profile-card-status"><span class="presence-dot presence-' + status + '"></span>' + escapeHtml(label) + '</div>' +
+        // Per-device presence: 'On the web (active) · On the iPhone app (idle)'.
+        ((u.devices || []).length ? '<div class="profile-card-devices">' + u.devices.map(d => escapeHtml('On ' + (DEVICE_LABELS[d.device] || 'the web') + (d.active ? '' : ' (idle)'))).join(' · ') + '</div>' : '') +
         (u.status_message ? '<div class="profile-card-status-message"><i class="bi bi-chat-left-quote"></i> ' + escapeHtml(u.status_message) + '</div>' : '') +
         (u.out_of_office ? '<div class="profile-card-ooo"><i class="bi bi-airplane"></i> <div><strong>Out of office' + escapeHtml(untilLabel(u.out_of_office.until)) + '</strong>' +
           (u.out_of_office.message ? '<div>' + escapeHtml(u.out_of_office.message) + '</div>' : '') + '</div></div>' : '') +

@@ -864,3 +864,6 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .file-version-upload label { display: grid; gap: 0.25rem; font-size: 0.85rem; }
 .file-version-name { overflow-wrap: anywhere; font-size: 0.9rem; }
 .file-version-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+
+/* Per-device presence on the profile card (profile-card.js). */
+.profile-card-devices { font-size: 0.8rem; color: var(--text-muted); margin: -0.4rem 0 0.8rem; }

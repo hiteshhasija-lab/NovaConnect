@@ -3,7 +3,7 @@
   const NC = window.__NC__;
   const AVATAR_PALETTE = ['#0755d9', '#009edb', '#8a651f', '#426960', '#35627c', '#5c6e42', '#725c4d'];
   // The last three are set by the server while you're in a call or sharing (realtime.js).
-  const STATUS_LABELS = { online: 'Available', away: 'Appear away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
+  const STATUS_LABELS = { online: 'Available', away: 'Away', brb: 'Be right back', busy: 'Busy', dnd: 'Do not disturb', offline: 'Appear offline', incall: 'In a call', inmeeting: 'In a meeting', presenting: 'Presenting', ooo: 'Out of office' };
 
   const state = {
     vips: new Set(),
@@ -259,6 +259,19 @@
 
   // ---------------- socket ----------------
   const socket = io({ withCredentials: true });
+  // Per-device presence (src/realtime.js): this device tells the server when it has had no mouse,
+  // keyboard or touch input for 5 minutes, and when it is used again. You show "Away" only when
+  // every device you have open is idle (and only instead of Available).
+  (function reportActivity() {
+    const IDLE_MS = 5 * 60 * 1000;
+    let lastInput = Date.now(), idle = false;
+    const send = () => socket.emit('presence:activity', { idle });
+    const active = () => { lastInput = Date.now(); if (idle) { idle = false; send(); } };
+    ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'focus'].forEach(ev => window.addEventListener(ev, active, { passive: true }));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') active(); });
+    setInterval(() => { if (!idle && Date.now() - lastInput >= IDLE_MS) { idle = true; send(); } }, 30000);
+    socket.on('connect', () => { if (idle) send(); });   // a reconnected socket starts out active on the server
+  })();
   // Calls in 1:1 chats, group chats and channels (all through the SFU); one at a time.
   const groupCalls = window.createNovaGroupCalls(socket, showToastError);
   const meetings = window.createMeetings({ api, currentUser: NC.currentUser, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); if (state.view === 'meet') meetHub.refresh(); api('/api/dm').then(list=>{state.conversations=list;if(state.view==='chat')renderSidebar();}).catch(showToastError); } });

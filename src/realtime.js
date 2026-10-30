@@ -3,12 +3,30 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const { redis } = require('./redis');
 const { db, nowStr } = require('./db');
 const { createGroupCalls } = require('./group-calls');
-const { isOutOfOffice, shownStatus, CALENDAR_BUSY_SQL } = require('./presenceRules');
+const { isOutOfOffice, shownStatus, deviceOf, CALENDAR_BUSY_SQL } = require('./presenceRules');
 
 let io = null;
 let endAllCalls = async () => {}; // set in attach(): ends running calls cleanly on shutdown
 // userId -> Set of live socket ids. A user counts as "online" while this set is non-empty.
 const onlineSockets = new Map();
+// Per-device presence: socket.id -> { userId, device ('web' | 'desktop' | 'iphone' | 'mobile'), idle }.
+// The web and desktop clients say when they go idle (no input for 5 minutes) and come back
+// ('presence:activity'); someone shows Away only when every device they have open is idle.
+const socketInfo = new Map();
+function allIdle(userId) {
+  const ids = [...(onlineSockets.get(userId) || [])];
+  return ids.length > 0 && ids.every(id => socketInfo.get(id)?.idle);
+}
+// Where someone is signed in right now, for their profile card: [{ device, active }], one per kind.
+function devicesOf(userId) {
+  const byDevice = new Map();
+  for (const id of onlineSockets.get(userId) || []) {
+    const info = socketInfo.get(id);
+    if (!info) continue;
+    byDevice.set(info.device, (byDevice.get(info.device) || false) || !info.idle);
+  }
+  return [...byDevice].map(([device, active]) => ({ device, active }));
+}
 const { createPresenceGrace } = require('./presence-grace');
 const presenceGrace = createPresenceGrace({
   isConnected: id => !!onlineSockets.get(id)?.size,
@@ -69,7 +87,7 @@ async function presenceFor(userId, chosen) {
   const meeting = await db.prepare(CALENDAR_BUSY_SQL + ' AND a.user_id = ? LIMIT 1').get(now, now, userId);
   const shown = shownStatus({
     connected: isOnline(userId), chosen: chosen === undefined ? row.presence_preference : chosen,
-    call: callActivity(userId), calendarMeeting: !!meeting, outOfOffice: isOutOfOffice(row, now)
+    call: callActivity(userId), calendarMeeting: !!meeting, outOfOffice: isOutOfOffice(row, now), idle: allIdle(userId)
   });
   return { row, shown };
 }
@@ -101,7 +119,7 @@ async function refreshScheduledPresence() {
     if (!online && !['offline', 'ooo'].includes(row.status)) continue;
     const shown = shownStatus({
       connected: online, chosen: row.presence_preference, call: callActivity(row.id),
-      calendarMeeting: busy.has(row.id), outOfOffice: isOutOfOffice(row, now)
+      calendarMeeting: busy.has(row.id), outOfOffice: isOutOfOffice(row, now), idle: allIdle(row.id)
     });
     await writePresence(row, shown);
   }
@@ -178,6 +196,8 @@ function attach(server, sessionMiddleware) {
       const wasOffline = !onlineSockets.has(userId) || onlineSockets.get(userId).size === 0;
       if (!onlineSockets.has(userId)) onlineSockets.set(userId, new Set());
       onlineSockets.get(userId).add(socket.id);
+      socketInfo.set(socket.id, { userId, device: deviceOf(socket.handshake.headers['user-agent']), idle: false });
+      if (!wasOffline) touchPresence(userId);   // a new active device brings an idle "Away" back
 
       await settledPresence;
       const { channelRooms, dmRooms } = await roomsForUser(userId);
@@ -221,10 +241,20 @@ function attach(server, sessionMiddleware) {
       socket.backgroundPresence = true;
       if (typeof ack === 'function') ack({ ok: true });
     });
+    // Per-device presence: this device went idle (no input for 5 minutes) or came back.
+    socket.on('presence:activity', (payload) => {
+      const info = socketInfo.get(socket.id);
+      const idle = !!(payload && payload.idle === true);
+      if (!info || info.idle === idle) return;
+      info.idle = idle;
+      touchPresence(userId);
+    });
     socket.on('disconnect', () => {
+      socketInfo.delete(socket.id);
       const set = onlineSockets.get(userId);
       if (!set) return;
       set.delete(socket.id);
+      if (set.size > 0) touchPresence(userId);   // the devices left open may all be idle
       if (set.size === 0) presenceGrace.disconnect(userId, socket.backgroundPresence === true,
         err => console.error('offline transition failed:', err.message));
     });
@@ -290,4 +320,4 @@ function disconnectUser(userId) {
   if (io) io.in(`user:${userId}`).disconnectSockets(true);
 }
 
-module.exports = { disconnectUser, resetCallPresence, touchPresence, refreshScheduledPresence, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };
+module.exports = { disconnectUser, resetCallPresence, touchPresence, refreshScheduledPresence, devicesOf, attach, getIO, isOnline, emitToChannel, emitToConversation, emitToUser, resyncUserRooms, shutdownRealtime };

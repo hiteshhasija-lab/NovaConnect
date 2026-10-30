@@ -777,6 +777,40 @@ async function register(c, username, fullName, password) {
     const off = await carol.put('/api/profile/out-of-office', { enabled: false, message: '', start_at: null, end_at: null });
     return must(off.status === 200 && !off.data.enabled, JSON.stringify(off.data));
   });
+  await step('per-device presence: Away only when every open device is idle; a second active device brings Available back; a chosen status wins; the profile card lists devices', async () => {
+    let from = bob.events.length;
+    carol.emit('presence:set', { status: 'reset' });
+    await presenceSeen(carol.user.id, 'online', from);
+    from = bob.events.length;
+    carol.emit('presence:activity', { idle: true });
+    await presenceSeen(carol.user.id, 'away', from);
+    const card = await bob.get(`/api/users/${carol.user.id}/profile`);
+    must(card.data.status === 'away' && card.data.devices.length === 1 && card.data.devices[0].active === false, 'card: ' + JSON.stringify(card.data.devices));
+    const second = new Client('carol2'); second.cookie = carol.cookie;
+    from = bob.events.length;
+    await second.connect();   // another device, in use
+    await presenceSeen(carol.user.id, 'online', from);
+    const both = await bob.get(`/api/users/${carol.user.id}/profile`);
+    must(both.data.devices.some((d) => d.active), 'the active device is not listed: ' + JSON.stringify(both.data.devices));
+    from = bob.events.length;
+    second.emit('presence:activity', { idle: true });
+    await presenceSeen(carol.user.id, 'away', from);
+    from = bob.events.length;
+    carol.emit('presence:set', { status: 'busy' });
+    await presenceSeen(carol.user.id, 'busy', from);   // chosen Busy is not turned into Away
+    from = bob.events.length;
+    carol.emit('presence:set', { status: 'reset' });
+    await presenceSeen(carol.user.id, 'away', from);
+    from = bob.events.length;
+    second.close();
+    carol.emit('presence:activity', { idle: false });
+    await presenceSeen(carol.user.id, 'online', from);
+    carol.emit('presence:set', { status: 'offline' });
+    await sleep(400);
+    const hidden = await bob.get(`/api/users/${carol.user.id}/profile`);
+    carol.emit('presence:set', { status: 'reset' });
+    return must(hidden.data.devices.length === 0, 'Appear offline still lists devices: ' + JSON.stringify(hidden.data.devices));
+  });
   await step('VIP people: add, list, live to your other tabs, private to you, not yourself or someone blocked, remove', async () => {
     must((await bob.get('/api/profile/vips')).data.length === 0, 'a new person already has VIPs');
     const from = bob.events.length;

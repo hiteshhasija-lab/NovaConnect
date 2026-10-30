@@ -65,3 +65,24 @@ test('the out-of-office form: times become UTC text, bad input is refused', () =
   assert.match(parseOutOfOffice({ enabled: true, end_at: '2026-10-22T00:00:00Z' }, now).error, /past/);
   assert.ok(parseOutOfOffice({ enabled: false, end_at: '2026-10-22T00:00:00Z' }, now).value);   // turning it off with an old end is fine
 });
+
+test('every device idle reads Away, but only instead of Available; calls, out of office and the calendar win', () => {
+  const { shownStatus } = require('../src/presenceRules');
+  assert.equal(shownStatus({ connected: true, chosen: null, idle: true }), 'away');
+  assert.equal(shownStatus({ connected: true, chosen: 'online', idle: true }), 'away');
+  for (const chosen of ['busy', 'dnd', 'brb']) assert.equal(shownStatus({ connected: true, chosen, idle: true }), chosen);
+  assert.equal(shownStatus({ connected: true, chosen: null, idle: true, call: 'incall' }), 'incall');
+  assert.equal(shownStatus({ connected: true, chosen: null, idle: true, outOfOffice: true }), 'ooo');
+  assert.equal(shownStatus({ connected: true, chosen: null, idle: true, calendarMeeting: true }), 'inmeeting');
+  assert.equal(shownStatus({ connected: false, idle: true }), 'offline');
+});
+
+test('the kind of device, from the user agent', () => {
+  const { deviceOf } = require('../src/presenceRules');
+  assert.equal(deviceOf('NovaConnectNative/39 CFNetwork/3826.400.120 Darwin/25.0.0'), 'iphone');
+  assert.equal(deviceOf('Mozilla/5.0 (Macintosh) AppleWebKit/537.36 NovaConnect/1.0.0 Chrome/130 Electron/33.0.0 Safari/537.36'), 'desktop');
+  assert.equal(deviceOf('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'), 'mobile');
+  assert.equal(deviceOf('Mozilla/5.0 (Linux; Android 15) Chrome/130 Mobile Safari/537.36'), 'mobile');
+  assert.equal(deviceOf('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15'), 'web');
+  assert.equal(deviceOf(undefined), 'web');
+});

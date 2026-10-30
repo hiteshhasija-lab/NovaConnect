@@ -2,7 +2,7 @@ const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { outOfOfficeSummary, isOutOfOffice, parseOutOfOffice } = require('../presenceRules');
-const { touchPresence, emitToUser } = require('../realtime');
+const { touchPresence, emitToUser, devicesOf } = require('../realtime');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -142,6 +142,8 @@ router.get('/api/users/:id/profile', async (req, res) => {
     user.status_message = null;
   }
   user.out_of_office = outOfOfficeSummary(user, nowStr());
+  // Where they are signed in (per-device presence), unless their status hides that they are on at all.
+  user.devices = ['offline', 'ooo'].includes(user.status) ? [] : devicesOf(targetId);
   for (const k of ['status_message_expires_at', 'ooo_enabled', 'ooo_message', 'ooo_start_at', 'ooo_end_at']) delete user[k];
   res.json(user);
 });

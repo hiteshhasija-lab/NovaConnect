@@ -8,7 +8,9 @@
 //   4. Out of office is on: "Out of office", unless they chose Busy (then Busy).
 //   5. A meeting on their calendar right now (accepted, shown as busy, not all-day): "In a meeting",
 //      but only while their status would otherwise read Available; any status they chose wins.
-//   6. Their chosen status (Available when they never chose one or reset it).
+//   6. Every device they have open is idle (no input for 5 minutes; per-device presence): "Away",
+//      again only instead of Available.
+//   7. Their chosen status (Available when they never chose one or reset it).
 //
 // Times are the database's text format, 'YYYY-MM-DD HH:MM:SS' in UTC, which compares as text.
 
@@ -19,14 +21,26 @@ function isOutOfOffice(row, now) {
   return true;
 }
 
-function shownStatus({ connected, chosen, call = null, calendarMeeting = false, outOfOffice = false }) {
+function shownStatus({ connected, chosen, call = null, calendarMeeting = false, outOfOffice = false, idle = false }) {
   const picked = chosen || 'online';
   if (!connected || picked === 'offline') return outOfOffice ? 'ooo' : 'offline';
   if (picked === 'dnd') return 'dnd';
   if (call) return call;
   if (outOfOffice && picked !== 'busy') return 'ooo';
   if (calendarMeeting && picked === 'online') return 'inmeeting';
+  if (idle && picked === 'online') return 'away';
   return picked;
+}
+
+// Which kind of device a connection comes from, by its browser's user agent: the iPhone app
+// (URLSession sends CFNetwork/Darwin), the desktop app (Electron), a phone's browser, or the web.
+const DEVICE_LABELS = { iphone: 'the iPhone app', desktop: 'the desktop app', mobile: 'a phone browser', web: 'the web' };
+function deviceOf(userAgent) {
+  const ua = String(userAgent || '');
+  if (/CFNetwork|Darwin\//.test(ua) && !/Mozilla/.test(ua)) return 'iphone';
+  if (/Electron\//.test(ua)) return 'desktop';
+  if (/iPhone|iPad|Android|Mobile/.test(ua)) return 'mobile';
+  return 'web';
 }
 
 // What other people are shown about someone's out of office: the message and when it ends, or null
@@ -82,5 +96,5 @@ const CALENDAR_BUSY_SQL = `
     AND (a.response = 'accepted' OR (a.response = 'pending' AND m.request_rsvp = 0))`;
 
 module.exports = {
-  isOutOfOffice, shownStatus, outOfOfficeSummary, participantPresence, PARTICIPANT_PRESENCE_COLUMNS, parseOutOfOffice, OOO_MESSAGE_MAX, CALENDAR_BUSY_SQL
+  isOutOfOffice, shownStatus, deviceOf, DEVICE_LABELS, outOfOfficeSummary, participantPresence, PARTICIPANT_PRESENCE_COLUMNS, parseOutOfOffice, OOO_MESSAGE_MAX, CALENDAR_BUSY_SQL
 };
