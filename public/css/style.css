@@ -849,3 +849,6 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 /* Admin: recall (views/admin-recall.ejs). */
 .recall-table td { vertical-align: top; }
 .recall-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85rem; max-width: 34rem; }
+
+/* Admin: eDiscovery (views/admin-ediscovery*.ejs). */
+.ed-body { white-space: pre-wrap; overflow-wrap: anywhere; }

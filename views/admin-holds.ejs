@@ -2,7 +2,7 @@
 <%- include('partials/topbar') %>
 <div class="container py-4 admin-holds">
   <h1 class="h4"><i class="bi bi-shield-lock me-2"></i>Legal hold</h1>
-  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/recall">Recall messages</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/recall">Recall messages</a> · <a href="/admin/ediscovery">eDiscovery</a> · <a href="/admin/reports">Chat concerns</a></p>
   <p class="text-muted small">While a hold is active, the messages it covers can't be destroyed: message retention skips them, and when someone deletes one it disappears for everyone as usual but a copy is kept here, with its earlier versions and its files. A channel or team with held messages can't be deleted. Nobody is told they are on hold. Placing, releasing and viewing holds is in the <a href="/admin/audit?group=hold">audit log</a>.</p>
 
   <% if (notice) { %><div class="alert alert-success py-2 small" role="status"><%= notice %></div><% } %>

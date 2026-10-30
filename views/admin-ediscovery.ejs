@@ -1,0 +1,36 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4 admin-ediscovery">
+  <h1 class="h4"><i class="bi bi-search me-2"></i>eDiscovery</h1>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/holds">Legal hold</a> · <a href="/admin/recall">Recall messages</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="text-muted small">Open a case for a review, investigation or legal request; give it a search (people, channels, chats, dates, words); preview what it finds, including earlier versions of edited messages and the copies legal hold kept of deleted ones; and export it as CSV or JSON. To stop the messages a case needs from being deleted while it is open, place a <a href="/admin/holds">legal hold</a> too. Everything done here is in the <a href="/admin/audit?group=ediscovery">audit log</a>.</p>
+  <% if (error) { %><div class="alert alert-danger py-2 small" role="alert"><%= error %></div><% } %>
+
+  <div class="card mb-4"><div class="card-body">
+    <h2 class="h6 mb-3">Open a case</h2>
+    <form method="POST" action="/admin/ediscovery" class="row g-3">
+      <div class="col-md-5"><label class="form-label small" for="caseName">Name *</label><input class="form-control form-control-sm" id="caseName" name="name" maxlength="120" required></div>
+      <div class="col-md-5"><label class="form-label small" for="caseDescription">Description</label><input class="form-control form-control-sm" id="caseDescription" name="description" maxlength="2000"></div>
+      <div class="col-md-2 d-flex align-items-end"><button class="btn btn-primary btn-sm" type="submit">Open case</button></div>
+    </form>
+  </div></div>
+
+  <% if (!cases.length) { %><p>No cases yet.</p><% } else { %>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th scope="col">Case</th><th scope="col">Opened</th><th scope="col">Last search</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+      <% cases.forEach(k => { %>
+        <tr class="<%= k.closed_at ? 'text-muted' : '' %>">
+          <td><a href="/admin/ediscovery/<%= k.id %>"><strong><%= k.name %></strong></a><% if (k.description) { %><div class="small text-muted"><%= k.description %></div><% } %></td>
+          <td class="small"><%= k.created_at %> UTC<%= k.created_by_name ? ' by ' + k.created_by_name : '' %></td>
+          <td class="small"><%= k.last_run_at ? k.last_run_at + ' UTC · ' + k.last_count + ' found' : 'not run yet' %></td>
+          <td class="small"><%= k.closed_at ? 'Closed ' + k.closed_at + ' UTC' : 'Open' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

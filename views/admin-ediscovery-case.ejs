@@ -1,0 +1,61 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4 admin-ediscovery-case">
+  <h1 class="h4"><i class="bi bi-search me-2"></i><%= k.name %></h1>
+  <p class="mb-2"><a href="/admin/ediscovery">All cases</a> · <a href="/admin/audit?group=ediscovery">eDiscovery in the audit log</a></p>
+  <p class="small text-muted"><% if (k.description) { %><%= k.description %> · <% } %>Opened <%= k.created_at %> UTC<%= k.created_by_name ? ' by ' + k.created_by_name : '' %><%= k.closed_at ? ' · closed ' + k.closed_at + ' UTC' + (k.closed_by_name ? ' by ' + k.closed_by_name : '') : '' %>. Times are UTC.</p>
+
+  <div class="card mb-4"><div class="card-body">
+    <h2 class="h6 mb-3">Search <span class="text-muted small fw-normal">· <%= describe %></span></h2>
+    <form method="POST" action="/admin/ediscovery/<%= k.id %>/criteria" class="row g-3">
+      <input type="hidden" name="form" value="1">
+      <fieldset class="col-12 row g-3 m-0 p-0" <%= k.closed_at ? 'disabled' : '' %>>
+        <div class="col-md-4">
+          <label class="form-label small" for="edPeople">People (what they wrote, and their chats)</label>
+          <select class="form-select form-select-sm" id="edPeople" name="people" multiple size="6">
+            <% people.forEach(p => { %><option value="<%= p.id %>" <%= c.people.includes(p.id) ? 'selected' : '' %>><%= p.full_name %> (@<%= p.username %>)<%= p.active ? '' : ' · inactive' %></option><% }) %>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small" for="edChannels">Channels</label>
+          <select class="form-select form-select-sm" id="edChannels" name="channels" multiple size="6">
+            <% channels.forEach(ch => { %><option value="<%= ch.id %>" <%= c.channels.includes(ch.id) ? 'selected' : '' %>><%= ch.team || 'Team' %> › #<%= ch.name %></option><% }) %>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small" for="edChats">Chat numbers (comma-separated)</label>
+          <input class="form-control form-control-sm" id="edChats" name="chats" value="<%= c.chats.join(', ') %>" aria-describedby="edChatsHelp">
+          <div class="form-text" id="edChatsHelp">Nothing chosen above means everywhere. Hold Ctrl or ⌘ to pick several.</div>
+          <label class="form-label small mt-2" for="edFrom">From</label><input class="form-control form-control-sm" type="date" id="edFrom" name="from" value="<%= c.from %>">
+          <label class="form-label small mt-2" for="edTo">To</label><input class="form-control form-control-sm" type="date" id="edTo" name="to" value="<%= c.to %>">
+        </div>
+        <div class="col-md-8"><label class="form-label small" for="edWords">Words (all must appear; "quote a phrase")</label><input class="form-control form-control-sm" id="edWords" name="words" maxlength="300" value="<%= c.words %>"></div>
+        <div class="col-md-4 d-flex flex-column justify-content-end">
+          <label class="small"><input type="checkbox" name="include_preserved" <%= c.include_preserved ? 'checked' : '' %>> Copies kept by legal hold</label>
+          <label class="small"><input type="checkbox" name="include_versions" <%= c.include_versions ? 'checked' : '' %>> Earlier versions of edited messages</label>
+        </div>
+        <div class="col-12"><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search me-1"></i>Save and search</button></div>
+      </fieldset>
+    </form>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/ediscovery/<%= k.id %>?run=1"><i class="bi bi-arrow-repeat me-1"></i>Run the search</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/ediscovery/<%= k.id %>/export.csv"><i class="bi bi-filetype-csv me-1"></i>Export CSV</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/ediscovery/<%= k.id %>/export.json"><i class="bi bi-filetype-json me-1"></i>Export JSON</a>
+      <% if (!k.closed_at) { %><form method="POST" action="/admin/ediscovery/<%= k.id %>/close" class="ms-auto"><button class="btn btn-outline-danger btn-sm" type="submit">Close case</button></form><% } %>
+    </div>
+  </div></div>
+
+  <% if (result) { %>
+    <p><strong><%= result.total %></strong> message(s) found: <%= result.live %> live<%= c.include_preserved ? ', ' + result.preserved + ' kept by legal hold' : '' %>. <%= result.total > result.items.length ? 'The newest ' + result.items.length + ' are shown; the export has all of them (up to 50,000).' : '' %></p>
+    <% result.items.forEach(i => { %>
+      <article class="card mb-2 ed-item"><div class="card-body py-2">
+        <div class="small text-muted mb-1"><span class="badge <%= i.source === 'live' ? 'text-bg-secondary' : 'text-bg-warning' %>"><%= i.source === 'live' ? 'Live' : 'Kept by hold (' + i.preserved.reason + ')' %></span> <strong><%= i.author || '—' %></strong> in <%= i.place %><%= i.reply_to ? ' (reply)' : '' %> · <%= i.written_at %> · message #<%= i.message_id %><%= i.edited ? ' · edited' : '' %></div>
+        <% if (i.announcement) { %><div class="fw-semibold"><%= i.announcement.headline %></div><% } %>
+        <div class="ed-body"><%= i.text || '(no text)' %></div>
+        <% if (i.files.length) { %><div class="small mt-1"><% i.files.forEach(f => { %><a href="/admin/ediscovery/<%= k.id %>/files/<%= f.id %>"><i class="bi bi-paperclip"></i> <%= f.name %></a> <% }) %></div><% } %>
+        <% if (i.versions.length) { %><details class="mt-1"><summary class="small">Earlier versions (<%= i.versions.length %>)</summary><% i.versions.forEach(v => { %><div class="small border-start ps-2 mt-1"><span class="text-muted">replaced <%= v.replaced_at %>:</span> <span class="ed-body"><%= v.body %></span></div><% }) %></details><% } %>
+      </div></article>
+    <% }) %>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

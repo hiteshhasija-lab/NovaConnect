@@ -12,6 +12,8 @@ const { removeMessages } = require('../search');
 const legalHold = require('../legalHold');
 const { recallFilters, recallIds } = require('../recall');
 const { deleteForEveryone } = require('../messageDelete');
+const ediscovery = require('../ediscovery');
+const { serveStored } = require('../storage');
 
 const router = createAsyncRouter();
 router.use(requireAuth, requireRole('admin'));
@@ -192,6 +194,94 @@ router.post('/recall', async (req, res) => {
   } });
   if (req.accepts(['html', 'json']) === 'json') return res.json({ removed: msgs.length, preserved: kept.length });
   recallPage(req, res, { notice: `Removed ${msgs.length} message(s) for everyone${kept.length ? `; ${kept.length} on legal hold kept a copy` : ''}.`, q });
+});
+
+// ---------------- eDiscovery ----------------
+// Cases with one search each, previewed and exported (src/ediscovery.js). Everything is audited.
+const caseById = (id) => db.prepare(`
+  SELECT k.*, cu.full_name AS created_by_name, xu.full_name AS closed_by_name FROM ediscovery_cases k
+  LEFT JOIN users cu ON cu.id = k.created_by LEFT JOIN users xu ON xu.id = k.closed_by WHERE k.id = ?
+`).get(Number(id) || 0);
+const criteriaOf = (k) => ediscovery.parseCriteria(JSON.parse(k.criteria || '{}')).value;
+router.get('/ediscovery', async (req, res) => {
+  const cases = await db.prepare(`SELECT k.*, u.full_name AS created_by_name FROM ediscovery_cases k LEFT JOIN users u ON u.id = k.created_by ORDER BY (k.closed_at IS NULL) DESC, k.id DESC`).all();
+  res.render('admin-ediscovery', { title: 'eDiscovery', cases, error: null });
+});
+router.post('/ediscovery', async (req, res) => {
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+  if (!name || name.length > 120 || description.length > 2000) {
+    const cases = await db.prepare('SELECT k.*, NULL AS created_by_name FROM ediscovery_cases k ORDER BY k.id DESC').all();
+    return res.status(400).render('admin-ediscovery', { title: 'eDiscovery', cases, error: 'Give the case a name of up to 120 characters (and a description of up to 2000).' });
+  }
+  const k = await db.prepare('INSERT INTO ediscovery_cases (name, description, criteria, created_by, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id')
+    .get(name, description, JSON.stringify(ediscovery.parseCriteria({}).value), req.session.user.id, nowStr());
+  await audit(req, 'ediscovery.create', { targetType: 'case', targetId: k.id, targetName: name });
+  if (req.accepts(['html', 'json']) === 'json') return res.status(201).json({ id: k.id });
+  res.redirect(`/admin/ediscovery/${k.id}`);
+});
+// The case: its search (editable while open), and with ?run=1 the results (newest 100).
+router.get('/ediscovery/:id', async (req, res) => {
+  const k = await caseById(req.params.id);
+  if (!k) return res.status(404).render('error', { title: 'Not Found', message: 'That case does not exist.' });
+  const c = criteriaOf(k);
+  let result = null;
+  if (req.query.run) {
+    result = await ediscovery.runSearch(c, { limit: 100 });
+    await db.prepare('UPDATE ediscovery_cases SET last_run_at = ?, last_count = ? WHERE id = ?').run(nowStr(), result.total, k.id);
+    await audit(req, 'ediscovery.search', { targetType: 'case', targetId: k.id, targetName: k.name, details: { criteria: ediscovery.describe(c), found: result.total } });
+  }
+  if (req.accepts(['html', 'json']) === 'json') return res.json({ case: { ...k, criteria: c }, result });
+  const people = await db.prepare('SELECT id, full_name, username, active FROM users ORDER BY full_name').all();
+  const channels = await db.prepare('SELECT c.id, c.name, t.name AS team FROM channels c LEFT JOIN teams t ON t.id = c.team_id ORDER BY t.name, c.name').all();
+  res.render('admin-ediscovery-case', { title: 'eDiscovery: ' + k.name, k, c, result, people, channels, describe: ediscovery.describe(c), error: null });
+});
+router.post('/ediscovery/:id/criteria', async (req, res) => {
+  const k = await caseById(req.params.id);
+  if (!k) return res.status(404).json({ error: 'That case does not exist.' });
+  if (k.closed_at) return res.status(409).json({ error: 'This case is closed; its search can no longer change.' });
+  // From the page's form an unticked box isn't sent at all: there, a missing box means off.
+  const body = req.body.form === '1' ? { include_preserved: false, include_versions: false, ...req.body } : req.body;
+  const parsed = ediscovery.parseCriteria(body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  await db.prepare('UPDATE ediscovery_cases SET criteria = ? WHERE id = ?').run(JSON.stringify(parsed.value), k.id);
+  await audit(req, 'ediscovery.criteria', { targetType: 'case', targetId: k.id, targetName: k.name, details: { criteria: ediscovery.describe(parsed.value) } });
+  if (req.accepts(['html', 'json']) === 'json') return res.json({ criteria: parsed.value });
+  res.redirect(`/admin/ediscovery/${k.id}?run=1`);
+});
+// Everything the search finds (up to 50,000 messages), as CSV or JSON.
+router.get('/ediscovery/:id/export.:format(csv|json)', async (req, res) => {
+  const k = await caseById(req.params.id);
+  if (!k) return res.status(404).render('error', { title: 'Not Found', message: 'That case does not exist.' });
+  const c = criteriaOf(k);
+  const result = await ediscovery.runSearch(c, { limit: 50000 });
+  await audit(req, 'ediscovery.export', { targetType: 'case', targetId: k.id, targetName: k.name, details: { format: req.params.format, items: result.items.length, criteria: ediscovery.describe(c) } });
+  const file = `novaconnect-case-${k.id}-${new Date().toISOString().slice(0, 10)}.${req.params.format}`;
+  res.set('Content-Disposition', `attachment; filename="${file}"`);
+  if (req.params.format === 'csv') return res.type('text/csv; charset=utf-8').send(ediscovery.caseCsv(result.items));
+  res.type('application/json').send(JSON.stringify({
+    case: { id: k.id, name: k.name, description: k.description, opened: k.created_at, opened_by: k.created_by_name, closed: k.closed_at },
+    search: { ...c, described: ediscovery.describe(c) }, exported_at: nowStr(), exported_by: req.session.user.full_name || req.session.user.username,
+    counts: { live: result.live, preserved: result.preserved, total: result.total, in_this_file: result.items.length }, items: result.items,
+  }, null, 2));
+});
+// A file of a message the case's search finds (live, or kept by a legal hold).
+router.get('/ediscovery/:id/files/:attachmentId', async (req, res) => {
+  const k = await caseById(req.params.id);
+  const att = await db.prepare('SELECT * FROM attachments WHERE id = ?').get(Number(req.params.attachmentId) || 0);
+  if (!k || !att) return res.status(404).render('error', { title: 'Not Found', message: 'That file is not in this case.' });
+  const inCase = await ediscovery.runSearch({ ...criteriaOf(k), include_preserved: true }, { limit: 1, onlyMessageId: att.message_id });
+  if (!inCase.total) return res.status(404).render('error', { title: 'Not Found', message: 'That file is not in this case.' });
+  await audit(req, 'ediscovery.file', { targetType: 'case', targetId: k.id, targetName: k.name, details: { attachment: att.id, file: att.original_name, message: att.message_id } });
+  await serveStored(req, res, { key: att.storage_key || att.filename, driver: att.storage_driver, name: att.original_name });
+});
+router.post('/ediscovery/:id/close', async (req, res) => {
+  const k = await db.prepare('UPDATE ediscovery_cases SET closed_at = ?, closed_by = ? WHERE id = ? AND closed_at IS NULL RETURNING id, name')
+    .get(nowStr(), req.session.user.id, Number(req.params.id) || 0);
+  if (!k) return res.status(404).json({ error: 'That case is not open.' });
+  await audit(req, 'ediscovery.close', { targetType: 'case', targetId: k.id, targetName: k.name });
+  if (req.accepts(['html', 'json']) === 'json') return res.json({ ok: true });
+  res.redirect(`/admin/ediscovery/${k.id}`);
 });
 
 // ---------------- legal hold ----------------

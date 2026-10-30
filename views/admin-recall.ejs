@@ -2,7 +2,7 @@
 <%- include('partials/topbar') %>
 <div class="container py-4 admin-recall">
   <h1 class="h4"><i class="bi bi-eraser me-2"></i>Recall messages</h1>
-  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/holds">Legal hold</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/holds">Legal hold</a> · <a href="/admin/ediscovery">eDiscovery</a> · <a href="/admin/reports">Chat concerns</a></p>
   <p class="text-muted small">Find messages anywhere and remove them for everyone, for example something posted in the wrong place or shared by mistake. They show as "Removed by an administrator"; messages on legal hold keep a copy for admins. Every search and removal is in the <a href="/admin/audit?group=message">audit log</a> with your reason (never the text). Times are UTC.</p>
 
   <% if (notice) { %><div class="alert alert-success py-2 small" role="status"><%= notice %></div><% } %>

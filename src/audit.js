@@ -34,11 +34,17 @@ const ACTIONS = {
   'audit.export': 'Exported the audit log',
   'webhook.create': 'Made an incoming webhook',
   'webhook.revoke': 'Revoked an incoming webhook',
+  'ediscovery.create': 'Opened an eDiscovery case',
+  'ediscovery.criteria': 'Changed an eDiscovery search',
+  'ediscovery.search': 'Ran an eDiscovery search',
+  'ediscovery.export': 'Exported eDiscovery results',
+  'ediscovery.file': 'Downloaded a file for eDiscovery',
+  'ediscovery.close': 'Closed an eDiscovery case',
   'hold.create': 'Placed a legal hold',
   'hold.release': 'Released a legal hold',
   'hold.view': 'Viewed preserved messages',
 };
-const GROUPS = { auth: 'Sign-in', admin: 'Users', team: 'Teams', channel: 'Channels', message: 'Messages', retention: 'Retention', hold: 'Legal hold', webhook: 'Webhooks', audit: 'Audit log' };
+const GROUPS = { auth: 'Sign-in', admin: 'Users', team: 'Teams', channel: 'Channels', message: 'Messages', retention: 'Retention', hold: 'Legal hold', ediscovery: 'eDiscovery', webhook: 'Webhooks', audit: 'Audit log' };
 
 const clip = (v, n) => (v === null || v === undefined ? null : String(v).slice(0, n));
 

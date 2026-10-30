@@ -934,6 +934,47 @@ async function register(c, username, fullName, password) {
     const log = (await admin.get('/admin/audit.csv?group=message')).text;
     return must(log.includes('message.recall,') && log.includes(`Posted by mistake ${tag}`) && log.includes('message.recall_search'), 'recall not logged with its reason');
   });
+  await step('eDiscovery: a case search finds what a person wrote and their chats, words in earlier versions, hold copies and files; exports CSV/JSON; a closed case cannot change; members refused; logged', async () => {
+    const w = `ediscovery ${tag} budget`;
+    const edited = await alice.post(`/api/channels/${general.id}/messages`, { body: `${w} alpha` });
+    await alice.put(`/api/messages/${edited.data.id}`, { body: `ediscovery ${tag} revised` });   // "budget" only in the earlier version
+    const inChat = await alice.post(`/api/dm/${dm}/messages`, { body: `${w} in chat` });
+    const other = await carol.post(`/api/channels/${general.id}/messages`, { body: `unrelated ${w}` });   // carol: not in the case
+    const fd = new FormData(); fd.append('body', `${w} file`); fd.append('file', new Blob([Buffer.from('case file ' + tag)], { type: 'text/plain' }), 'evidence.txt');
+    const withFile = await alice.req('POST', `/api/channels/${general.id}/messages`, { multipart: fd });
+    const fd2 = new FormData(); fd2.append('body', 'not in the case'); fd2.append('file', new Blob([Buffer.from('nope')], { type: 'text/plain' }), 'other.txt');
+    const outFile = await carol.req('POST', `/api/channels/${general.id}/messages`, { multipart: fd2 });
+    const hold = await admin.req('POST', '/admin/holds', { form: { name: `eDiscovery ${tag}`, scope_type: 'person', person_id: String(bob.user.id) } });
+    const gone = await bob.post(`/api/dm/${dm}/messages`, { body: `${w} secret` });
+    await bob.del(`/api/messages/${gone.data.id}`);   // deleted, but kept by the hold, in alice's chat
+    must((await alice.get('/admin/ediscovery')).status === 403, 'a member opened eDiscovery');
+    const k = await admin.req('POST', '/admin/ediscovery', { form: { name: `Case ${tag}`, description: 'walk-through' } });
+    must(k.status === 201 && k.data.id, 'open: ' + k.text.slice(0, 160));
+    const crit = await admin.post(`/admin/ediscovery/${k.data.id}/criteria`, { people: [alice.user.id], words: w });
+    must(crit.status === 200 && crit.data.criteria.people[0] === alice.user.id, 'criteria: ' + crit.text.slice(0, 160));
+    const run = await admin.get(`/admin/ediscovery/${k.data.id}?run=1`);
+    const r = run.data.result;
+    const found = r.items.map((i) => i.message_id);
+    must(r.live === 3 && r.preserved === 1 && [edited, inChat, withFile, gone].every((m) => found.includes(m.data.id)) && !found.includes(other.data.id), 'results: ' + JSON.stringify(r).slice(0, 400));
+    const e = r.items.find((i) => i.message_id === edited.data.id);
+    must(e.versions.length === 1 && e.versions[0].body === `${w} alpha` && e.text === `ediscovery ${tag} revised`, 'earlier version missing: ' + JSON.stringify(e));
+    must(r.items.find((i) => i.message_id === gone.data.id).source === 'preserved', 'the hold copy is not marked');
+    const f = r.items.find((i) => i.message_id === withFile.data.id).files[0];
+    const dl = await fetch(`${BASE}/admin/ediscovery/${k.data.id}/files/${f.id}`, { headers: { Cookie: admin.cookie } });
+    must(dl.status === 200 && (await dl.text()) === 'case file ' + tag, 'case file download ' + dl.status);
+    const notIn = await fetch(`${BASE}/admin/ediscovery/${k.data.id}/files/${outFile.data.attachments[0].id}`, { headers: { Cookie: admin.cookie }, redirect: 'manual' });
+    must(notIn.status === 404, 'a file outside the case was served: ' + notIn.status);
+    const csv = await admin.get(`/admin/ediscovery/${k.data.id}/export.csv`);
+    must(csv.status === 200 && csv.text.trim().split('\r\n').length === 5 && csv.text.includes(`${w} alpha`), 'csv: ' + csv.text.slice(0, 200));
+    const json = await admin.get(`/admin/ediscovery/${k.data.id}/export.json`);
+    must(json.status === 200 && json.data.counts.total === 4 && json.data.items.length === 4, 'json counts');
+    must((await admin.req('POST', `/admin/ediscovery/${k.data.id}/close`, { form: {} })).status === 200, 'close');
+    must((await admin.post(`/admin/ediscovery/${k.data.id}/criteria`, { words: 'anything' })).status === 409, 'a closed case changed');
+    must((await admin.get(`/admin/ediscovery/${k.data.id}/export.csv`)).status === 200, 'a closed case cannot be exported');
+    await admin.req('POST', `/admin/holds/${hold.data.id}/release`, { form: {} });
+    const log = (await admin.get('/admin/audit.csv?group=ediscovery')).text;
+    return must(['ediscovery.create', 'ediscovery.criteria', 'ediscovery.search', 'ediscovery.export', 'ediscovery.file', 'ediscovery.close'].every((a) => log.includes(a)), 'eDiscovery not fully logged');
+  });
   section = 'AI assistant';
   await step('with no Gemini key the assistant answers gracefully, history and clear work', async () => {
     const r = await alice.post('/api/ai/messages', { body: 'hello assistant' });

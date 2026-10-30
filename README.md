@@ -160,10 +160,11 @@ own backup or versioning, in addition to the database dump.
 - **Message retention** — `/admin/retention`: delete channel messages and chat messages after a chosen period (30 days to 7 years, separately). Off until an admin saves a policy; the page shows how many messages a new policy deletes before it is saved. Runs hourly (or "Run now"); deleted messages take their files, reactions and edit history with them, and cannot be restored except from a database backup taken before.
 - **Legal hold** — `/admin/holds`: hold a person (what they wrote and their chats), a channel or a chat while a case is open. Retention skips held messages; a held message someone deletes disappears for everyone but a copy (with its earlier versions and files) is kept for admins; a channel or team with held messages can't be deleted. Nobody is told; placing, releasing and viewing holds is in the audit log.
 - **Recall messages** — `/admin/recall`: find messages anywhere by person, channel or chat, dates and words, and remove the ticked ones for everyone with a reason. They show as "removed by an administrator"; a message on legal hold keeps a copy. Searches and removals are in the audit log with the reason.
+- **eDiscovery** — `/admin/ediscovery`: open a case, give it a search (people — what they wrote and their chats —, channels, chats, dates, words or "phrases", which also match earlier versions of edited messages), preview what it finds including legal-hold copies of deleted messages, download its files, and export it as CSV or JSON (up to 50,000 messages). A closed case keeps its search read-only. Every case change, search, export and file download is in the audit log.
 
 ## What's not here yet
 
-This is the messaging core, not a full Teams parity build — no group audio/video calls, no meeting conferencing, no third-party app/bot ecosystem, no eDiscovery (there is an audit log, message retention and legal hold). Those are large, separate subsystems in real Teams and weren't in scope for this pass.
+This is the messaging core, not a full Teams parity build — no group audio/video calls, no meeting conferencing, no third-party app/bot ecosystem, no data-loss rules or guest accounts yet (there is an audit log, message retention, legal hold, recall and eDiscovery). Those are large, separate subsystems in real Teams and weren't in scope for this pass.
 
 ## Notes
 
