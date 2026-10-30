@@ -67,19 +67,37 @@ const expiredSql = (scope) => `${SCOPE[scope]} AND m.created_at < ? AND NOT ${PE
 // Files of these messages, then (after the rows are gone) the stored objects nothing else uses.
 async function filesOf(ids) {
   if (!ids.length) return [];
-  return db.prepare(`SELECT id, COALESCE(storage_key, filename) AS key, storage_driver, thumb_key, thumb_driver FROM attachments WHERE message_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  const list = ids.map(() => '?').join(',');
+  // The current files and every earlier version of them (src/fileVersions.js); the rows go with the message.
+  return db.prepare(`
+    SELECT COALESCE(a.storage_key, a.filename) AS key, a.storage_driver, a.thumb_key, a.thumb_driver FROM attachments a WHERE a.message_id IN (${list})
+    UNION ALL
+    SELECT COALESCE(v.storage_key, v.filename), v.storage_driver, v.thumb_key, v.thumb_driver
+    FROM attachment_versions v JOIN attachments a ON a.id = v.attachment_id WHERE a.message_id IN (${list})
+  `).all(...ids, ...ids);
 }
+// After the rows are gone: each stored object (and thumbnail) that no attachment, file version or
+// recording uses any more. (A forwarded copy, or a restored version, shares the same object.)
 async function removeStoredFiles(files) {
   let removed = 0;
+  const seen = new Set();
   for (const f of files) {
-    if (!f.key) continue;
-    const used = await db.prepare(`
-      SELECT 1 FROM attachments WHERE COALESCE(storage_key, filename) = ? UNION ALL SELECT 1 FROM recordings WHERE storage_key = ? LIMIT 1
-    `).get(f.key, f.key);
-    if (used) continue;
-    try { await deleteFile(f.key, f.storage_driver); removed++; } catch (e) { console.error('retention: could not delete a stored file:', e.message); }
-    // Its thumbnail goes with it (a forwarded copy shares both, so the same check covers it).
-    if (f.thumb_key) await deleteFile(f.thumb_key, f.thumb_driver).catch(e => console.error('retention: could not delete a thumbnail:', e.message));
+    if (f.key && !seen.has(f.key)) {
+      seen.add(f.key);
+      const used = await db.prepare(`
+        SELECT 1 FROM attachments WHERE COALESCE(storage_key, filename) = ?
+        UNION ALL SELECT 1 FROM attachment_versions WHERE COALESCE(storage_key, filename) = ?
+        UNION ALL SELECT 1 FROM recordings WHERE storage_key = ? LIMIT 1
+      `).get(f.key, f.key, f.key);
+      if (!used) {
+        try { await deleteFile(f.key, f.storage_driver); removed++; } catch (e) { console.error('retention: could not delete a stored file:', e.message); }
+      }
+    }
+    if (f.thumb_key && !seen.has('thumb:' + f.thumb_key)) {
+      seen.add('thumb:' + f.thumb_key);
+      const used = await db.prepare('SELECT 1 FROM attachments WHERE thumb_key = ? UNION ALL SELECT 1 FROM attachment_versions WHERE thumb_key = ? LIMIT 1').get(f.thumb_key, f.thumb_key);
+      if (!used) await deleteFile(f.thumb_key, f.thumb_driver).catch(e => console.error('retention: could not delete a thumbnail:', e.message));
+    }
   }
   return removed;
 }

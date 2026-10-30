@@ -8,7 +8,8 @@ const { editVersions } = require('../editHistory');
 const { audit } = require('../audit');
 const { deleteForEveryone } = require('../messageDelete');
 const { upload } = require('../upload');
-const { saveAttachment } = require('../attachments');
+const { saveAttachment, storeUpload } = require('../attachments');
+const fileVersions = require('../fileVersions');
 const path = require('path');
 const { handleDecomTrigger } = require('../decomFlow');
 const { indexMessage, updateMessage } = require('../search');
@@ -423,6 +424,78 @@ router.get('/api/attachments/:id/download', async (req, res) => {
   if (!ctx) return res.status(403).render('error', { title: 'Access Denied', message: 'You cannot view this file.' });
   // The driver recorded with the file decides where it is read from, whatever STORAGE_DRIVER says now.
   await serveStored(req, res, { key: att.storage_key || att.filename, driver: att.storage_driver, name: att.original_name });
+});
+
+// ---------------- file versions (src/fileVersions.js) ----------------
+// Anyone who can see the message sees a file's versions and downloads any of them; whoever shared
+// it (or an admin) puts up a new version or restores an old one, and everyone viewing sees the
+// message update live.
+async function attachmentWithAccess(req) {
+  const att = await db.prepare('SELECT * FROM attachments WHERE id = ?').get(Number(req.params.id) || 0);
+  if (!att) return { status: 404, error: 'File not found.' };
+  const ctx = await loadMessageWithAccess(att.message_id, req.session.user.id);
+  if (!ctx) return { status: 403, error: 'You cannot view this file.' };
+  return { att, ctx };
+}
+async function announceFileChange(ctx, req) {
+  const fresh = await db.prepare('SELECT * FROM messages WHERE id = ?').get(ctx.msg.id);
+  const message = await hydrateOne(fresh, req.session.user.id);
+  const event = fresh.parent_message_id ? 'thread:message:update' : 'message:update';
+  if (ctx.channel) emitToChannel(ctx.channel.id, event, message); else emitToConversation(ctx.conversation.id, event, message);
+}
+const versionsAnswer = async (att, req) => ({ attachment: { id: att.id, version_no: att.version_no, can_change: fileVersions.canChange(att, req.session.user) }, versions: await fileVersions.listVersions(att) });
+router.get('/api/attachments/:id/versions', async (req, res) => {
+  const a = await attachmentWithAccess(req);
+  if (a.error) return res.status(a.status).json({ error: a.error });
+  res.json(await versionsAnswer(a.att, req));
+});
+router.post('/api/attachments/:id/versions', (req, res, next) => upload.single('file')(req, res, next), async (req, res) => {
+  const drop = () => req.file && require('fs').promises.unlink(req.file.path).catch(() => {});
+  const a = await attachmentWithAccess(req);
+  if (a.error) { await drop(); return res.status(a.status).json({ error: a.error }); }
+  if (!fileVersions.canChange(a.att, req.session.user)) { await drop(); return res.status(403).json({ error: 'Only the person who shared this file (or an admin) can put up a new version.' }); }
+  if (a.ctx.msg.deleted) { await drop(); return res.status(400).json({ error: 'This message was deleted.' }); }
+  if (!req.file) return res.status(400).json({ error: 'Choose the new version of the file.' });
+  const kept = await db.prepare('SELECT COUNT(*) AS n FROM attachment_versions WHERE attachment_id = ?').get(a.att.id);
+  if (Number(kept.n) >= fileVersions.MAX_VERSIONS - 1) { await drop(); return res.status(400).json({ error: `A file can have up to ${fileVersions.MAX_VERSIONS} versions.` }); }
+  const comment = fileVersions.parseComment(req.body.comment);
+  if (comment.error) { await drop(); return res.status(400).json({ error: comment.error }); }
+  let stored;
+  try { stored = await storeUpload(req.file); } catch (e) {
+    await drop();
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    console.error('Saving a file version failed:', e.message);
+    return res.status(502).json({ error: 'File storage is unavailable. Try again in a moment.' });
+  }
+  const row = await fileVersions.replaceCurrent(a.att.id, fileVersions.fromUpload(req.file, stored), { byUserId: req.session.user.id, comment: comment.value });
+  await announceFileChange(a.ctx, req);
+  res.status(201).json(await versionsAnswer(row, req));
+});
+router.get('/api/attachments/:id/versions/:no/download', async (req, res) => {
+  const a = await attachmentWithAccess(req);
+  if (a.error) return res.status(a.status).render('error', { title: 'Not Found', message: a.error });
+  const no = Number(req.params.no);
+  if (no === a.att.version_no) return res.redirect(`/api/attachments/${a.att.id}/download`);
+  const v = await db.prepare('SELECT * FROM attachment_versions WHERE attachment_id = ? AND version_no = ?').get(a.att.id, Number.isSafeInteger(no) ? no : 0);
+  if (!v) return res.status(404).render('error', { title: 'Not Found', message: 'That version does not exist.' });
+  await serveStored(req, res, { key: v.storage_key || v.filename, driver: v.storage_driver, name: v.original_name });
+});
+// Restoring a version makes it the newest one (nothing is lost: the current one is kept as a version).
+router.post('/api/attachments/:id/versions/:no/restore', async (req, res) => {
+  const a = await attachmentWithAccess(req);
+  if (a.error) return res.status(a.status).json({ error: a.error });
+  if (!fileVersions.canChange(a.att, req.session.user)) return res.status(403).json({ error: 'Only the person who shared this file (or an admin) can restore a version.' });
+  if (a.ctx.msg.deleted) return res.status(400).json({ error: 'This message was deleted.' });
+  const v = await db.prepare('SELECT * FROM attachment_versions WHERE attachment_id = ? AND version_no = ?').get(a.att.id, Number(req.params.no) || 0);
+  if (!v) return res.status(404).json({ error: 'That version does not exist.' });
+  try {
+    const row = await fileVersions.replaceCurrent(a.att.id, fileVersions.fromVersion(v), { byUserId: req.session.user.id, comment: `Restored version ${v.version_no}` });
+    await announceFileChange(a.ctx, req);
+    res.json(await versionsAnswer(row, req));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    throw e;
+  }
 });
 
 // A picture's thumbnail (src/thumbnails.js), for whoever may see its message; the full file when it has

@@ -852,3 +852,15 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 
 /* Admin: eDiscovery (views/admin-ediscovery*.ejs). */
 .ed-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* File versions (workspace.js openFileVersions; src/fileVersions.js). */
+.msg-attachment-wrap { display: inline-flex; align-items: center; gap: 0.3rem; margin-right: 0.4rem; }
+.msg-attachment-wrap-img { display: flex; align-items: flex-end; }
+.file-versions-btn { border: 0; background: none; color: var(--text-muted); font-size: 0.75rem; padding: 0.15rem 0.3rem; border-radius: 0.3rem; cursor: pointer; }
+.file-versions-btn:hover, .file-versions-btn:focus-visible { background: var(--surface-2); color: var(--brand, #3d82d6); }
+.file-versions-dialog { padding: 0; border: 0; border-radius: 14px; width: min(560px, calc(100vw - 32px)); max-height: min(80vh, 640px); background: var(--surface); color: var(--text); }
+.file-versions-dialog::backdrop { background: #0006; }
+.file-version-upload { display: grid; gap: 0.4rem; border: 1px dashed var(--border); border-radius: 0.6rem; padding: 0.6rem 0.75rem; }
+.file-version-upload label { display: grid; gap: 0.25rem; font-size: 0.85rem; }
+.file-version-name { overflow-wrap: anywhere; font-size: 0.9rem; }
+.file-version-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }

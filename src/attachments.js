@@ -22,13 +22,18 @@ async function storeThumbnail(thumb, storedKey) {
 }
 const thumbnailColumns = async (source, storedKey) => storeThumbnail(await makeThumbnail(source), storedKey);
 
-// Throws what uploadFile throws (the route turns it into its answer). The thumbnail is made from the
-// temporary file first (uploading moves it away); for a file that isn't a picture that is a
-// 16-byte read.
-async function saveAttachment(file, messageId, userId) {
+// An uploaded file stored, with its thumbnail when it is a picture: { stored, t } (t: thumbnail columns).
+// Throws what uploadFile throws. The thumbnail is made from the temporary file first (uploading moves
+// it away); for a file that isn't a picture that is a 16-byte read.
+async function storeUpload(file) {
   const thumb = await makeThumbnail(file.path);
   const stored = await uploadFile(file);
-  const t = await storeThumbnail(thumb, stored.key);
+  return { stored, t: await storeThumbnail(thumb, stored.key) };
+}
+
+// A new message's file. Throws what uploadFile throws (the route turns it into its answer).
+async function saveAttachment(file, messageId, userId) {
+  const { stored, t } = await storeUpload(file);
   await db.prepare(`
     INSERT INTO attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key,
       thumb_key, thumb_driver, thumb_mime, image_width, image_height, thumb_state)
@@ -70,4 +75,4 @@ async function backfillThumbnails({ batch = 20 } = {}) {
   return made;
 }
 
-module.exports = { saveAttachment, backfillThumbnails };
+module.exports = { saveAttachment, storeUpload, backfillThumbnails };

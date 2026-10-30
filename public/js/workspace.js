@@ -1040,6 +1040,12 @@
     return el('<div class="msg-row-system" data-id="' + msg.id + '"><span>' + escapeHtml(msg.body) + '</span></div>');
   }
 
+  // File versions (src/fileVersions.js): "v3" once a file has been replaced; the button opens its versions.
+  function versionsButtonHtml(a) {
+    const n = Number(a.version_no) || 1;
+    return '<button type="button" class="file-versions-btn" data-attachment-id="' + a.id + '" title="Versions" aria-label="Versions of ' + escapeHtml(a.original_name) + '">' +
+      '<i class="bi bi-clock-history" aria-hidden="true"></i>' + (n > 1 ? ' v' + n : '') + '</button>';
+  }
   // A picture shows its thumbnail (src/thumbnails.js; the full file when it has none), sized from the
   // original so nothing jumps as it loads; clicking opens the full picture (openImageViewer).
   function attachmentHtml(a) {
@@ -1049,10 +1055,10 @@
       const src = (a.has_thumbnail || a.thumb_key) ? '/api/attachments/' + a.id + '/thumbnail' : url;
       const w = Number(a.image_width), h = Number(a.image_height);
       const size = w > 0 && h > 0 ? ' width="' + w + '" height="' + h + '"' : '';
-      return '<button type="button" class="msg-image-btn" data-full="' + url + '" data-name="' + escapeHtml(a.original_name) + '" aria-label="Open ' + escapeHtml(a.original_name) + '">' +
-        '<img class="msg-attachment-img" src="' + src + '"' + size + ' loading="lazy" decoding="async" alt="' + escapeHtml(a.original_name) + '"></button>';
+      return '<span class="msg-attachment-wrap msg-attachment-wrap-img"><button type="button" class="msg-image-btn" data-full="' + url + '" data-name="' + escapeHtml(a.original_name) + '" aria-label="Open ' + escapeHtml(a.original_name) + '">' +
+        '<img class="msg-attachment-img" src="' + src + '"' + size + ' loading="lazy" decoding="async" alt="' + escapeHtml(a.original_name) + '"></button>' + versionsButtonHtml(a) + '</span>';
     }
-    return '<a class="msg-attachment" href="' + url + '"><i class="bi bi-file-earmark-arrow-down"></i>' + escapeHtml(a.original_name) + '</a>';
+    return '<span class="msg-attachment-wrap"><a class="msg-attachment" href="' + url + '"><i class="bi bi-file-earmark-arrow-down"></i>' + escapeHtml(a.original_name) + '</a>' + versionsButtonHtml(a) + '</span>';
   }
 
   function reactionsHtml(msg) {
@@ -1195,7 +1201,59 @@
     dialog.addEventListener('close', () => dialog.remove());
     dialog.showModal();
   }
+  // A file's versions: each one downloadable; whoever shared it (or an admin) uploads a new version
+  // or restores an old one, and the message updates for everyone.
+  async function openFileVersions(attachmentId) {
+    document.querySelectorAll('.file-versions-dialog').forEach(d => d.close());
+    const dialog = document.createElement('dialog');
+    dialog.className = 'file-versions-dialog';
+    dialog.setAttribute('aria-labelledby', 'fileVersionsTitle');
+    dialog.innerHTML = '<div class="edit-history-head"><h2 id="fileVersionsTitle">Versions</h2><button type="button" class="profile-card-close" aria-label="Close">×</button></div><div class="edit-history-body">Loading…</div>';
+    document.body.appendChild(dialog);
+    dialog.querySelector('.profile-card-close').onclick = () => dialog.close();
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.showModal();
+    const body = dialog.querySelector('.edit-history-body');
+    const when = (t) => t ? toDate(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const kb = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB';
+    function draw({ attachment, versions }) {
+      body.innerHTML = '';
+      if (attachment.can_change) {
+        const form = el('<form class="file-version-upload"><label>Upload a new version<input type="file" name="file" required></label><input type="text" name="comment" maxlength="200" placeholder="What changed? (optional)" aria-label="What changed"><button type="submit" class="btn btn-sm btn-primary">Upload</button><p class="text-muted small mb-0" role="status"></p></form>');
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const status = form.querySelector('[role=status]'), btn = form.querySelector('button');
+          const fd = new FormData(); fd.append('file', form.file.files[0]); fd.append('comment', form.comment.value);
+          btn.disabled = true; status.textContent = 'Uploading…';
+          try { draw(await api('/api/attachments/' + attachment.id + '/versions', { method: 'POST', body: fd })); } catch (err) { status.textContent = err.message; btn.disabled = false; }
+        });
+        body.appendChild(form);
+      }
+      versions.forEach(v => {
+        const row = el('<section class="edit-history-version' + (v.current ? ' current' : '') + '"><div class="edit-history-meta"></div><div class="file-version-name"></div><div class="file-version-actions"></div></section>');
+        row.querySelector('.edit-history-meta').textContent = 'Version ' + v.version_no + (v.current ? ' (current)' : '') + ' · ' + (v.uploaded_by_name || 'Unknown') + ' · ' + when(v.uploaded_at);
+        row.querySelector('.file-version-name').textContent = v.original_name + ' · ' + kb(v.size) + (v.comment ? ' — ' + v.comment : '');
+        const actions = row.querySelector('.file-version-actions');
+        const dl = el('<a class="btn btn-sm btn-outline-secondary" download><i class="bi bi-download"></i> Download</a>');
+        dl.href = '/api/attachments/' + attachment.id + '/versions/' + v.version_no + '/download';
+        actions.appendChild(dl);
+        if (attachment.can_change && !v.current) {
+          const restore = el('<button type="button" class="btn btn-sm btn-outline-secondary">Restore</button>');
+          restore.addEventListener('click', async () => {
+            if (!confirm('Make version ' + v.version_no + ' the current one? The current version is kept.')) return;
+            try { draw(await api('/api/attachments/' + attachment.id + '/versions/' + v.version_no + '/restore', { method: 'POST' })); } catch (err) { showToastError(err); }
+          });
+          actions.appendChild(restore);
+        }
+        body.appendChild(row);
+      });
+    }
+    try { draw(await api('/api/attachments/' + attachmentId + '/versions')); } catch (e) { body.textContent = e.message || 'Could not load the versions.'; }
+  }
   document.addEventListener('click', (e) => {
+    const vb = e.target.closest('.file-versions-btn');
+    if (vb) { e.preventDefault(); openFileVersions(vb.dataset.attachmentId); return; }
     const btn = e.target.closest('.msg-image-btn');
     if (btn) { e.preventDefault(); openImageViewer(btn.dataset.full, btn.dataset.name || 'Picture'); }
   });

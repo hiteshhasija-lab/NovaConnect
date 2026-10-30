@@ -579,6 +579,34 @@ async function register(c, username, fullName, password) {
     const log = (await admin.get('/admin/audit.csv?group=webhook')).text;
     return must(log.includes('webhook.create') && log.includes('webhook.revoke') && !log.includes(hookPath.split('/').pop()), 'webhook audit entries missing, or the secret in the log');
   });
+  await step('file versions: whoever shared a file puts up a new version (live "v2"), every version downloads, restoring keeps the current one, others and outsiders cannot change it', async () => {
+    const up = async (who, url, name, text) => { const fd = new FormData(); fd.append('body', ''); fd.append('file', new Blob([Buffer.from(text)], { type: 'text/plain' }), name); return who.req('POST', url, { multipart: fd }); };
+    const posted = await up(alice, `/api/channels/${general.id}/messages`, 'plan.txt', `plan v1 ${tag}`);
+    must(posted.status === 201, 'upload ' + posted.status);
+    const att = posted.data.attachments[0];
+    must(att.version_no === 1, 'a new file is not version 1: ' + att.version_no);
+    const seen = await bob.get(`/api/attachments/${att.id}/versions`);
+    must(seen.status === 200 && seen.data.versions.length === 1 && seen.data.attachment.can_change === false, 'bob\'s view: ' + seen.text.slice(0, 160));
+    const newVersion = async (who, text, comment) => { const fd = new FormData(); fd.append('comment', comment || ''); fd.append('file', new Blob([Buffer.from(text)], { type: 'text/plain' }), 'plan.txt'); return who.req('POST', `/api/attachments/${att.id}/versions`, { multipart: fd }); };
+    must((await newVersion(bob, 'hijack')).status === 403, 'someone else put up a version');
+    const from = bob.events.length;
+    const v2 = await newVersion(alice, `plan v2 ${tag}`, 'Updated numbers');
+    must(v2.status === 201 && v2.data.attachment.version_no === 2 && v2.data.versions.length === 2 && v2.data.versions[0].comment === 'Updated numbers', 'v2: ' + v2.text.slice(0, 200));
+    let ev = null;
+    for (let i = 0; i < 100 && !ev; i++) { ev = bob.events.slice(from).find((e) => e.name === 'message:update' && e.payload.id === posted.data.id); if (!ev) await sleep(50); }
+    must(ev && ev.payload.attachments[0].version_no === 2, 'no live update with v2');
+    const get = async (path) => { const r = await fetch(BASE + path, { headers: { Cookie: carol.cookie } }); return r.status === 200 ? await r.text() : 'HTTP ' + r.status; };
+    must((await get(`/api/attachments/${att.id}/download`)) === `plan v2 ${tag}`, 'current is not v2');
+    must((await get(`/api/attachments/${att.id}/versions/1/download`)) === `plan v1 ${tag}`, 'version 1 is not downloadable');
+    must((await alice.post(`/api/attachments/${att.id}/versions/9/restore`)).status === 404, 'restored a version that does not exist');
+    const back = await alice.post(`/api/attachments/${att.id}/versions/1/restore`);
+    must(back.status === 200 && back.data.attachment.version_no === 3 && back.data.versions.length === 3 && back.data.versions[0].comment === 'Restored version 1', 'restore: ' + back.text.slice(0, 200));
+    must((await get(`/api/attachments/${att.id}/download`)) === `plan v1 ${tag}` && (await get(`/api/attachments/${att.id}/versions/2/download`)) === `plan v2 ${tag}`, 'after the restore');
+    const priv = await up(alice, `/api/dm/${dm}/messages`, 'private.txt', 'just us');
+    must((await carol.get(`/api/attachments/${priv.data.attachments[0].id}/versions`)).status === 403, 'someone outside the chat saw its file versions');
+    await alice.del(`/api/messages/${posted.data.id}`);
+    return must((await newVersion(alice, 'too late')).status === 400, 'a deleted message took a new version');
+  });
   await step('schedule a message; list it; cancel it', async () => {
     const at = new Date(Date.now() + 5 * 60000).toISOString().slice(0, 19).replace('T', ' ');
     const r = await alice.post(`/api/channels/${general.id}/messages/schedule`, { body: 'later', send_at: at });

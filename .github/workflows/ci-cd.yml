@@ -215,7 +215,10 @@ jobs:
           old_chat=$(ins null $convo 'old chat' null null "$old")
           att() { sql "insert into attachments (message_id, filename, original_name, mime_type, size, uploaded_by, storage_driver, storage_key) values ($1, '$2', 'x.txt', 'text/plain', 2, $uid, 'local', '$2') returning id" > /dev/null; }
           att $old_post ci-ret-only; att $old_post ci-ret-shared; att $new_post ci-ret-shared
-          docker compose exec -T novaconnect sh -c 'd="${LOCAL_UPLOAD_ROOT:-/app/data/uploads}"; mkdir -p "$d"; echo x > "$d/ci-ret-only"; echo x > "$d/ci-ret-shared"' < /dev/null
+          # An earlier version of the expiring file (file versions) goes with it.
+          only_att=$(sql "select id from attachments where storage_key = 'ci-ret-only'")
+          sql "insert into attachment_versions (attachment_id, version_no, filename, storage_key, storage_driver, original_name, uploaded_at) values ($only_att, 1, 'ci-ret-v1', 'ci-ret-v1', 'local', 'x.txt', $now)" > /dev/null
+          docker compose exec -T novaconnect sh -c 'd="${LOCAL_UPLOAD_ROOT:-/app/data/uploads}"; mkdir -p "$d"; echo x > "$d/ci-ret-only"; echo x > "$d/ci-ret-shared"; echo x > "$d/ci-ret-v1"' < /dev/null
           stored() { docker compose exec -T novaconnect sh -c "test -f \"\${LOCAL_UPLOAD_ROOT:-/app/data/uploads}/$1\" && echo yes || echo no" < /dev/null; }
           curl -s -o /dev/null -c cookies.txt -H 'Content-Type: application/json' \
             -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" http://localhost:8080/api/mobile/login
@@ -227,6 +230,8 @@ jobs:
           test "$(sql "select count(*) from messages where id in ($new_post, $new_reply, $card, $old_chat)")" = 4
           test "$(sql "select deleted || ':' || body from messages where id = $thread")" = "1:"
           test "$(stored ci-ret-only)" = no
+          test "$(stored ci-ret-v1)" = no
+          test "$(sql "select count(*) from attachment_versions where storage_key = 'ci-ret-v1'")" = 0
           test "$(stored ci-ret-shared)" = yes
           test "$(sql "select count(*) from attachments where storage_key = 'ci-ret-shared'")" = 1
           test "$(policy 365 30)" = 200
