@@ -185,6 +185,8 @@ app.use((req, res, next) => {
 // this first, ahead of all of them, is simpler and safer than auditing/fixing every other
 // router's mount path individually.
 app.use('/api/integrations', globalLimiter, integrationsInRoutes);
+// Incoming webhooks: session-less like the line above, the URL's secret is the credential.
+app.use('/hooks', globalLimiter, require('./routes/webhooksIn'));
 
 // CSP violation reports from browsers (the policy's report-uri). Sent without a session, so it sits
 // before the session and auth like the integration routes. Each distinct violation is logged at most
@@ -255,6 +257,7 @@ app.use('/app', appRoutes);
 app.use('/', require('./routes/membership'));
 app.use('/', teamRoutes);
 app.use('/', messageRoutes);
+app.use('/', require('./routes/webhooks'));
 app.use('/', dmRoutes);
 app.use('/', userRoutes);
 app.use('/', require('./routes/search'));

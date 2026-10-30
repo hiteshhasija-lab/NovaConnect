@@ -549,6 +549,36 @@ async function register(c, username, fullName, password) {
     const inChat = await alice.post(`/api/dm/${dm}/messages`, { body: 'hi', announcement_headline: 'Not here' });
     return must(inChat.status === 201 && !(inChat.data.metadata && inChat.data.metadata.announcement), 'a chat message became an announcement: ' + inChat.text.slice(0, 160));
   });
+  await step('incoming webhooks: an owner makes one, anyone with the address posts (live, named, badged), wrong or revoked addresses get 404, members cannot manage, logged without the secret', async () => {
+    must((await bob.get(`/api/channels/${general.id}/webhooks`)).status === 403, 'a member listed webhooks');
+    must((await bob.post(`/api/channels/${general.id}/webhooks`, { name: 'x' })).status === 403, 'a member made a webhook');
+    must((await alice.post(`/api/channels/${general.id}/webhooks`, { name: '' })).status === 400, 'a webhook without a name');
+    const made = await alice.post(`/api/channels/${general.id}/webhooks`, { name: `Alerts ${tag}` });
+    must(made.status === 201 && /\/hooks\/\d+\/[A-Za-z0-9_-]{32}$/.test(made.data.url) && made.data.webhooks.some((w) => w.name === `Alerts ${tag}`), 'make: ' + made.text.slice(0, 200));
+    must(!JSON.stringify(made.data.webhooks).includes(made.data.url.split('/').pop()), 'the list repeats the secret');
+    const hookPath = new URL(made.data.url).pathname;
+    const send = (p, payload) => fetch(BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const from = bob.events.length;
+    const ok = await send(hookPath, { title: 'Disk alert', text: `PRD-WEB01 at 91% ${tag}` });
+    const okBody = await ok.json();
+    must(ok.status === 200 && okBody.ok && okBody.message_id, `post ${ok.status} ${JSON.stringify(okBody)}`);
+    let ev = null;
+    for (let i = 0; i < 100 && !ev; i++) { ev = bob.events.slice(from).find((e) => e.name === 'message:new' && e.payload.id === okBody.message_id); if (!ev) await sleep(50); }
+    must(ev && ev.payload.author.full_name === `Alerts ${tag}` && ev.payload.author.is_webhook && ev.payload.body === `**Disk alert**\nPRD-WEB01 at 91% ${tag}`, 'live message: ' + JSON.stringify(ev && ev.payload).slice(0, 300));
+    const wrong = hookPath.replace(/[A-Za-z0-9_-]{4}$/, 'XXXX');
+    must((await send(wrong, { text: 'sneaky' })).status === 404, 'a wrong secret was accepted');
+    must((await send('/hooks/999999999/' + 'a'.repeat(32), { text: 'x' })).status === 404, 'an unknown webhook answered');
+    must((await fetch(BASE + hookPath)).status === 404, 'a GET to a webhook answered');
+    must((await send(hookPath, { nothing: true })).status === 400, 'an empty payload was posted');
+    const list = await alice.get(`/api/channels/${general.id}/webhooks`);
+    const w = list.data.find((x) => x.id === made.data.id);
+    must(w && w.use_count === 1 && w.last_used_at, 'use not counted: ' + JSON.stringify(w));
+    const revoked = await alice.del(`/api/channels/${general.id}/webhooks/${made.data.id}`);
+    must(revoked.status === 200 && !revoked.data.some((x) => x.id === made.data.id), 'revoke ' + revoked.status);
+    must((await send(hookPath, { text: 'after revoke' })).status === 404, 'a revoked webhook still posts');
+    const log = (await admin.get('/admin/audit.csv?group=webhook')).text;
+    return must(log.includes('webhook.create') && log.includes('webhook.revoke') && !log.includes(hookPath.split('/').pop()), 'webhook audit entries missing, or the secret in the log');
+  });
   await step('schedule a message; list it; cancel it', async () => {
     const at = new Date(Date.now() + 5 * 60000).toISOString().slice(0, 19).replace('T', ' ');
     const r = await alice.post(`/api/channels/${general.id}/messages/schedule`, { body: 'later', send_at: at });

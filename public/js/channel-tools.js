@@ -94,12 +94,46 @@ window.createChannelTools = function({api,escapeHtml,notify,navigate,events,pres
       });
     } catch(e){notify(e)}
   }
+  // Incoming webhooks (src/routes/webhooks.js): a secret URL other systems post to. Team owners and
+  // admins make and revoke them; the URL is shown once, when it is made.
+  async function webhooks(channel) {
+    let list;
+    try { list=await api('/api/channels/'+channel.id+'/webhooks'); } catch(e) { notify(e); return; }
+    const d=dialog('Incoming webhooks · #'+channel.name,'<p class="settings-info">Other systems (monitoring, builds, alerts) can post into this channel by sending JSON such as <code>{"text":"Disk 90% full on PRD-WEB01","title":"Alert"}</code> to a webhook\'s address. Posts show the webhook\'s name as their author. Keep the address secret: anyone who has it can post.</p><form class="webhook-add"><label>Name<input name="name" required maxlength="80" placeholder="e.g. Zabbix alerts"></label><button type="submit">Create webhook</button></form><div class="webhook-new" hidden></div><div class="webhook-list"></div>');
+    const box=d.querySelector('.webhook-list'),fresh=d.querySelector('.webhook-new'),form=d.querySelector('form');
+    const when=t=>t?new Date(t.replace(' ','T')+'Z').toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'never';
+    function draw() {
+      box.replaceChildren();
+      if(!list.length){const p=document.createElement('p');p.className='settings-info';p.textContent='No webhooks yet.';box.append(p);return;}
+      list.forEach(w=>{
+        const row=document.createElement('div');row.className='webhook-row';
+        const info=document.createElement('div');const name=document.createElement('strong');name.textContent=w.name;
+        const meta=document.createElement('small');meta.textContent='Made by '+(w.created_by_name||'someone')+' · last post '+when(w.last_used_at)+' · '+w.use_count+' post(s)';
+        info.append(name,document.createElement('br'),meta);
+        const revoke=document.createElement('button');revoke.type='button';revoke.textContent='Revoke';revoke.setAttribute('aria-label','Revoke '+w.name);
+        revoke.onclick=async()=>{if(!confirm('Revoke "'+w.name+'"? Whatever posts to it will start getting "No such webhook".'))return;try{list=await api('/api/channels/'+channel.id+'/webhooks/'+w.id,{method:'DELETE'});draw();}catch(e){notify(e);}};
+        row.append(info,revoke);box.append(row);
+      });
+    }
+    form.onsubmit=async e=>{
+      e.preventDefault();const btn=form.querySelector('button');btn.disabled=true;
+      try{
+        const made=await api('/api/channels/'+channel.id+'/webhooks',{method:'POST',body:{name:form.name.value}});
+        list=made.webhooks;draw();form.reset();
+        fresh.innerHTML='<p><strong></strong> is ready. Copy its address now: it won\'t be shown again.</p><input readonly aria-label="Webhook address"><button type="button">Copy</button>';
+        fresh.querySelector('strong').textContent=made.name;const input=fresh.querySelector('input');input.value=made.url;fresh.hidden=false;input.select();
+        fresh.querySelector('button').onclick=async()=>{try{await navigator.clipboard.writeText(made.url);fresh.querySelector('button').textContent='Copied';}catch{input.select();}};
+      }catch(err){notify(err);}finally{btn.disabled=false;}
+    };
+    draw();
+  }
   function header(container,channel,onTab) {
-    container.innerHTML='<div class="channel-heading"><svg class="channel-tag" viewBox="0 0 32 32" aria-hidden="true"><path fill="#ffbf45" d="M2 17 17 2l12 1 1 12-15 15z"/><circle cx="23" cy="9" r="3" fill="white"/></svg><strong>'+esc(channel.name)+'</strong></div><nav class="channel-tabs" aria-label="Channel tabs">'+['Posts','Files','Photos'].map((t,i)=>'<button type="button" class="'+(!i?'selected':'')+'" aria-pressed="'+(!i)+'">'+t+'</button>').join('')+'</nav><div class="channel-header-actions"><button type="button" data-action="events"><i class="bi bi-calendar3"></i> Events</button><button type="button" data-action="pins" title="Pinned messages" aria-label="Pinned messages"><i class="bi bi-pin-angle"></i></button><button type="button" data-action="members" title="Add members or owners" aria-label="Add members or owners">'+peopleSvg+'</button><button type="button" data-action="notify"></button><button type="button" data-action="link" title="Copy channel link" aria-label="Copy channel link"><i class="bi bi-link-45deg"></i></button><button type="button" data-action="settings" title="Channel settings" aria-label="Channel settings"><i class="bi bi-gear"></i></button></div>';
+    container.innerHTML='<div class="channel-heading"><svg class="channel-tag" viewBox="0 0 32 32" aria-hidden="true"><path fill="#ffbf45" d="M2 17 17 2l12 1 1 12-15 15z"/><circle cx="23" cy="9" r="3" fill="white"/></svg><strong>'+esc(channel.name)+'</strong></div><nav class="channel-tabs" aria-label="Channel tabs">'+['Posts','Files','Photos'].map((t,i)=>'<button type="button" class="'+(!i?'selected':'')+'" aria-pressed="'+(!i)+'">'+t+'</button>').join('')+'</nav><div class="channel-header-actions"><button type="button" data-action="events"><i class="bi bi-calendar3"></i> Events</button><button type="button" data-action="pins" title="Pinned messages" aria-label="Pinned messages"><i class="bi bi-pin-angle"></i></button><button type="button" data-action="members" title="Add members or owners" aria-label="Add members or owners">'+peopleSvg+'</button><button type="button" data-action="notify"></button><button type="button" data-action="link" title="Copy channel link" aria-label="Copy channel link"><i class="bi bi-link-45deg"></i></button><button type="button" data-action="webhooks" title="Incoming webhooks" aria-label="Incoming webhooks"><i class="bi bi-plug"></i></button><button type="button" data-action="settings" title="Channel settings" aria-label="Channel settings"><i class="bi bi-gear"></i></button></div>';
     container.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{container.querySelectorAll('nav button').forEach(x=>{x.classList.toggle('selected',x===b);x.setAttribute('aria-pressed',String(x===b))});onTab(b.textContent.toLowerCase())});
     container.querySelector('[data-action=members]').onclick=()=>members('channels',channel.id);
     container.querySelector('[data-action=events]').onclick=()=>events(channel.team_id);
     container.querySelector('[data-action=pins]').onclick=()=>pinned(channel);
+    container.querySelector('[data-action=webhooks]').onclick=()=>webhooks(channel);
     // Channel notifications: All / Mentions only / Off (notify-settings.js).
     const bell=container.querySelector('[data-action=notify]');
     const paintBell=()=>{const level=channel.notify_level||'all';bell.innerHTML='<i class="bi bi-'+NovaNotify.icon(level)+'" aria-hidden="true"></i>';bell.title='Channel notifications: '+NovaNotify.label(level);bell.setAttribute('aria-label',bell.title)};

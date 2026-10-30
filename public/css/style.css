@@ -837,3 +837,11 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .meeting-conflicts ul { margin: 0.3rem 0; padding-left: 1.1rem; }
 .meeting-conflicts .bi { color: #c07a12; }
 .meeting-conflicts small { color: var(--text-muted); }
+
+/* Incoming webhooks (channel-tools.js webhooks dialog; posts get a badge in workspace.js). */
+.msg-webhook-badge { font-size: 0.68rem; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.4rem; margin-left: 0.35rem; }
+.webhook-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid var(--border); }
+.webhook-row small { color: var(--text-muted); }
+.webhook-new { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem; margin: 0.6rem 0; display: grid; gap: 0.4rem; }
+.webhook-new input { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+.webhook-add { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }

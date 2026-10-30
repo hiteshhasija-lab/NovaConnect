@@ -1075,7 +1075,9 @@
       '<div class="msg-row ' + (grouped ? 'grouped ' : '') + (!isThreadReply ? 'dm-bubble ' : '') + (Number(msg.author.id) === Number(NC.currentUser.id) ? 'msg-own' : 'msg-other') + '" data-id="' + msg.id + '">' +
         (grouped ? '<div class="msg-time-inline">' + fmtTime(msg.created_at) + '</div>' : '<div class="msg-avatar-slot msg-avatar-btn" role="button" tabindex="0">' + avatarHtml(msg.author) + '</div>') +
         '<div class="msg-body-col">' +
-          (grouped ? '' : '<div class="msg-meta"><span class="msg-author msg-author-btn" role="button" tabindex="0">' + escapeHtml(msg.author.full_name) + '</span><span class="msg-time">' + fmtTime(msg.created_at) + '</span></div>') +
+          (grouped ? '' : '<div class="msg-meta"><span class="msg-author msg-author-btn" role="button" tabindex="0">' + escapeHtml(msg.author.full_name) + '</span>' +
+            (msg.author.is_webhook ? '<span class="msg-webhook-badge" title="Posted by an incoming webhook"><i class="bi bi-plug"></i> Webhook</span>' : '') +
+            '<span class="msg-time">' + fmtTime(msg.created_at) + '</span></div>') +
           '<div class="msg-content"></div>' +
         '</div>' +
         '<div class="msg-actions">' +
@@ -1089,7 +1091,8 @@
       '</div>'
     );
     renderMessageContent(row, msg, isThreadReply);
-    row.querySelectorAll('.msg-avatar-btn, .msg-author-btn').forEach(el => {
+    // (An incoming webhook has no profile to open: its author is the shared webhook account.)
+    if (!msg.author.is_webhook) row.querySelectorAll('.msg-avatar-btn, .msg-author-btn').forEach(el => {
       el.addEventListener('click', () => profileCard.open(msg.author.id));
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); profileCard.open(msg.author.id); } });
     });

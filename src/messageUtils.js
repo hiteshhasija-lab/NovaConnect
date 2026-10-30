@@ -46,6 +46,13 @@ async function hydrateMessages(rows, currentUserId) {
   `).all(...ids);
   const threadByParent = Object.fromEntries(threadCounts.map(t => [t.parent_message_id, t]));
 
+  // A post from an incoming webhook (src/webhooks.js) shows the webhook's name as its author.
+  const authorOf = (r) => {
+    const meta = parseMetadata(r.metadata);
+    const base = authorById[r.user_id] || { id: r.user_id, full_name: 'Unknown user', username: '' };
+    return meta && meta.webhook && meta.webhook.name ? { ...base, full_name: meta.webhook.name, username: base.username, is_webhook: true } : base;
+  };
+
   return rows.map(r => ({
     id: r.id,
     channel_id: r.channel_id,
@@ -59,7 +66,7 @@ async function hydrateMessages(rows, currentUserId) {
     pinned_by: r.pinned_by ? (authorById[r.pinned_by] || { id: r.pinned_by, full_name: 'Unknown user', username: '' }) : null,
     created_at: r.created_at,
     updated_at: r.updated_at,
-    author: authorById[r.user_id] || { id: r.user_id, full_name: 'Unknown user', username: '' },
+    author: authorOf(r),
     reactions: Object.values(reactionsByMessage[r.id] || {}),
     attachments: attachmentsByMessage[r.id] || [],
     reply_count: threadByParent[r.id] ? Number(threadByParent[r.id].c) : 0,
