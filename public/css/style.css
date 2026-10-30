@@ -831,3 +831,9 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 /* Admin: legal hold (views/admin-holds.ejs, admin-hold.ejs). */
 .holds-table td { font-size: 0.85rem; vertical-align: top; }
 .hold-reason, .preserved-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Calendar conflict warnings (public/js/meetings.js; src/meetingConflicts.js). */
+.meeting-conflicts { border-left: 3px solid #e8a33d; background: rgba(232, 163, 61, 0.1); border-radius: 0.4rem; padding: 0.5rem 0.75rem; font-size: 0.85rem; overflow-wrap: anywhere; }
+.meeting-conflicts ul { margin: 0.3rem 0; padding-left: 1.1rem; }
+.meeting-conflicts .bi { color: #c07a12; }
+.meeting-conflicts small { color: var(--text-muted); }

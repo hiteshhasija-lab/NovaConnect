@@ -41,6 +41,7 @@
           <div class="meeting-row"><i class="bi bi-person-plus"></i><div class="meeting-attendees"><div class="meeting-pills"></div><input name="people" placeholder="Add attendees" aria-label="Add attendees" autocomplete="off"><div class="meeting-people-results"></div></div></div>
           <div class="meeting-row"><i class="bi bi-clock"></i><div class="meeting-times"><input type="date" name="start_date" aria-label="Start date" required><input type="time" name="start_time" aria-label="Start time" required><span>→</span><input type="date" name="end_date" aria-label="End date" required><input type="time" name="end_time" aria-label="End time" required><span class="meeting-duration"></span><label class="meeting-switch"><input type="checkbox" name="all_day"> All day</label></div></div>
           <div class="meeting-row"><i class="bi bi-arrow-repeat"></i><div class="meeting-repeat"><select name="recurrence" aria-label="Repeat"><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select><label class="meeting-count" hidden>Occurrences <input type="number" name="count" value="4" min="1" max="52"></label></div></div>
+          <div class="meeting-conflicts" role="status" aria-live="polite" hidden></div>
           <div class="meeting-row"><i class="bi bi-sliders"></i><details><summary class="chat-action">Advanced options</summary><label class="meeting-advanced"><input type="checkbox" name="request_rsvp" checked> Request responses</label><label class="meeting-advanced">Show as <select name="show_as"><option value="busy">Busy</option><option value="free">Free</option></select></label></details></div>
           <label class="meeting-row"><i class="bi bi-geo-alt"></i><input name="location" placeholder="Add location" aria-label="Location" maxlength="500"></label>
           <div class="meeting-row"><i class="bi bi-list-ul"></i><div class="meeting-editor"><div class="meeting-toolbar" role="toolbar" aria-label="Format meeting details"></div><div class="meeting-richtext" contenteditable="true" role="textbox" aria-label="Meeting details" aria-multiline="true" data-placeholder="Type details for this new meeting"></div></div></div>
@@ -67,7 +68,10 @@
         const box=content.querySelector('.meeting-pills');box.replaceChildren();selected.forEach(u=>{
           const pill=button(u.full_name+' ×',false,()=>{selected.delete(u.id);pills();});pill.setAttribute('aria-label','Remove '+u.full_name);box.appendChild(pill);
         });
-      } pills();
+        onPeopleChanged();
+      }
+      let onPeopleChanged=()=>{};   // the conflict check, once it is set up below
+      pills();
       let generation=0,timer;
       f.people.oninput=()=>{
         clearTimeout(timer);const gen=++generation,q=f.people.value.trim();const box=content.querySelector('.meeting-people-results');box.replaceChildren();if(!q)return;
@@ -92,13 +96,44 @@
       const color=document.createElement('input');color.type='color';color.value='#444444';color.title='Text color';color.setAttribute('aria-label','Text color');color.oninput=()=>command('foreColor',color.value);toolbar.appendChild(color);
       const paragraph=document.createElement('select');paragraph.setAttribute('aria-label','Paragraph style');paragraph.innerHTML='<option value="p">Paragraph</option><option value="h2">Heading</option><option value="h3">Subheading</option>';paragraph.onchange=()=>command('formatBlock',paragraph.value);toolbar.appendChild(paragraph);
       editor.addEventListener('paste',e=>{e.preventDefault();command('insertText',e.clipboardData.getData('text/plain'));});
+      // The time fields as POST /api/meetings (and the conflicts check) take them.
+      function timeFields() {
+        let endDate=f.end_date.value;
+        if(f.all_day.checked){const x=new Date(endDate+'T12:00');x.setDate(x.getDate()+1);endDate=date(x);}
+        return {attendee_ids:[...selected.keys()],timezone:f.timezone.value,start_local:f.start_date.value+'T'+(f.all_day.checked?'00:00':f.start_time.value),end_local:endDate+'T'+(f.all_day.checked?'00:00':f.end_time.value),all_day:f.all_day.checked,recurrence:f.recurrence.value,count:Number(f.count.value)};
+      }
+      // Conflict warnings (src/meetingConflicts.js): who is already busy then. Never blocks sending.
+      const conflictBox=content.querySelector('.meeting-conflicts');let conflictGen=0,conflictTimer;
+      function scheduleConflictCheck() {
+        clearTimeout(conflictTimer);const gen=++conflictGen;
+        conflictTimer=setTimeout(async()=>{
+          let data;try{data=await api('/api/meetings/conflicts',{method:'POST',body:timeFields()});}catch(_){data=null;}
+          if(dialog!==d||gen!==conflictGen)return;
+          if(!data||!data.conflicts.length){conflictBox.hidden=true;conflictBox.replaceChildren();return;}
+          const zoneName=f.timezone.value;
+          // In the form's own time zone: 'Fri, Oct 30' / 'Fri, Oct 30, 10:00 AM' / '10:30 AM'.
+          const fmt=(t,mode)=>{const x=new Date(t.replace(' ','T')+'Z');const o=mode==='time'?{hour:'numeric',minute:'2-digit'}:mode==='date'?{weekday:'short',month:'short',day:'numeric'}:{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'};try{return x.toLocaleString([],{timeZone:zoneName,...o});}catch(_){return x.toLocaleString();}};
+          const head=document.createElement('strong');head.innerHTML='<i class="bi bi-exclamation-triangle"></i> ';
+          head.append(document.createTextNode(data.conflicts.length===1&&data.conflicts[0].is_me?'You already have something at this time':'Some people are already busy at this time'));
+          const list=document.createElement('ul');
+          for(const p of data.conflicts){
+            const li=document.createElement('li');
+            const shown=p.items.slice(0,3).map(i=>(i.title?'“'+i.title+'” ':'busy ')+(i.all_day?fmt(i.start_at,'date')+' (all day)':fmt(i.start_at)+'–'+fmt(i.end_at,'time')));
+            li.textContent=(p.is_me?'You':p.full_name)+': '+shown.join('; ')+(p.items.length>3?' and '+(p.items.length-3)+' more':'')+(data.occurrences>1?' ('+p.occurrences_affected+' of '+data.occurrences+' occurrences)':'');
+            list.appendChild(li);
+          }
+          const note=document.createElement('small');note.textContent='You can still send the invitation.';
+          conflictBox.replaceChildren(head,list,note);conflictBox.hidden=false;
+        },400);
+      }
+      ['start_date','end_date','start_time','end_time','all_day','timezone','recurrence','count'].forEach(n=>f[n].addEventListener('change',scheduleConflictCheck));
+      onPeopleChanged=scheduleConflictCheck;
+      scheduleConflictCheck();
       const send=button('Send',true,()=>form.requestSubmit());d.querySelector('.meeting-header-actions').append(send,button('Close',false,close));
       form.onsubmit=async e=>{
         e.preventDefault();if(send.disabled)return;
         if(!selected.size){err.textContent='Add at least one attendee.';return;}
-        let endDate=f.end_date.value;
-        if(f.all_day.checked){const x=new Date(endDate+'T12:00');x.setDate(x.getDate()+1);endDate=date(x);}
-        const body={conversation_id:active.conversation.id,title:f.title.value.trim(),attendee_ids:[...selected.keys()],timezone:f.timezone.value,start_local:f.start_date.value+'T'+(f.all_day.checked?'00:00':f.start_time.value),end_local:endDate+'T'+(f.all_day.checked?'00:00':f.end_time.value),all_day:f.all_day.checked,recurrence:f.recurrence.value,count:Number(f.count.value),request_rsvp:f.request_rsvp.checked,show_as:f.show_as.value,location:f.location.value,details:safeDetails(editor.innerHTML)};
+        const body={conversation_id:active.conversation.id,title:f.title.value.trim(),...timeFields(),request_rsvp:f.request_rsvp.checked,show_as:f.show_as.value,location:f.location.value,details:safeDetails(editor.innerHTML)};
         send.disabled=true;err.textContent='Sending invitations…';
         try {await api('/api/meetings',{method:'POST',body});if(dialog===d)close();onSaved();}catch(e){if(dialog===d){err.textContent=e.message;send.disabled=false;}}
       };
@@ -107,12 +142,18 @@
     async function show(id) {
       const d=shell('Meeting details');const content=d.querySelector('.meeting-content');content.textContent='Loading…';d.querySelector('.meeting-header-actions').append(button('Close',false,close));
       try {
-        const {meeting:m,attendees}=await api('/api/meetings/'+id);if(dialog!==d)return;
+        const {meeting:m,attendees,conflicts}=await api('/api/meetings/'+id);if(dialog!==d)return;
         content.replaceChildren();const body=document.createElement('div');body.className='meeting-fields';
         const h=document.createElement('h2');h.textContent=m.title;body.appendChild(h);
         if(m.meet_code&&/^[a-f0-9]{24}$/.test(m.meet_code)){const join=document.createElement('a');join.className='chat-action chat-action-primary';join.textContent='Join meeting';join.href='/app/meet/'+m.meet_code;body.append(join);}
         for(const text of [m.local_start.replace('T',' ')+' → '+m.local_end.replace('T',' ')+' ('+m.timezone+')', 'Organizer: '+m.organizer, 'Location: '+(m.location||'Not specified'), 'Show as: '+(m.show_as||'busy'), 'Attendees: '+attendees.map(a=>a.full_name+' — '+a.response).join(', ')]) {const p=document.createElement('p');p.textContent=text;body.appendChild(p);}
         const details=document.createElement('div');details.className='meeting-richtext';details.innerHTML=safeDetails(m.details);body.appendChild(details);
+        if(conflicts&&conflicts.length){
+          const warn=document.createElement('div');warn.className='meeting-conflicts';
+          const z=m.timezone;const fmt=t=>{const x=new Date(t.replace(' ','T')+'Z');try{return x.toLocaleString([],{timeZone:z,weekday:'short',hour:'numeric',minute:'2-digit'});}catch(_){return x.toLocaleString();}};
+          warn.textContent='⚠ At the same time you have: '+conflicts.map(c=>(c.title?'“'+c.title+'”':'another meeting')+' ('+(c.all_day?'all day':fmt(c.start_at)+'–'+fmt(c.end_at))+')').join('; ');
+          body.appendChild(warn);
+        }
         const feedback=document.createElement('p');feedback.setAttribute('role','status');body.appendChild(feedback);
         if(m.created_by===currentUser.id)body.appendChild(button('Cancel this meeting',false,async()=>{if(!confirm('Cancel this meeting for all attendees?'))return;try{await api('/api/meetings/'+id,{method:'DELETE'});close();onSaved();}catch(e){feedback.textContent=e.message;}}));
         else if(m.request_rsvp) for(const response of ['accepted','tentative','declined'])body.appendChild(button(response[0].toUpperCase()+response.slice(1),false,async()=>{try{await api('/api/meetings/'+id+'/response',{method:'POST',body:{response}});feedback.textContent='Response saved: '+response;onSaved();}catch(e){feedback.textContent=e.message;}}));

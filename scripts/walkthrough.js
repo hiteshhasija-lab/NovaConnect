@@ -610,6 +610,35 @@ async function register(c, username, fullName, password) {
     must(r.status === 200 || r.status === 201, `${r.status} ${r.text.slice(0, 160)}`);
     return must(r.data.count === 3, 'count ' + r.data.count);
   });
+  await step('conflict warnings: busy people found for every occurrence, titles only for your own meetings, declined and free ignored, shown on the invitation', async () => {
+    const day = new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10);   // a quiet day three weeks out
+    const plan = (who, attendees, start, end, extra = {}) => who.post('/api/meetings/conflicts', { attendee_ids: attendees, timezone: 'UTC', start_local: `${day}T${start}`, end_local: `${day}T${end}`, all_day: false, recurrence: 'none', count: 1, ...extra });
+    const make = (title, attendees, start, end, extra = {}) => alice.post('/api/meetings', { title, attendee_ids: attendees, timezone: 'UTC', start_local: `${day}T${start}`, end_local: `${day}T${end}`, all_day: false, recurrence: 'none', count: 1, request_rsvp: true, show_as: 'busy', location: '', details: '', conversation_id: null, ...extra });
+    const busy = await make(`Busy ${tag}`, [bob.user.id], '10:00', '11:00');
+    const free = await make(`Free ${tag}`, [carol.user.id], '10:00', '11:00', { show_as: 'free' });
+    must(busy.status === 201 && free.status === 201, 'setup');
+    const none = await plan(alice, [bob.user.id], '11:00', '12:00');
+    must(none.status === 200 && none.data.conflicts.length === 0, 'back-to-back counted as a conflict: ' + none.text.slice(0, 200));
+    const r = await plan(alice, [bob.user.id, carol.user.id], '10:30', '11:30');
+    const who = r.data.conflicts.map((p) => (p.is_me ? 'me' : p.user_id));
+    must(r.status === 200 && who[0] === 'me' && who.includes(bob.user.id) && !who.includes(carol.user.id), 'conflicts: ' + JSON.stringify(r.data).slice(0, 300));
+    must(r.data.conflicts.every((p) => p.items[0].title === `Busy ${tag}`), 'organizer should see her own meeting titles');
+    const outsider = await plan(carol, [bob.user.id], '10:30', '11:30');
+    const forBob = outsider.data.conflicts.find((p) => p.user_id === bob.user.id);
+    must(forBob && forBob.items[0].title === null, "someone not invited saw the meeting's title: " + JSON.stringify(forBob));
+    const weekly = await plan(alice, [bob.user.id], '10:30', '11:00', { recurrence: 'weekly', count: 3 });
+    must(weekly.data.occurrences === 3 && weekly.data.conflicts.find((p) => p.user_id === bob.user.id).occurrences_affected === 1, 'weekly: ' + weekly.text.slice(0, 200));
+    must((await plan(alice, [bob.user.id], '11:00', '10:00')).status === 400, 'an end before the start was checked');
+    const second = await make(`Overlapping ${tag}`, [bob.user.id], '10:15', '10:45');
+    const seen = await bob.get(`/api/meetings/${second.data.id}`);
+    must(seen.status === 200 && seen.data.conflicts.length === 1 && seen.data.conflicts[0].title === `Busy ${tag}`, 'invitation does not show the clash: ' + JSON.stringify(seen.data.conflicts));
+    await bob.post(`/api/meetings/${busy.data.id}/response`, { response: 'declined' });
+    const after = await plan(carol, [bob.user.id], '10:00', '10:20');
+    const stillBob = after.data.conflicts.find((p) => p.user_id === bob.user.id);
+    must(stillBob && stillBob.items.length === 1 && stillBob.items[0].start_at.endsWith('10:15:00'), 'a declined meeting still counted: ' + JSON.stringify(stillBob));
+    for (const m of [busy, free, second]) await alice.del(`/api/meetings/${m.data.id}`);
+    return must((await plan(alice, [bob.user.id], '10:00', '11:00')).data.conflicts.length === 0, 'cancelled meetings still counted');
+  });
   await step('meeting link: create, resolve by code, page renders for a member', async () => {
     const r = await alice.post('/api/meet/links', { title: 'Quick call' });
     must(r.status === 200 || r.status === 201, r.text.slice(0, 100));

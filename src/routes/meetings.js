@@ -4,6 +4,7 @@ const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { emitToUser, touchPresence } = require('../realtime');
 const { occurrences } = require('../meeting-time');
+const { findConflicts } = require('../meetingConflicts');
 const router = createAsyncRouter();
 router.use(requireAuth);
 router.post('/api/meetings', async (req,res) => {
@@ -46,11 +47,25 @@ router.post('/api/meetings', async (req,res) => {
   attendees.forEach(touchPresence);
   res.status(201).json({id:saved[0],count:saved.length});
 });
+// Conflict warnings for a meeting being planned (the new-meeting form asks as times and people change):
+// the same time fields as POST /api/meetings, every occurrence checked, for the attendees and you.
+router.post('/api/meetings/conflicts', async (req, res) => {
+  const userId = req.session.user.id, b = req.body || {};
+  const ids = Array.isArray(b.attendee_ids) ? b.attendee_ids : [];
+  if (ids.length > 50 || ids.some(id => !Number.isSafeInteger(id) || id < 1)) return res.status(400).json({ error: 'Choose 1–50 attendees.' });
+  if (typeof b.all_day !== 'boolean') return res.status(400).json({ error: 'Invalid meeting options.' });
+  let dates;
+  try { dates = occurrences(b); } catch (e) { return res.status(400).json({ error: e.message }); }
+  const people = await findConflicts({ occurrences: dates, userIds: [userId, ...ids], viewerId: userId });
+  res.json({ conflicts: people, occurrences: dates.length });
+});
 router.get('/api/meetings/:id', async(req,res)=>{
   const meeting = await db.prepare('SELECT m.*, a.response, u.full_name AS organizer FROM meetings m JOIN meeting_attendees a ON a.meeting_id=m.id JOIN users u ON u.id=m.created_by WHERE m.id=? AND a.user_id=?').get(req.params.id,req.session.user.id);
   if (!meeting) return res.status(404).json({error:'Meeting not found.'});
   const attendees = await db.prepare('SELECT u.id,u.full_name,a.response FROM meeting_attendees a JOIN users u ON u.id=a.user_id WHERE a.meeting_id=? ORDER BY u.full_name').all(meeting.id);
-  res.json({meeting,attendees});
+  // Your own other meetings at the same time (before you answer the invitation).
+  const conflicts = (await findConflicts({ occurrences: [{ start_at: meeting.start_at, end_at: meeting.end_at }], userIds: [req.session.user.id], viewerId: req.session.user.id, excludeMeetingId: meeting.id }))[0]?.items || [];
+  res.json({meeting,attendees,conflicts});
 });
 router.post('/api/meetings/:id/response',async(req,res)=>{
   if(!['accepted','declined','tentative'].includes(req.body.response)) return res.status(400).json({error:'Invalid response.'});
