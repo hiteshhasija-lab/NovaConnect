@@ -9,12 +9,14 @@
 //     or a recording still uses it), and its search entry;
 //   - a post whose thread still has newer replies: its text, banner and files, leaving "This message
 //     was deleted" above the replies; the row goes once the last reply has expired too.
-// Kept regardless: workflow cards still waiting for an answer (a NovaDesk approval or confirmation),
-// so a slow approval can't vanish under the person who has to give it.
+// Kept regardless: messages on legal hold (src/legalHold.js), and workflow cards still waiting for an
+// answer (a NovaDesk approval or confirmation), so a slow approval can't vanish under the person who
+// has to give it.
 // Runs from the scheduler at most once an hour, or when an admin presses "Run now". Each run that
 // deletes anything is written to the audit log with its counts (never the text).
 const { db, nowStr } = require('./db');
 const { deleteFile } = require('./storage');
+const { heldSql } = require('./legalHold');
 
 // The choices offered (days); null is "keep forever".
 const RETENTION_OPTIONS = [null, 30, 90, 180, 365, 730, 1825, 2555];
@@ -59,7 +61,8 @@ function cutoffFor(days, nowMs = Date.now()) {
 // (No '?' may appear anywhere else in this text: knex reads every one as a binding.)
 const SCOPE = { channel: 'm.channel_id IS NOT NULL', chat: 'm.conversation_id IS NOT NULL' };
 const PENDING_CARD = `(COALESCE(m.metadata, '') LIKE '%"cardType"%' AND m.metadata LIKE '%"status":"pending"%')`;
-const expiredSql = (scope) => `${SCOPE[scope]} AND m.created_at < ? AND NOT ${PENDING_CARD}`;
+// Messages on legal hold (src/legalHold.js) are never touched, and a held reply keeps its thread's post.
+const expiredSql = (scope) => `${SCOPE[scope]} AND m.created_at < ? AND NOT ${PENDING_CARD} AND NOT ${heldSql('m')}`;
 
 // Files of these messages, then (after the rows are gone) the stored objects nothing else uses.
 async function filesOf(ids) {
@@ -129,7 +132,9 @@ async function runRetention({ nowMs = Date.now(), unindex = async () => {} } = {
   if (policy.chat_days) {
     result.ran = true;
     result.chat = await purgeScope('chat', policy.chat_days, nowMs, unindex);
-    const m = await db.prepare('DELETE FROM meet_chat_messages WHERE created_at < ?').run(cutoffFor(policy.chat_days, nowMs));
+    // A person on legal hold keeps their meeting-chat lines too.
+    const m = await db.prepare(`DELETE FROM meet_chat_messages mc WHERE mc.created_at < ?
+      AND NOT EXISTS (SELECT 1 FROM legal_holds h WHERE h.released_at IS NULL AND h.scope_type = 'person' AND h.scope_id = mc.user_id)`).run(cutoffFor(policy.chat_days, nowMs));
     result.meeting_chat = m.changes || 0;
   }
   return result;

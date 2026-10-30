@@ -827,3 +827,7 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .vip-result .bi-star { color: #e8a33d; }
 .profile-card-vip-btn .bi-star-fill { color: #e8a33d; }
 .profile-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* Admin: legal hold (views/admin-holds.ejs, admin-hold.ejs). */
+.holds-table td { font-size: 0.85rem; vertical-align: top; }
+.hold-reason, .preserved-body { white-space: pre-wrap; overflow-wrap: anywhere; }

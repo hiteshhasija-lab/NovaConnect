@@ -1,0 +1,70 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4 admin-holds">
+  <h1 class="h4"><i class="bi bi-shield-lock me-2"></i>Legal hold</h1>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="text-muted small">While a hold is active, the messages it covers can't be destroyed: message retention skips them, and when someone deletes one it disappears for everyone as usual but a copy is kept here, with its earlier versions and its files. A channel or team with held messages can't be deleted. Nobody is told they are on hold. Placing, releasing and viewing holds is in the <a href="/admin/audit?group=hold">audit log</a>.</p>
+
+  <% if (notice) { %><div class="alert alert-success py-2 small" role="status"><%= notice %></div><% } %>
+  <% if (error) { %><div class="alert alert-danger py-2 small" role="alert"><%= error %></div><% } %>
+
+  <div class="card mb-4"><div class="card-body">
+    <h2 class="h6 mb-3">Place a hold</h2>
+    <form method="POST" action="/admin/holds" class="row g-3" id="holdForm">
+      <div class="col-md-6">
+        <label class="form-label small" for="holdName">Name (case or matter) *</label>
+        <input class="form-control form-control-sm" id="holdName" name="name" maxlength="120" required value="<%= form.name || '' %>">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small" for="holdScope">Hold *</label>
+        <select class="form-select form-select-sm" id="holdScope" name="scope_type" required>
+          <% Object.entries(scopes).forEach(([key, label]) => { %><option value="<%= key %>" <%= form.scope_type === key ? 'selected' : '' %>><%= key === 'person' ? 'A person: what they wrote and their chats' : key === 'channel' ? 'A channel: everything in it' : 'A chat: everything in it' %></option><% }) %>
+        </select>
+      </div>
+      <div class="col-md-6 hold-target" data-scope="person">
+        <label class="form-label small" for="holdPerson">Person</label>
+        <select class="form-select form-select-sm" id="holdPerson" name="person_id">
+          <% people.forEach(p => { %><option value="<%= p.id %>" <%= String(form.person_id) === String(p.id) ? 'selected' : '' %>><%= p.full_name %> (@<%= p.username %>)</option><% }) %>
+        </select>
+      </div>
+      <div class="col-md-6 hold-target" data-scope="channel">
+        <label class="form-label small" for="holdChannel">Channel</label>
+        <select class="form-select form-select-sm" id="holdChannel" name="channel_id">
+          <% channels.forEach(c => { %><option value="<%= c.id %>" <%= String(form.channel_id) === String(c.id) ? 'selected' : '' %>><%= c.team || 'Team' %> › #<%= c.name %></option><% }) %>
+        </select>
+      </div>
+      <div class="col-md-6 hold-target" data-scope="chat">
+        <label class="form-label small" for="holdChat">Chat number</label>
+        <input class="form-control form-control-sm" id="holdChat" name="chat_id" inputmode="numeric" pattern="[0-9]*" value="<%= form.chat_id || '' %>" aria-describedby="holdChatHelp">
+        <div class="form-text" id="holdChatHelp">As the audit log shows it ("chat #12"). Holding a person covers all of their chats.</div>
+      </div>
+      <div class="col-12">
+        <label class="form-label small" for="holdReason">Reason</label>
+        <textarea class="form-control form-control-sm" id="holdReason" name="reason" maxlength="1000" rows="2"><%= form.reason || '' %></textarea>
+      </div>
+      <div class="col-12"><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-shield-lock me-1"></i>Place hold</button></div>
+    </form>
+  </div></div>
+
+  <% if (!holds.length) { %><p>No holds yet.</p><% } else { %>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle holds-table">
+      <thead><tr><th scope="col">Hold</th><th scope="col">Covers</th><th scope="col">Placed</th><th scope="col">Status</th><th scope="col">Preserved</th><th scope="col"></th></tr></thead>
+      <tbody>
+      <% holds.forEach(h => { %>
+        <tr class="<%= h.released_at ? 'text-muted' : '' %>">
+          <td><strong><%= h.name %></strong><% if (h.reason) { %><div class="small text-muted hold-reason"><%= h.reason %></div><% } %></td>
+          <td><%= scopes[h.scope_type] %>: <%= h.scope_label %><% if (h.covered !== null) { %><div class="small text-muted"><%= h.covered %> message(s) now</div><% } %></td>
+          <td class="small"><%= h.created_at %> UTC<%= h.created_by_name ? ' by ' + h.created_by_name : '' %></td>
+          <td class="small"><% if (h.released_at) { %>Released <%= h.released_at %> UTC<%= h.released_by_name ? ' by ' + h.released_by_name : '' %><% } else { %><span class="badge text-bg-danger">Active</span><% } %></td>
+          <td><a href="/admin/holds/<%= h.id %>"><%= h.preserved %> deleted message(s)</a></td>
+          <td><% if (!h.released_at) { %><form method="POST" action="/admin/holds/<%= h.id %>/release" class="hold-release-form" data-name="<%= h.name %>"><button class="btn btn-outline-secondary btn-sm" type="submit">Release</button></form><% } %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+<script src="/js/admin-holds.js?v=1"></script>
+<%- include('partials/foot') %>

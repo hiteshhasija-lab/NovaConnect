@@ -3,6 +3,7 @@ const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { resyncUserRooms, emitToUser } = require('../realtime');
 const { audit } = require('../audit');
+const { channelDeleteBlock, teamDeleteBlock } = require('../legalHold');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -273,6 +274,8 @@ router.delete('/api/teams/:id', async (req, res) => {
   const teamId = Number(req.params.id);
   if (!Number.isSafeInteger(teamId) || teamId < 1) return res.status(400).json({ error: 'Invalid team.' });
   if (!(await isTeamOwner(teamId, req.session.user.id))) return res.status(403).json({ error: 'Only team owners or admins can delete a team.' });
+  const teamHeld = await teamDeleteBlock(teamId);
+  if (teamHeld) return res.status(409).json({ error: teamHeld });
   const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(teamId);
   const deletedTeam = await db.prepare('DELETE FROM teams WHERE id = ? RETURNING id, name').get(teamId);
   if (deletedTeam) await audit(req, 'team.delete', { targetType: 'team', targetId: teamId, targetName: deletedTeam.name, details: { members: members.length } });
@@ -304,6 +307,8 @@ router.delete('/api/channels/:id', async (req, res) => {
   const channel = await db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
   if (!channel) return res.status(404).json({ error: 'Channel not found.' });
   if (!(await isTeamOwner(channel.team_id, req.session.user.id))) return res.status(403).json({ error: 'Only team owners or admins can delete a channel.' });
+  const channelHeld = await channelDeleteBlock(channelId);
+  if (channelHeld) return res.status(409).json({ error: channelHeld });
   const members = await db.prepare('SELECT user_id FROM team_members WHERE team_id = ?').all(channel.team_id);
   await db.prepare('DELETE FROM channels WHERE id = ?').run(channelId);
   await audit(req, 'channel.delete', { targetType: 'channel', targetId: channelId, targetName: '#' + channel.name, details: { team_id: channel.team_id } });

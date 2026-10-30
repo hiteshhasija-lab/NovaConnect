@@ -2,7 +2,7 @@
 <%- include('partials/topbar') %>
 <div class="container py-4 admin-retention">
   <h1 class="h4"><i class="bi bi-hourglass-split me-2"></i>Message retention</h1>
-  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/holds">Legal hold</a> · <a href="/admin/reports">Chat concerns</a></p>
   <p class="text-muted small">Messages older than the period you choose are deleted for everyone, with their files, reactions and edit history; they cannot be brought back. A post whose thread has newer replies keeps its place as "This message was deleted" until the replies expire too. NovaDesk cards still waiting for an answer are kept. It runs every hour, and every run that deletes something is in the <a href="/admin/audit?group=retention">audit log</a>.</p>
 
   <% if (notice) { %><div class="alert alert-success py-2 small" role="status"><%= notice %></div><% } %>

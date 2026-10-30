@@ -157,10 +157,11 @@ own backup or versioning, in addition to the database dump.
 - **Admin** — `/admin/users`: role changes, activate/deactivate accounts.
 - **Audit log** — `/admin/audit`: sign-ins (failed ones too), user administration, team and channel changes, message deletions and retention, with who, when and from which address; filter by kind, person and dates, export as CSV (the export is logged too). Append-only; it never holds message text or passwords.
 - **Message retention** — `/admin/retention`: delete channel messages and chat messages after a chosen period (30 days to 7 years, separately). Off until an admin saves a policy; the page shows how many messages a new policy deletes before it is saved. Runs hourly (or "Run now"); deleted messages take their files, reactions and edit history with them, and cannot be restored except from a database backup taken before.
+- **Legal hold** — `/admin/holds`: hold a person (what they wrote and their chats), a channel or a chat while a case is open. Retention skips held messages; a held message someone deletes disappears for everyone but a copy (with its earlier versions and files) is kept for admins; a channel or team with held messages can't be deleted. Nobody is told; placing, releasing and viewing holds is in the audit log.
 
 ## What's not here yet
 
-This is the messaging core, not a full Teams parity build — no group audio/video calls, no meeting conferencing, no third-party app/bot ecosystem, no eDiscovery or legal hold (there is an audit log and message retention). Those are large, separate subsystems in real Teams and weren't in scope for this pass.
+This is the messaging core, not a full Teams parity build — no group audio/video calls, no meeting conferencing, no third-party app/bot ecosystem, no eDiscovery (there is an audit log, message retention and legal hold). Those are large, separate subsystems in real Teams and weren't in scope for this pass.
 
 ## Notes
 

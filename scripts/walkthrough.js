@@ -804,6 +804,47 @@ async function register(c, username, fullName, password) {
     return must(log.text.includes('retention.policy') && log.text.includes('Keep forever') && log.text.includes('1 year'), 'retention changes are not logged');
   });
 
+  await step('legal hold: a held person\'s deleted messages (and their chats\') are kept with earlier versions; others are not; a held channel or team cannot be deleted; members refused; logged', async () => {
+    const place = (form) => admin.req('POST', '/admin/holds', { form });
+    must((await alice.req('POST', '/admin/holds', { form: { name: 'nope', scope_type: 'person', person_id: String(bob.user.id) } })).status === 403, 'a member placed a hold');
+    must((await alice.get('/admin/holds')).status === 403, 'a member opened the holds page');
+    must((await place({ name: '', scope_type: 'person', person_id: String(bob.user.id) })).status === 400, 'a hold without a name');
+    must((await place({ name: 'Ghost', scope_type: 'chat', chat_id: '99999999' })).status === 400, 'a hold on a chat that does not exist');
+    const h = await place({ name: `Case ${tag}`, reason: 'walk-through', scope_type: 'person', person_id: String(bob.user.id) });
+    must(h.status === 201 && h.data.id, 'place: ' + h.text.slice(0, 160));
+    // bob writes, edits and deletes a chat message; alice deletes hers in the same chat (bob's chat is held too)
+    const b1 = await bob.post(`/api/dm/${dm}/messages`, { body: `held first ${tag}` });
+    await bob.put(`/api/messages/${b1.data.id}`, { body: `held second ${tag}` });
+    must((await bob.del(`/api/messages/${b1.data.id}`)).status === 200, 'bob could not delete his message');
+    const a1 = await alice.post(`/api/dm/${dm}/messages`, { body: `held alice ${tag}` });
+    await alice.del(`/api/messages/${a1.data.id}`);
+    const free = await alice.post(`/api/channels/${general.id}/messages`, { body: `not held ${tag}` });
+    await alice.del(`/api/messages/${free.data.id}`);
+    const gone = await bob.get(`/api/dm/${dm}/messages`);
+    must(!JSON.stringify(gone.data).includes(`held second ${tag}`), 'a deleted held message is still shown to people');
+    const view = await admin.get(`/admin/holds/${h.data.id}`);
+    must(view.status === 200, 'view ' + view.status);
+    const kept = view.data.preserved;
+    const mine = kept.find((p) => p.message_id === b1.data.id);
+    must(mine && mine.body === `held second ${tag}` && mine.editList.length === 1 && mine.editList[0].body === `held first ${tag}` && mine.reason === 'deleted', 'bob\'s message: ' + JSON.stringify(mine).slice(0, 300));
+    must(kept.some((p) => p.message_id === a1.data.id), "alice's message in bob's held chat was not kept");
+    must(!kept.some((p) => p.message_id === free.data.id), 'a message nobody held was kept');
+    // a held channel, and the team it is in, cannot be deleted until released
+    const t = await alice.post('/api/teams', { name: `Held ${tag}`, description: 'walk' });
+    const ch = (await alice.post(`/api/teams/${t.data.team.id}/channels`, { name: `held-${tag}` })).data;
+    await alice.post(`/api/channels/${ch.id}/messages`, { body: 'keep me' });
+    const ch2 = await place({ name: `Channel ${tag}`, scope_type: 'channel', channel_id: String(ch.id) });
+    must(ch2.status === 201, 'channel hold ' + ch2.status);
+    must((await alice.del(`/api/channels/${ch.id}`)).status === 409, 'a held channel was deleted');
+    must((await alice.del(`/api/teams/${t.data.team.id}`)).status === 409, 'a team with a held channel was deleted');
+    for (const id of [h.data.id, ch2.data.id]) must((await admin.req('POST', `/admin/holds/${id}/release`, { form: {} })).status === 200, 'release ' + id);
+    must((await admin.req('POST', `/admin/holds/${h.data.id}/release`, { form: {} })).status === 404, 'released twice');
+    must((await alice.del(`/api/teams/${t.data.team.id}`)).status === 200, 'the team could not be deleted after the release');
+    const page = await admin.get('/admin/holds');
+    must(page.status === 200 && page.text.includes(`Case ${tag}`) && page.text.includes('Released'), 'holds page');
+    const log = (await admin.get('/admin/audit.csv?group=hold')).text;
+    return must(['hold.create', 'hold.release', 'hold.view'].every((a) => log.includes(a)) && !log.includes(`held second ${tag}`), 'hold activity not logged, or message text in the log');
+  });
   section = 'AI assistant';
   await step('with no Gemini key the assistant answers gracefully, history and clear work', async () => {
     const r = await alice.post('/api/ai/messages', { body: 'hello assistant' });

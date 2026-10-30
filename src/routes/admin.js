@@ -1,5 +1,5 @@
 const createAsyncRouter = require('../asyncRouter');
-const { db } = require('../db');
+const { db, nowStr } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { normalizeNewUser, validateNewUser, usernameTaken, createUser } = require('../newUser');
 const bcrypt = require('bcryptjs');
@@ -9,6 +9,7 @@ const { disconnectUser } = require('../realtime');
 const { audit, ACTIONS, GROUPS, auditFilters, auditCsv } = require('../audit');
 const retention = require('../retention');
 const { removeMessages } = require('../search');
+const legalHold = require('../legalHold');
 
 const router = createAsyncRouter();
 router.use(requireAuth, requireRole('admin'));
@@ -141,6 +142,58 @@ router.post('/retention/run', async (req, res) => {
   if (req.accepts(['html', 'json']) === 'json') return res.json(counts);
   const deleted = counts.channel_deleted + counts.channel_cleared + counts.chat_deleted + counts.chat_cleared + counts.meeting_chat_deleted;
   renderRetention(res, { notice: deleted ? `Deleted ${deleted} message(s) and ${counts.files_deleted} file(s) past the policy.` : 'Nothing was past the policy.' });
+});
+
+// ---------------- legal hold ----------------
+// Holds keep a person's, channel's or chat's messages from being destroyed (src/legalHold.js).
+async function renderHolds(res, { notice = null, error = null, status = 200, form = {} } = {}) {
+  const holds = await db.prepare(`
+    SELECT h.*, cu.full_name AS created_by_name, ru.full_name AS released_by_name,
+      (SELECT COUNT(*) FROM preserved_messages p WHERE (',' || p.hold_ids || ',') LIKE ('%,' || h.id || ',%')) AS preserved
+    FROM legal_holds h LEFT JOIN users cu ON cu.id = h.created_by LEFT JOIN users ru ON ru.id = h.released_by
+    ORDER BY (h.released_at IS NULL) DESC, h.id DESC
+  `).all();
+  for (const h of holds) h.covered = h.released_at ? null : await legalHold.coveredCount(h);
+  const people = await db.prepare('SELECT id, full_name, username FROM users ORDER BY full_name').all();
+  const channels = await db.prepare('SELECT c.id, c.name, t.name AS team FROM channels c LEFT JOIN teams t ON t.id = c.team_id ORDER BY t.name, c.name').all();
+  res.status(status).render('admin-holds', { title: 'Legal hold', holds, people, channels, scopes: legalHold.SCOPES, notice, error, form });
+}
+router.get('/holds', async (req, res) => renderHolds(res));
+router.post('/holds', async (req, res) => {
+  const parsed = legalHold.parseHold(req.body);
+  if (parsed.error) return renderHolds(res, { error: parsed.error, status: 400, form: req.body });
+  const v = parsed.value;
+  const label = await legalHold.scopeLabel(v.scope_type, v.scope_id);
+  if (!label) return renderHolds(res, { error: `That ${legalHold.SCOPES[v.scope_type].toLowerCase()} doesn't exist.`, status: 400, form: req.body });
+  const hold = await db.prepare(`
+    INSERT INTO legal_holds (name, reason, scope_type, scope_id, scope_label, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+  `).get(v.name, v.reason, v.scope_type, v.scope_id, label, req.session.user.id, nowStr());
+  await audit(req, 'hold.create', { targetType: 'hold', targetId: hold.id, targetName: v.name, details: { holds: label, scope: v.scope_type } });
+  if (req.accepts(['html', 'json']) === 'json') return res.status(201).json({ id: hold.id, scope_label: label });
+  renderHolds(res, { notice: `Legal hold "${v.name}" placed on ${label}.` });
+});
+router.post('/holds/:id/release', async (req, res) => {
+  const hold = await db.prepare(`UPDATE legal_holds SET released_at = ?, released_by = ? WHERE id = ? AND released_at IS NULL RETURNING id, name, scope_label`)
+    .get(nowStr(), req.session.user.id, Number(req.params.id) || 0);
+  if (!hold) return renderHolds(res, { error: 'That hold is not active.', status: 404 });
+  await audit(req, 'hold.release', { targetType: 'hold', targetId: hold.id, targetName: hold.name, details: { holds: hold.scope_label } });
+  if (req.accepts(['html', 'json']) === 'json') return res.json({ ok: true });
+  renderHolds(res, { notice: `Legal hold "${hold.name}" released. What it preserved is kept.` });
+});
+// What a hold preserved (messages deleted while it was active), newest first. Viewing is logged.
+router.get('/holds/:id', async (req, res) => {
+  const hold = await db.prepare('SELECT * FROM legal_holds WHERE id = ?').get(Number(req.params.id) || 0);
+  if (!hold) return res.status(404).render('error', { title: 'Not Found', message: 'That hold does not exist.' });
+  const rows = await db.prepare(`SELECT * FROM preserved_messages WHERE (',' || hold_ids || ',') LIKE ? ORDER BY id DESC LIMIT 500`).all(`%,${hold.id},%`);
+  for (const r of rows) {
+    const parse = (v) => { try { return v ? JSON.parse(v) : null; } catch { return null; } };
+    r.editList = parse(r.edits) || [];
+    r.fileList = parse(r.attachments) || [];
+    r.announcement = parse(r.metadata)?.announcement || null;
+  }
+  await audit(req, 'hold.view', { targetType: 'hold', targetId: hold.id, targetName: hold.name, details: { entries: rows.length } });
+  if (req.accepts(['html', 'json']) === 'json') return res.json({ hold, preserved: rows });
+  res.render('admin-hold', { title: 'Legal hold: ' + hold.name, hold, rows });
 });
 
 module.exports = router;

@@ -30,8 +30,11 @@ const ACTIONS = {
   'retention.policy': 'Changed message retention',
   'retention.run': 'Retention deleted old messages',
   'audit.export': 'Exported the audit log',
+  'hold.create': 'Placed a legal hold',
+  'hold.release': 'Released a legal hold',
+  'hold.view': 'Viewed preserved messages',
 };
-const GROUPS = { auth: 'Sign-in', admin: 'Users', team: 'Teams', channel: 'Channels', message: 'Messages', retention: 'Retention', audit: 'Audit log' };
+const GROUPS = { auth: 'Sign-in', admin: 'Users', team: 'Teams', channel: 'Channels', message: 'Messages', retention: 'Retention', hold: 'Legal hold', audit: 'Audit log' };
 
 const clip = (v, n) => (v === null || v === undefined ? null : String(v).slice(0, n));
 

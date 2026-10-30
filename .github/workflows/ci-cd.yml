@@ -239,8 +239,17 @@ jobs:
           test "$(sql "select count(*) from messages where id in ($new_post, $card)")" = 2
           test "$(sql "select count(*) from audit_log where action = 'retention.run'")" -ge 3
           test "$(sql "select count(*) from audit_log where action = 'retention.policy'")" -ge 2
+          # A legal hold on the channel keeps an expired message until the hold is released.
+          held_old=$(ins $ch null 'held old' null null "$old")
+          hold=$(curl -s -b cookies.txt -H 'Accept: application/json' -d "name=CI+hold&scope_type=channel&channel_id=$ch" http://localhost:8080/admin/holds | grep -o '"id":[0-9]*' | cut -d: -f2)
+          test -n "$hold"
+          run
+          test "$(sql "select count(*) from messages where id = $held_old")" = 1
+          test "$(curl -s -o /dev/null -w '%{http_code}' -b cookies.txt -H 'Accept: application/json' -X POST http://localhost:8080/admin/holds/$hold/release)" = 200
+          run
+          test "$(sql "select count(*) from messages where id = $held_old")" = 0
           test "$(policy forever forever)" = 200
-          echo "retention: deleted what was past the policy, kept the rest"
+          echo "retention: deleted what was past the policy, kept the rest (and what was on hold)"
 
       - name: Browser check (production CSP, no blocked scripts or JavaScript errors)
         run: |

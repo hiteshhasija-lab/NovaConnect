@@ -1,0 +1,18 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4 admin-hold">
+  <h1 class="h4"><i class="bi bi-shield-lock me-2"></i><%= hold.name %></h1>
+  <p class="mb-2"><a href="/admin/holds">All holds</a> · <a href="/admin/audit?group=hold">Hold activity in the audit log</a></p>
+  <p class="small text-muted">Holds <%= hold.scope_label %> · placed <%= hold.created_at %> UTC<%= hold.released_at ? ' · released ' + hold.released_at + ' UTC' : ' · active' %>. Messages deleted while it was active, newest first (times UTC). Opening this page is recorded in the audit log.</p>
+  <% if (!rows.length) { %><p>Nothing has been deleted under this hold.</p><% } %>
+  <% rows.forEach(r => { %>
+    <article class="card mb-3 preserved-item"><div class="card-body">
+      <div class="small text-muted mb-2"><strong><%= r.author_name || ('#' + r.author_id) %></strong> in <%= r.place || '' %> · written <%= r.message_created_at %> · deleted <%= r.preserved_at %> · message #<%= r.message_id %></div>
+      <% if (r.announcement) { %><div class="fw-semibold"><%= r.announcement.headline %></div><% if (r.announcement.subhead) { %><div class="small"><%= r.announcement.subhead %></div><% } %><% } %>
+      <div class="preserved-body"><%= r.body || '(no text)' %></div>
+      <% if (r.fileList.length) { %><ul class="small mt-2 mb-0"><% r.fileList.forEach(f => { %><li><%= f.original_name %> (<%= f.mime_type || 'file' %>, <%= f.size %> bytes) · stored as <code><%= f.key %></code></li><% }) %></ul><% } %>
+      <% if (r.editList.length) { %><details class="mt-2"><summary class="small">Earlier versions (<%= r.editList.length %>)</summary><% r.editList.forEach(e => { %><div class="small border-start ps-2 mt-1"><span class="text-muted">replaced <%= e.replaced_at %>:</span> <span class="preserved-body"><%= e.body %></span></div><% }) %></details><% } %>
+    </div></article>
+  <% }) %>
+</div>
+<%- include('partials/foot') %>
