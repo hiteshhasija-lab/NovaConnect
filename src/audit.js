@@ -27,6 +27,8 @@ const ACTIONS = {
   'channel.create': 'Created a channel',
   'channel.delete': 'Deleted a channel',
   'message.delete': 'Deleted a message',
+  'message.recall_search': 'Searched messages to recall',
+  'message.recall': 'Removed messages for everyone (recall)',
   'retention.policy': 'Changed message retention',
   'retention.run': 'Retention deleted old messages',
   'audit.export': 'Exported the audit log',

@@ -904,6 +904,36 @@ async function register(c, username, fullName, password) {
     const log = (await admin.get('/admin/audit.csv?group=hold')).text;
     return must(['hold.create', 'hold.release', 'hold.view'].every((a) => log.includes(a)) && !log.includes(`held second ${tag}`), 'hold activity not logged, or message text in the log');
   });
+  await step('recall: an admin finds messages by words, removes the ticked ones for everyone with a reason (live, "removed by an administrator"), others stay; a held one keeps a copy; members refused; logged', async () => {
+    const r1 = await alice.post(`/api/channels/${general.id}/messages`, { body: `wrongly shared ${tag} one` });
+    const r2 = await alice.post(`/api/channels/${general.id}/messages`, { body: `wrongly shared ${tag} two` });
+    const k1 = await bob.post(`/api/channels/${general.id}/messages`, { body: `wrongly shared ${tag} keep` });
+    must((await alice.get('/admin/recall')).status === 403, 'a member opened recall');
+    must((await alice.req('POST', '/admin/recall', { form: [['ids', String(r1.data.id)], ['reason', 'x']] })).status === 403, 'a member recalled');
+    const empty = await admin.get('/admin/recall');
+    must(empty.status === 200 && !empty.text.includes('recall-pick'), 'listed messages without a search');
+    const found = await admin.get('/admin/recall?words=' + encodeURIComponent(`wrongly shared ${tag}`));
+    must(found.status === 200 && [r1, r2, k1].every((m) => found.text.includes(`value="${m.data.id}"`)), 'search did not find the messages');
+    must((await admin.req('POST', '/admin/recall', { form: [['ids', String(r1.data.id)], ['reason', '']] })).status === 400, 'recalled without a reason');
+    // bob is on hold: recalling his message keeps a copy for admins
+    const hold = await admin.req('POST', '/admin/holds', { form: { name: `Recall ${tag}`, scope_type: 'person', person_id: String(bob.user.id) } });
+    const from = bob.events.length;
+    const done = await admin.req('POST', '/admin/recall', { form: [['ids', String(r1.data.id)], ['ids', String(r2.data.id)], ['ids', String(k1.data.id)], ['reason', `Posted by mistake ${tag}`]] });
+    must(done.status === 200 && done.data.removed === 3 && done.data.preserved === 1, 'recall: ' + done.text.slice(0, 200));
+    let heard = 0;
+    for (let i = 0; i < 100 && heard < 3; i++) { heard = bob.events.slice(from).filter((e) => e.name === 'message:delete' && e.payload.recalled && [r1, r2, k1].some((m) => m.data.id === e.payload.id)).length; if (heard < 3) await sleep(50); }
+    must(heard === 3, 'people were not told live: ' + heard);
+    const hist = await bob.get(`/api/channels/${general.id}/messages`);
+    const after = hist.data.messages.find((m) => m.id === r1.data.id);
+    must(after && after.deleted && after.body === '' && after.metadata && after.metadata.recalled, 'history: ' + JSON.stringify(after));
+    const kept = await admin.get(`/admin/holds/${hold.data.id}`);
+    must(kept.data.preserved.some((p) => p.message_id === k1.data.id && p.reason === 'recalled' && p.body === `wrongly shared ${tag} keep`), 'the held message was not kept');
+    await admin.req('POST', `/admin/holds/${hold.data.id}/release`, { form: {} });
+    const again = await admin.req('POST', '/admin/recall', { form: [['ids', String(r1.data.id)], ['reason', 'twice']] });
+    must(again.status === 200 && again.data.removed === 0, 'a removed message was removed again');
+    const log = (await admin.get('/admin/audit.csv?group=message')).text;
+    return must(log.includes('message.recall,') && log.includes(`Posted by mistake ${tag}`) && log.includes('message.recall_search'), 'recall not logged with its reason');
+  });
   section = 'AI assistant';
   await step('with no Gemini key the assistant answers gracefully, history and clear work', async () => {
     const r = await alice.post('/api/ai/messages', { body: 'hello assistant' });

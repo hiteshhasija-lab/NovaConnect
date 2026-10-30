@@ -845,3 +845,7 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 .webhook-new { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.6rem; margin: 0.6rem 0; display: grid; gap: 0.4rem; }
 .webhook-new input { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 .webhook-add { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+
+/* Admin: recall (views/admin-recall.ejs). */
+.recall-table td { vertical-align: top; }
+.recall-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85rem; max-width: 34rem; }

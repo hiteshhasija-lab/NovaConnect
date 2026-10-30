@@ -6,12 +6,12 @@ const { emitToChannel, emitToConversation, emitToUser } = require('../realtime')
 const { parseAnnouncement, announcementOf, metadataOf } = require('../announcement');
 const { editVersions } = require('../editHistory');
 const { audit } = require('../audit');
-const { holdsFor, preserveMessage } = require('../legalHold');
+const { deleteForEveryone } = require('../messageDelete');
 const { upload } = require('../upload');
 const { saveAttachment } = require('../attachments');
 const path = require('path');
 const { handleDecomTrigger } = require('../decomFlow');
-const { indexMessage, updateMessage, removeMessage } = require('../search');
+const { indexMessage, updateMessage } = require('../search');
 const { serveStored, driverOf, readObject, LOCAL_UPLOAD_ROOT } = require('../storage');
 
 const router = createAsyncRouter();
@@ -281,26 +281,13 @@ router.delete('/api/messages/:id', async (req, res) => {
   if (!canDelete) return res.status(403).json({ error: 'You can only delete your own messages.' });
 
   const place = ctx.channel ? '#' + ctx.channel.name : 'chat #' + ctx.conversation.id;
-  // On legal hold (src/legalHold.js): it goes for everyone as usual, but admins keep a copy first.
-  const holdIds = ctx.msg.deleted ? [] : await holdsFor(ctx.msg.id);
-  if (holdIds.length) await preserveMessage(ctx.msg, { holdIds, reason: 'deleted', byUserId: req.session.user.id, place });
-
-  await db.prepare("UPDATE messages SET deleted = 1, body = '', updated_at = ? WHERE id = ?").run(nowStr(), ctx.msg.id);
-  // Its earlier versions go with it: a deleted message's text is not kept anywhere else either
-  // (except the legal-hold copy above, which took them along).
-  await db.prepare('DELETE FROM message_edits WHERE message_id = ?').run(ctx.msg.id);
+  const holdIds = await deleteForEveryone(ctx.msg, { byUserId: req.session.user.id, place });
   // Who deleted which message where; not its text. by_moderator: an admin or team owner removed someone else's.
   await audit(req, 'message.delete', {
     targetType: 'message', targetId: ctx.msg.id, targetName: place,
     details: { author_id: ctx.msg.user_id, by_moderator: ctx.msg.user_id !== req.session.user.id, reply: !!ctx.msg.parent_message_id, ...(holdIds.length ? { preserved_for_holds: holdIds.join(',') } : {}) },
   });
-  const payload = { id: ctx.msg.id, parent_message_id: ctx.msg.parent_message_id };
-  const event = ctx.msg.parent_message_id ? 'thread:message:delete' : 'message:delete';
-  if (ctx.channel) emitToChannel(ctx.channel.id, event, payload);
-  else emitToConversation(ctx.conversation.id, event, payload);
   res.json({ ok: true });
-
-  removeMessage(ctx.msg.id).catch(() => {});
 });
 
 router.post('/api/messages/:id/pin', async (req, res) => {

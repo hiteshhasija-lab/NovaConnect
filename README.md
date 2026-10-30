@@ -159,6 +159,7 @@ own backup or versioning, in addition to the database dump.
 - **Audit log** — `/admin/audit`: sign-ins (failed ones too), user administration, team and channel changes, message deletions and retention, with who, when and from which address; filter by kind, person and dates, export as CSV (the export is logged too). Append-only; it never holds message text or passwords.
 - **Message retention** — `/admin/retention`: delete channel messages and chat messages after a chosen period (30 days to 7 years, separately). Off until an admin saves a policy; the page shows how many messages a new policy deletes before it is saved. Runs hourly (or "Run now"); deleted messages take their files, reactions and edit history with them, and cannot be restored except from a database backup taken before.
 - **Legal hold** — `/admin/holds`: hold a person (what they wrote and their chats), a channel or a chat while a case is open. Retention skips held messages; a held message someone deletes disappears for everyone but a copy (with its earlier versions and files) is kept for admins; a channel or team with held messages can't be deleted. Nobody is told; placing, releasing and viewing holds is in the audit log.
+- **Recall messages** — `/admin/recall`: find messages anywhere by person, channel or chat, dates and words, and remove the ticked ones for everyone with a reason. They show as "removed by an administrator"; a message on legal hold keeps a copy. Searches and removals are in the audit log with the reason.
 
 ## What's not here yet
 

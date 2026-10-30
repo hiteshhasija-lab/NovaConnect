@@ -342,13 +342,13 @@
     if (p && (p.last_read_message_id || 0) < payload.message_id) p.last_read_message_id = payload.message_id;
     renderSeenIndicator();
   });
-  socket.on('message:delete', (payload) => { markDeletedInList(payload.id); });
+  socket.on('message:delete', (payload) => { markDeletedInList(payload.id, payload.recalled); });
   socket.on('thread:message', (msg) => {
     bumpReplyCount(msg.parent_message_id, msg.id);
     if (state.threadOpenFor === msg.parent_message_id) appendThreadReply(msg);
   });
   socket.on('thread:message:update', (msg) => { if (state.threadOpenFor === msg.parent_message_id) patchThreadReply(msg); });
-  socket.on('thread:message:delete', (payload) => { if (state.threadOpenFor === payload.parent_message_id) markThreadReplyDeleted(payload.id); });
+  socket.on('thread:message:delete', (payload) => { if (state.threadOpenFor === payload.parent_message_id) markThreadReplyDeleted(payload.id, payload.recalled); });
   socket.on('reaction:update', (payload) => {
     updateReactionsInDom(payload.message_id, payload.reactions);
   });
@@ -1141,7 +1141,7 @@
   function renderMessageContent(row, msg, isThreadReply) {
     const box = row.querySelector('.msg-content');
     if (msg.deleted) {
-      box.innerHTML = '<div class="msg-deleted"><i class="bi bi-slash-circle me-1"></i>This message was deleted</div>';
+      box.innerHTML = deletedHtml(msg.metadata && msg.metadata.recalled);
       return;
     }
     let html = '';
@@ -1558,9 +1558,13 @@
     const idx = (state.active.messages || []).findIndex(m => m.id === msg.id);
     if (idx >= 0) state.active.messages[idx] = msg;
   }
-  function markDeletedInList(id) {
+  // "Removed by an administrator" when an admin recalled it (src/recall.js), else "This message was deleted".
+  function deletedHtml(recalled) {
+    return '<div class="msg-deleted"><i class="bi bi-slash-circle me-1"></i>' + (recalled ? 'This message was removed by an administrator' : 'This message was deleted') + '</div>';
+  }
+  function markDeletedInList(id, recalled) {
     const row = document.querySelector('.msg-row[data-id="' + id + '"]');
-    if (row) row.querySelector('.msg-content').innerHTML = '<div class="msg-deleted"><i class="bi bi-slash-circle me-1"></i>This message was deleted</div>';
+    if (row) row.querySelector('.msg-content').innerHTML = deletedHtml(recalled);
   }
   function updateReactionsInDom(messageId, reactions) {
     const row = document.querySelector('.msg-row[data-id="' + messageId + '"]') || document.querySelector('.thread-replies .msg-row[data-id="' + messageId + '"]') || document.querySelector('#threadParent .msg-row[data-id="' + messageId + '"]');
@@ -1986,9 +1990,9 @@
     const row = document.querySelector('#threadReplies .msg-row[data-id="' + msg.id + '"]');
     if (row) renderMessageContent(row, msg, true);
   }
-  function markThreadReplyDeleted(id) {
+  function markThreadReplyDeleted(id, recalled) {
     const row = document.querySelector('#threadReplies .msg-row[data-id="' + id + '"]');
-    if (row) row.querySelector('.msg-content').innerHTML = '<div class="msg-deleted"><i class="bi bi-slash-circle me-1"></i>This message was deleted</div>';
+    if (row) row.querySelector('.msg-content').innerHTML = deletedHtml(recalled);
   }
 
   const threadInput = document.getElementById('threadComposerInput');

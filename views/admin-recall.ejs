@@ -1,0 +1,63 @@
+<%- include('partials/head') %>
+<%- include('partials/topbar') %>
+<div class="container py-4 admin-recall">
+  <h1 class="h4"><i class="bi bi-eraser me-2"></i>Recall messages</h1>
+  <p class="mb-2"><a href="/admin/users">Users</a> · <a href="/admin/audit">Audit log</a> · <a href="/admin/retention">Message retention</a> · <a href="/admin/holds">Legal hold</a> · <a href="/admin/reports">Chat concerns</a></p>
+  <p class="text-muted small">Find messages anywhere and remove them for everyone, for example something posted in the wrong place or shared by mistake. They show as "Removed by an administrator"; messages on legal hold keep a copy for admins. Every search and removal is in the <a href="/admin/audit?group=message">audit log</a> with your reason (never the text). Times are UTC.</p>
+
+  <% if (notice) { %><div class="alert alert-success py-2 small" role="status"><%= notice %></div><% } %>
+  <% if (error) { %><div class="alert alert-danger py-2 small" role="alert"><%= error %></div><% } %>
+
+  <form class="row g-2 align-items-end mb-3" method="GET" action="/admin/recall">
+    <div class="col-sm-3">
+      <label class="form-label small" for="recallPerson">Written by</label>
+      <select class="form-select form-select-sm" id="recallPerson" name="person">
+        <option value="">Anyone</option>
+        <% people.forEach(p => { %><option value="<%= p.id %>" <%= applied.person === p.id ? 'selected' : '' %>><%= p.full_name %> (@<%= p.username %>)<%= p.active ? '' : ' · inactive' %></option><% }) %>
+      </select>
+    </div>
+    <div class="col-sm-3">
+      <label class="form-label small" for="recallChannel">In channel</label>
+      <select class="form-select form-select-sm" id="recallChannel" name="channel">
+        <option value="">Any</option>
+        <% channels.forEach(c => { %><option value="<%= c.id %>" <%= applied.channel === c.id ? 'selected' : '' %>><%= c.team || 'Team' %> › #<%= c.name %></option><% }) %>
+      </select>
+    </div>
+    <div class="col-sm-2"><label class="form-label small" for="recallChat">Or chat number</label><input class="form-control form-control-sm" id="recallChat" name="chat" inputmode="numeric" pattern="[0-9]*" value="<%= applied.chat || '' %>"></div>
+    <div class="col-sm-2"><label class="form-label small" for="recallFrom">From</label><input class="form-control form-control-sm" type="date" id="recallFrom" name="from" value="<%= applied.from || '' %>"></div>
+    <div class="col-sm-2"><label class="form-label small" for="recallTo">To</label><input class="form-control form-control-sm" type="date" id="recallTo" name="to" value="<%= applied.to || '' %>"></div>
+    <div class="col-sm-8"><label class="form-label small" for="recallWords">Containing</label><input class="form-control form-control-sm" id="recallWords" name="words" maxlength="200" value="<%= applied.words || '' %>"></div>
+    <div class="col-sm-4"><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search me-1"></i>Find messages</button></div>
+  </form>
+
+  <% if (searching && !error) { %>
+    <% if (!rows.length) { %><p>No messages match.</p><% } else { %>
+    <form method="POST" action="/admin/recall" id="recallForm">
+      <input type="hidden" name="query" value="<%= query %>">
+      <p class="small text-muted"><%= rows.length %> message(s)<%= rows.length === 200 ? ' (the newest 200; narrow the search to see others)' : '' %>, newest first.</p>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle recall-table">
+          <thead><tr><th scope="col"><input type="checkbox" id="recallAll" aria-label="Select all"></th><th scope="col">When</th><th scope="col">Who</th><th scope="col">Where</th><th scope="col">Message</th></tr></thead>
+          <tbody>
+          <% rows.forEach(r => { %>
+            <tr>
+              <td><input type="checkbox" class="recall-pick" name="ids" value="<%= r.id %>" aria-label="Select message <%= r.id %>"></td>
+              <td class="text-nowrap small"><%= r.created_at %></td>
+              <td class="small"><%= r.author || '—' %></td>
+              <td class="small"><%= r.channel_id ? (r.team_name || 'Team') + ' › #' + r.channel_name : 'Chat #' + r.conversation_id %><%= r.parent_message_id ? ' (reply)' : '' %></td>
+              <td class="recall-body"><%= r.body ? r.body.slice(0, 500) : '(no text: a file or card)' %><%= r.body && r.body.length > 500 ? '…' : '' %></td>
+            </tr>
+          <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-8"><label class="form-label small" for="recallReason">Reason (required; recorded in the audit log)</label><input class="form-control form-control-sm" id="recallReason" name="reason" maxlength="500" required></div>
+        <div class="col-sm-4"><button class="btn btn-danger btn-sm" type="submit"><i class="bi bi-eraser me-1"></i>Remove selected for everyone</button></div>
+      </div>
+    </form>
+    <% } %>
+  <% } %>
+</div>
+<script src="/js/admin-recall.js?v=1"></script>
+<%- include('partials/foot') %>

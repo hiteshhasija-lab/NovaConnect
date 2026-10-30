@@ -10,6 +10,8 @@ const { audit, ACTIONS, GROUPS, auditFilters, auditCsv } = require('../audit');
 const retention = require('../retention');
 const { removeMessages } = require('../search');
 const legalHold = require('../legalHold');
+const { recallFilters, recallIds } = require('../recall');
+const { deleteForEveryone } = require('../messageDelete');
 
 const router = createAsyncRouter();
 router.use(requireAuth, requireRole('admin'));
@@ -142,6 +144,54 @@ router.post('/retention/run', async (req, res) => {
   if (req.accepts(['html', 'json']) === 'json') return res.json(counts);
   const deleted = counts.channel_deleted + counts.channel_cleared + counts.chat_deleted + counts.chat_cleared + counts.meeting_chat_deleted;
   renderRetention(res, { notice: deleted ? `Deleted ${deleted} message(s) and ${counts.files_deleted} file(s) past the policy.` : 'Nothing was past the policy.' });
+});
+
+// ---------------- recall ----------------
+// Find messages anywhere and remove them for everyone, with a reason (src/recall.js).
+async function recallPage(req, res, { notice = null, error = null, status = 200, q = req.query } = {}) {
+  const people = await db.prepare('SELECT id, full_name, username, active FROM users ORDER BY full_name').all();
+  const channels = await db.prepare('SELECT c.id, c.name, t.name AS team FROM channels c LEFT JOIN teams t ON t.id = c.team_id ORDER BY t.name, c.name').all();
+  const searching = ['person', 'channel', 'chat', 'from', 'to', 'words'].some(k => q[k]);
+  let rows = [], applied = {};
+  if (searching) {
+    const f = recallFilters(q);
+    if (f.error) error = error || f.error;
+    else {
+      applied = f.applied;
+      rows = await db.prepare(`
+        SELECT m.id, m.body, m.metadata, m.created_at, m.channel_id, m.conversation_id, m.parent_message_id, u.full_name AS author, c.name AS channel_name, t.name AS team_name
+        FROM messages m LEFT JOIN users u ON u.id = m.user_id LEFT JOIN channels c ON c.id = m.channel_id LEFT JOIN teams t ON t.id = c.team_id
+        ${f.sql} ORDER BY m.id DESC LIMIT 200
+      `).all(...f.params);
+      await audit(req, 'message.recall_search', { details: { ...applied, found: rows.length } });
+    }
+  }
+  const query = new URLSearchParams(Object.entries(applied).map(([k, v]) => [k, String(v)])).toString();
+  res.status(status).render('admin-recall', { title: 'Recall messages', people, channels, rows, applied, searching, query, notice, error });
+}
+router.get('/recall', async (req, res) => recallPage(req, res));
+router.post('/recall', async (req, res) => {
+  const ids = recallIds(req.body.ids);
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  // The search the page was showing, so it is shown again (without what was just removed).
+  const q = Object.fromEntries(new URLSearchParams(typeof req.body.query === 'string' ? req.body.query : ''));
+  if (!ids.length) return recallPage(req, res, { error: 'Tick the messages to remove.', status: 400, q });
+  if (!reason || reason.length > 500) return recallPage(req, res, { error: 'Give a reason (up to 500 characters); it goes in the audit log.', status: 400, q });
+  const msgs = await db.prepare(`
+    SELECT m.*, c.name AS channel_name FROM messages m LEFT JOIN channels c ON c.id = m.channel_id WHERE m.id IN (${ids.map(() => '?').join(',')}) AND m.deleted = 0
+  `).all(...ids);
+  const kept = [];
+  for (const m of msgs) {
+    const place = m.channel_id ? '#' + m.channel_name : 'chat #' + m.conversation_id;
+    const holdIds = await deleteForEveryone(m, { byUserId: req.session.user.id, place, recalled: true });
+    if (holdIds.length) kept.push(m.id);
+  }
+  await audit(req, 'message.recall', { targetType: 'message', targetName: `${msgs.length} message(s)`, details: {
+    reason, removed: msgs.length, message_ids: msgs.map(m => m.id).join(','), authors: [...new Set(msgs.map(m => m.user_id))].join(','),
+    ...(kept.length ? { preserved_for_hold: kept.join(',') } : {}),
+  } });
+  if (req.accepts(['html', 'json']) === 'json') return res.json({ removed: msgs.length, preserved: kept.length });
+  recallPage(req, res, { notice: `Removed ${msgs.length} message(s) for everyone${kept.length ? `; ${kept.length} on legal hold kept a copy` : ''}.`, q });
 });
 
 // ---------------- legal hold ----------------
