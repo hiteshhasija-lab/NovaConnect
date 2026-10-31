@@ -1,6 +1,7 @@
 const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { actingFor } = require('../delegates');
 
 const router = createAsyncRouter();
 router.use(requireAuth);
@@ -20,8 +21,12 @@ router.get('/api/calendar/events', async (req, res) => {
   const start = req.query.start;
   const end = req.query.end;
   if (!start || !end) return res.status(400).json({ error: 'start and end are required (YYYY-MM-DD).' });
+  // ?for=<id>: the meetings of someone who made you their calendar delegate (src/delegates.js);
+  // their team events stay theirs.
+  const acting = await actingFor(req, req.query.for);
+  if (acting.error) return res.status(acting.status).json({ error: acting.error });
 
-  const rows = await db.prepare(`
+  const rows = !acting.self ? [] : await db.prepare(`
     SELECT e.*, t.name AS team_name, t.icon AS team_icon
     FROM calendar_events e
     JOIN teams t ON t.id = e.team_id
@@ -33,7 +38,7 @@ router.get('/api/calendar/events', async (req, res) => {
   const meetings = await db.prepare(`SELECT m.*, m.id AS meeting_id, 'Meeting' AS team_name, 'bi-calendar-event' AS team_icon, NULL AS team_id
     FROM meetings m JOIN meeting_attendees a ON a.meeting_id=m.id
     WHERE a.user_id=? AND a.response != 'declined' AND m.start_at < ? AND m.end_at >= ? ORDER BY m.start_at`)
-    .all(req.session.user.id, end + ' 23:59:59', start + ' 00:00:00');
+    .all(acting.id, end + ' 23:59:59', start + ' 00:00:00');
   res.json({ events: [...rows, ...meetings.map(m => ({...m,id:'meeting-'+m.id}))] });
 });
 

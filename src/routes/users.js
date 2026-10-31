@@ -2,6 +2,7 @@ const createAsyncRouter = require('../asyncRouter');
 const { db, nowStr } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { outOfOfficeSummary, isOutOfOffice, parseOutOfOffice } = require('../presenceRules');
+const { delegationOf, MAX_DELEGATES } = require('../delegates');
 const { touchPresence, emitToUser, devicesOf } = require('../realtime');
 
 const router = createAsyncRouter();
@@ -123,6 +124,41 @@ router.delete('/api/profile/vips/:userId', async (req, res) => {
   const list = await vipList(me);
   emitToUser(me, 'vips:changed', { ids: list.map(v => v.id) });
   res.json(list);
+});
+
+// Calendar delegates (the avatar menu's "Calendar delegates", src/delegates.js): who manages my
+// calendar, and whose calendars I manage. The person added is told; both sides' other tabs hear
+// 'delegates:changed'.
+router.get('/api/profile/delegates', async (req, res) => res.json(await delegationOf(req.session.user.id)));
+router.put('/api/profile/delegates/:userId', async (req, res) => {
+  const me = req.session.user.id, delegateId = Number(req.params.userId);
+  if (!Number.isSafeInteger(delegateId) || delegateId === me) return res.status(400).json({ error: 'Choose someone else.' });
+  const person = await db.prepare(`
+    SELECT id FROM users WHERE id = ? AND active = 1
+      AND id NOT IN (SELECT blocked_id FROM blocked_users WHERE blocker_id = ?)
+      AND id NOT IN (SELECT blocker_id FROM blocked_users WHERE blocked_id = ?)
+  `).get(delegateId, me, me);
+  if (!person) return res.status(404).json({ error: 'Person not found.' });
+  const count = await db.prepare('SELECT COUNT(*) AS c FROM calendar_delegates WHERE owner_id = ?').get(me);
+  const added = await db.prepare('INSERT INTO calendar_delegates (owner_id, delegate_id, created_at) SELECT ?, ?, ? WHERE ? < ? ON CONFLICT DO NOTHING')
+    .run(me, delegateId, nowStr(), Number(count.c), MAX_DELEGATES);
+  const already = await db.prepare('SELECT 1 FROM calendar_delegates WHERE owner_id = ? AND delegate_id = ?').get(me, delegateId);
+  if (!already) return res.status(400).json({ error: `You can have up to ${MAX_DELEGATES} calendar delegates.` });
+  if (added.changes) {
+    await db.prepare(`INSERT INTO notifications (user_id, type, actor_id, body) VALUES (?, 'delegate', ?, ?)`)
+      .run(delegateId, me, 'Made you their calendar delegate: you can see their meetings, send meetings for them and answer their invitations.');
+    emitToUser(delegateId, 'notification:new', {});
+    emitToUser(delegateId, 'delegates:changed', {});
+  }
+  emitToUser(me, 'delegates:changed', {});
+  res.json(await delegationOf(me));
+});
+router.delete('/api/profile/delegates/:userId', async (req, res) => {
+  const me = req.session.user.id, delegateId = Number(req.params.userId) || 0;
+  const removed = await db.prepare('DELETE FROM calendar_delegates WHERE owner_id = ? AND delegate_id = ?').run(me, delegateId);
+  if (removed.changes) emitToUser(delegateId, 'delegates:changed', {});
+  emitToUser(me, 'delegates:changed', {});
+  res.json(await delegationOf(me));
 });
 
 // Full profile-card payload — used when clicking someone's avatar/name anywhere in the app.

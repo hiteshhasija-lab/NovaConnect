@@ -22,7 +22,9 @@
     }
     const output = document.createElement('div'); for (const child of template.content.childNodes) output.appendChild(clean(child)); return output.innerHTML;
   }
-  window.createMeetings = function ({api, currentUser, onSaved}) {
+  // owners(): the people who made you their calendar delegate (src/delegates.js) — you may send a
+  // meeting as one of them, and open their meetings to answer or cancel them.
+  window.createMeetings = function ({api, currentUser, onSaved, owners = () => []}) {
     let dialog;
     function close() { if (dialog) { dialog.close(); dialog.remove(); dialog = null; } }
     function shell(title) {
@@ -31,10 +33,10 @@
       d.querySelector('h1').textContent=title; d.addEventListener('cancel',e=>{e.preventDefault();close();}); document.body.appendChild(d); dialog=d; d.showModal(); return d;
     }
     function button(text,primary,fn) { const b=document.createElement('button');b.type='button';b.className='chat-action'+(primary?' chat-action-primary':'');b.textContent=text;b.onclick=fn;return b; }
-    function open(active = {participants:[],conversation:{id:null}}) {
+    function open(active = {participants:[],conversation:{id:null}}, opts = {}) {
       const d=shell('New meeting'), content=d.querySelector('.meeting-content');
       content.innerHTML=`<form class="meeting-form">
-        <div class="meeting-zone"><label>Time zone: <select name="timezone" aria-label="Time zone"></select></label></div>
+        <div class="meeting-zone"><label>Time zone: <select name="timezone" aria-label="Time zone"></select></label><label class="meeting-organizer" hidden>Organizer: <select name="organizer" aria-label="Organizer"></select></label></div>
         <div class="meeting-fields">
           <p class="meeting-notice"><i class="bi bi-info-circle"></i> Invitations appear in NovaConnect Activity and the attendees’ calendars.</p>
           <label class="meeting-row"><i class="bi bi-pencil"></i><input name="title" placeholder="Add title" aria-label="Meeting title" maxlength="200" required autofocus></label>
@@ -49,6 +51,14 @@
         </div>
       </form>`;
       const form=content.querySelector('form'), f=form.elements, err=content.querySelector('.meeting-error');
+      // Calendar delegates: send as yourself or as someone whose calendar you manage.
+      const ownerList=owners();
+      if(ownerList.length){
+        content.querySelector('.meeting-organizer').hidden=false;
+        [{id:currentUser.id,full_name:'Me'},...ownerList].forEach(o=>{const opt=document.createElement('option');opt.value=o.id;opt.textContent=o.id===currentUser.id?'Me':o.full_name+' (as their delegate)';f.organizer.appendChild(opt);});
+        if(opts.organizerId&&ownerList.some(o=>o.id===Number(opts.organizerId)))f.organizer.value=String(opts.organizerId);
+      }
+      const onBehalf=()=>{const v=f.organizer&&Number(f.organizer.value);return v&&v!==currentUser.id?v:undefined;};
       const selected=new Map(active.participants.filter(u=>u.id!==currentUser.id).map(u=>[u.id,u]));
       const zone=Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const zones=[...new Set([zone,'UTC','America/Chicago',...(Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['America/New_York','America/Los_Angeles','Europe/London','Asia/Kolkata'])])];
@@ -100,7 +110,7 @@
       function timeFields() {
         let endDate=f.end_date.value;
         if(f.all_day.checked){const x=new Date(endDate+'T12:00');x.setDate(x.getDate()+1);endDate=date(x);}
-        return {attendee_ids:[...selected.keys()],timezone:f.timezone.value,start_local:f.start_date.value+'T'+(f.all_day.checked?'00:00':f.start_time.value),end_local:endDate+'T'+(f.all_day.checked?'00:00':f.end_time.value),all_day:f.all_day.checked,recurrence:f.recurrence.value,count:Number(f.count.value)};
+        return {on_behalf_of:onBehalf(),attendee_ids:[...selected.keys()],timezone:f.timezone.value,start_local:f.start_date.value+'T'+(f.all_day.checked?'00:00':f.start_time.value),end_local:endDate+'T'+(f.all_day.checked?'00:00':f.end_time.value),all_day:f.all_day.checked,recurrence:f.recurrence.value,count:Number(f.count.value)};
       }
       // Conflict warnings (src/meetingConflicts.js): who is already busy then. Never blocks sending.
       const conflictBox=content.querySelector('.meeting-conflicts');let conflictGen=0,conflictTimer;
@@ -126,7 +136,7 @@
           conflictBox.replaceChildren(head,list,note);conflictBox.hidden=false;
         },400);
       }
-      ['start_date','end_date','start_time','end_time','all_day','timezone','recurrence','count'].forEach(n=>f[n].addEventListener('change',scheduleConflictCheck));
+      ['start_date','end_date','start_time','end_time','all_day','timezone','recurrence','count','organizer'].forEach(n=>f[n]&&f[n].addEventListener('change',scheduleConflictCheck));
       onPeopleChanged=scheduleConflictCheck;
       scheduleConflictCheck();
       const send=button('Send',true,()=>form.requestSubmit());d.querySelector('.meeting-header-actions').append(send,button('Close',false,close));
@@ -139,14 +149,18 @@
       };
       f.title.focus();
     }
-    async function show(id) {
+    // opts.forUser: open it as someone whose calendar you manage (answer or cancel it for them).
+    async function show(id, opts = {}) {
+      const forUser=opts.forUser&&Number(opts.forUser)!==currentUser.id?Number(opts.forUser):null;
+      const forQuery=forUser?'?for='+forUser:'';
       const d=shell('Meeting details');const content=d.querySelector('.meeting-content');content.textContent='Loading…';d.querySelector('.meeting-header-actions').append(button('Close',false,close));
       try {
-        const {meeting:m,attendees,conflicts}=await api('/api/meetings/'+id);if(dialog!==d)return;
+        const {meeting:m,attendees,conflicts}=await api('/api/meetings/'+id+forQuery);if(dialog!==d)return;
         content.replaceChildren();const body=document.createElement('div');body.className='meeting-fields';
         const h=document.createElement('h2');h.textContent=m.title;body.appendChild(h);
         if(m.meet_code&&/^[a-f0-9]{24}$/.test(m.meet_code)){const join=document.createElement('a');join.className='chat-action chat-action-primary';join.textContent='Join meeting';join.href='/app/meet/'+m.meet_code;body.append(join);}
-        for(const text of [m.local_start.replace('T',' ')+' → '+m.local_end.replace('T',' ')+' ('+m.timezone+')', 'Organizer: '+m.organizer, 'Location: '+(m.location||'Not specified'), 'Show as: '+(m.show_as||'busy'), 'Attendees: '+attendees.map(a=>a.full_name+' — '+a.response).join(', ')]) {const p=document.createElement('p');p.textContent=text;body.appendChild(p);}
+        if(forUser){const who=(owners().find(o=>o.id===forUser)||{}).full_name||'them';const note=document.createElement('p');note.className='meeting-notice';note.textContent='You are viewing this as '+who+'’s calendar delegate: answers and cancelling are for them.';body.appendChild(note);}
+        for(const text of [m.local_start.replace('T',' ')+' → '+m.local_end.replace('T',' ')+' ('+m.timezone+')', 'Organizer: '+m.organizer+(m.scheduled_by_name?' (sent by '+m.scheduled_by_name+')':''), 'Location: '+(m.location||'Not specified'), 'Show as: '+(m.show_as||'busy'), 'Attendees: '+attendees.map(a=>a.full_name+' — '+a.response).join(', ')]) {const p=document.createElement('p');p.textContent=text;body.appendChild(p);}
         const details=document.createElement('div');details.className='meeting-richtext';details.innerHTML=safeDetails(m.details);body.appendChild(details);
         if(conflicts&&conflicts.length){
           const warn=document.createElement('div');warn.className='meeting-conflicts';
@@ -155,8 +169,9 @@
           body.appendChild(warn);
         }
         const feedback=document.createElement('p');feedback.setAttribute('role','status');body.appendChild(feedback);
-        if(m.created_by===currentUser.id)body.appendChild(button('Cancel this meeting',false,async()=>{if(!confirm('Cancel this meeting for all attendees?'))return;try{await api('/api/meetings/'+id,{method:'DELETE'});close();onSaved();}catch(e){feedback.textContent=e.message;}}));
-        else if(m.request_rsvp) for(const response of ['accepted','tentative','declined'])body.appendChild(button(response[0].toUpperCase()+response.slice(1),false,async()=>{try{await api('/api/meetings/'+id+'/response',{method:'POST',body:{response}});feedback.textContent='Response saved: '+response;onSaved();}catch(e){feedback.textContent=e.message;}}));
+        const actingId=forUser||currentUser.id;
+        if(m.created_by===actingId)body.appendChild(button('Cancel this meeting',false,async()=>{if(!confirm('Cancel this meeting for all attendees?'))return;try{await api('/api/meetings/'+id+forQuery,{method:'DELETE'});close();onSaved();}catch(e){feedback.textContent=e.message;}}));
+        else if(m.request_rsvp) for(const response of ['accepted','tentative','declined'])body.appendChild(button(response[0].toUpperCase()+response.slice(1),false,async()=>{try{await api('/api/meetings/'+id+'/response',{method:'POST',body:{response,on_behalf_of:forUser||undefined}});feedback.textContent='Response saved: '+response;onSaved();}catch(e){feedback.textContent=e.message;}}));
         content.appendChild(body);
       }catch(e){if(dialog===d)content.textContent=e.message;}
     }

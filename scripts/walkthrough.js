@@ -697,6 +697,42 @@ async function register(c, username, fullName, password) {
     for (const m of [busy, free, second]) await alice.del(`/api/meetings/${m.data.id}`);
     return must((await plan(alice, [bob.user.id], '10:00', '11:00')).data.conflicts.length === 0, 'cancelled meetings still counted');
   });
+  await step('calendar delegates: a delegate sees the calendar, sends a meeting as the owner, answers and cancels for them; the owner is told; others refused; removal ends it', async () => {
+    const day = new Date(Date.now() + 28 * 86400000).toISOString().slice(0, 10);
+    const meeting = (who, title, attendees, extra = {}) => who.post('/api/meetings', { title, attendee_ids: attendees, timezone: 'UTC', start_local: `${day}T14:00`, end_local: `${day}T14:30`, all_day: false, recurrence: 'none', count: 1, request_rsvp: true, show_as: 'busy', location: '', details: '', conversation_id: null, ...extra });
+    must((await alice.put(`/api/profile/delegates/${alice.user.id}`, {})).status === 400, 'made herself a delegate');
+    const from = bob.events.length;
+    const add = await alice.put(`/api/profile/delegates/${bob.user.id}`, {});
+    must(add.status === 200 && add.data.delegates.some((d) => d.id === bob.user.id), 'add: ' + add.text.slice(0, 160));
+    await bob.waitFor('delegates:changed');
+    must(bob.events.slice(from).some((e) => e.name === 'notification:new'), 'the delegate was not told');
+    must((await bob.get('/api/profile/delegates')).data.owners.some((o) => o.id === alice.user.id), "bob doesn't see alice's calendar in his list");
+    const range = `start=${day}&end=${day.slice(0, 8)}${String(Number(day.slice(8)) + 1).padStart(2, '0')}`;
+    must((await carol.get(`/api/calendar/events?for=${alice.user.id}&start=${day}&end=${day}`)).status === 403, "carol opened alice's calendar");
+    // bob sends a meeting as alice
+    const sent = await meeting(bob, `For alice ${tag}`, [carol.user.id], { on_behalf_of: alice.user.id });
+    must(sent.status === 201, 'send as alice: ' + sent.text.slice(0, 160));
+    const asAlice = await alice.get(`/api/meetings/${sent.data.id}`);
+    must(asAlice.status === 200 && asAlice.data.meeting.created_by === alice.user.id && asAlice.data.meeting.scheduled_by === bob.user.id && asAlice.data.meeting.response === 'accepted', 'organizer: ' + JSON.stringify(asAlice.data.meeting).slice(0, 200));
+    const notes = await alice.get('/api/notifications');
+    must(notes.data.notifications.some((n) => n.type === 'delegate' && n.meeting_id === sent.data.id), 'alice was not told what her delegate sent');
+    const cal = await bob.get(`/api/calendar/events?for=${alice.user.id}&start=${day}&end=${day}`);
+    must(cal.status === 200 && cal.data.events.some((e) => e.meeting_id === sent.data.id), "the meeting is not on alice's calendar for bob: " + cal.text.slice(0, 160));
+    must((await meeting(carol, 'sneaky', [bob.user.id], { on_behalf_of: alice.user.id })).status === 403, 'carol sent a meeting as alice');
+    // carol invites alice; bob accepts for her
+    const invite = await meeting(carol, `Invite alice ${tag}`, [alice.user.id]);
+    const viewFor = await bob.get(`/api/meetings/${invite.data.id}?for=${alice.user.id}`);
+    must(viewFor.status === 200 && viewFor.data.meeting.viewing_for === alice.user.id, 'bob cannot open the invitation for alice');
+    must((await bob.post(`/api/meetings/${invite.data.id}/response`, { response: 'accepted', on_behalf_of: alice.user.id })).status === 200, 'answer for alice');
+    must((await alice.get(`/api/meetings/${invite.data.id}`)).data.meeting.response === 'accepted', "alice's answer did not change");
+    must((await carol.post(`/api/meetings/${invite.data.id}/response`, { response: 'declined', on_behalf_of: alice.user.id })).status === 403, 'carol answered for alice');
+    // bob cancels the meeting he sent as alice
+    must((await bob.del(`/api/meetings/${sent.data.id}?for=${alice.user.id}`)).status === 200, 'cancel for alice');
+    await carol.del(`/api/meetings/${invite.data.id}`);
+    const off = await alice.del(`/api/profile/delegates/${bob.user.id}`);
+    must(off.status === 200 && off.data.delegates.length === 0, 'remove');
+    return must((await bob.get(`/api/calendar/events?for=${alice.user.id}&${range}`)).status === 403, 'a removed delegate still sees the calendar');
+  });
   await step('meeting link: create, resolve by code, page renders for a member', async () => {
     const r = await alice.post('/api/meet/links', { title: 'Quick call' });
     must(r.status === 200 || r.status === 201, r.text.slice(0, 100));

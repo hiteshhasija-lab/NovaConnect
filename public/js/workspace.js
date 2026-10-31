@@ -7,6 +7,8 @@
 
   const state = {
     vips: new Set(),
+    calendarOwners: [],   // people whose calendars I manage (calendar delegates)
+    calendarFor: null,    // whose calendar the calendar view shows (null: mine)
     view: NC.active?.type === 'dm' ? 'chat' : 'teams',
     teams: NC.teams || [],
     conversations: NC.conversations || [],
@@ -274,7 +276,7 @@
   })();
   // Calls in 1:1 chats, group chats and channels (all through the SFU); one at a time.
   const groupCalls = window.createNovaGroupCalls(socket, showToastError);
-  const meetings = window.createMeetings({ api, currentUser: NC.currentUser, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); if (state.view === 'meet') meetHub.refresh(); api('/api/dm').then(list=>{state.conversations=list;if(state.view==='chat')renderSidebar();}).catch(showToastError); } });
+  const meetings = window.createMeetings({ api, currentUser: NC.currentUser, owners: () => state.calendarOwners, onSaved: () => { if (state.view === 'calendar') renderCalendarGrid(); if (state.view === 'meet') meetHub.refresh(); api('/api/dm').then(list=>{state.conversations=list;if(state.view==='chat')renderSidebar();}).catch(showToastError); } });
   const meetHub=createMeetHub({api,meetings,escapeHtml,calendar:()=>document.getElementById('railCalendar').click()});
   const chatHeader = window.createChatHeader({ api, currentUser: NC.currentUser, groupCalls, navigate: navigateToDm, preferences: saveChatPreferences, removed: removeChatFromView, meetings, notify: showToastError });
   const chatList=createChatList({escapeHtml,avatarHtml,currentUser:NC.currentUser,presence:id=>state.presence[id],onOpen:navigateToDm,onNew:openNewChatModal,onMeet:()=>document.getElementById('railMeet').click(),onMenu:async(button,c)=>{try{const active=await api('/api/dm/'+c.id);if(button.isConnected)chatHeader.menu(button,active);}catch(e){showToastError(e)}}});
@@ -815,7 +817,7 @@
         const titleLine = isTeamJoinOutcome
           ? escapeHtml(n.body || '')
           : '<strong>' + escapeHtml(n.actor_name || 'Someone') + '</strong>' +
-            (n.type === 'meeting' ? ' invited you to a meeting' : isJoinRequest ? ' asked to join ' + (n.team_name ? '<strong>' + escapeHtml(n.team_name) + '</strong>' : 'a team') : ' mentioned you') +
+            (n.type === 'meeting' ? ' invited you to a meeting' : n.type === 'delegate' ? ' · calendar delegate' : isJoinRequest ? ' asked to join ' + (n.team_name ? '<strong>' + escapeHtml(n.team_name) + '</strong>' : 'a team') : ' mentioned you') +
             (n.channel_name ? ' in #' + escapeHtml(n.channel_name) : '');
         const item = el(
           '<div class="activity-item ' + (n.is_read ? '' : 'unread') + '">' +
@@ -844,7 +846,7 @@
           api('/api/notifications/' + n.id + '/read', { method: 'POST' }).then(loadActivity);
           if (n.type === 'team_join_request' && n.team_id) { document.getElementById('railTeams').click(); openMembersModal(n.team_id); }
           else if (n.channel_id) navigateToChannel(n.channel_id);
-          else if (n.type === 'meeting' && n.meeting_id) meetings.show(n.meeting_id);
+          else if ((n.type === 'meeting' || n.type === 'delegate') && n.meeting_id) meetings.show(n.meeting_id);
           else if (n.conversation_id) navigateToDm(n.conversation_id);
         });
         body.appendChild(item);
@@ -2247,6 +2249,13 @@
     renderCalendarGrid();
   });
   document.getElementById('calNewEventBtn').addEventListener('click', () => openEventModal());
+  // A meeting from the calendar: organized by whoever's calendar is shown (yours, or as a delegate).
+  document.getElementById('calNewMeetingBtn').addEventListener('click', () => meetings.open(undefined, { organizerId: state.calendarFor }));
+  document.getElementById('calOwnerSelect').addEventListener('change', (e) => {
+    state.calendarFor = Number(e.target.value) || null;
+    document.getElementById('calNewEventBtn').classList.toggle('d-none', !!state.calendarFor);   // team events stay your own
+    renderCalendarGrid();
+  });
 
   function renderCalendarGrid() {
     const month = state.calendarMonth;
@@ -2257,7 +2266,7 @@
     const gridEnd = new Date(gridStart);
     gridEnd.setDate(gridEnd.getDate() + 42);
 
-    api('/api/calendar/events?start=' + ymd(gridStart) + '&end=' + ymd(gridEnd)).then(({ events }) => {
+    api('/api/calendar/events?start=' + ymd(gridStart) + '&end=' + ymd(gridEnd) + (state.calendarFor ? '&for=' + state.calendarFor : '')).then(({ events }) => {
       state.calendarEvents = events;
       paintCalendarGrid(gridStart, month);
     }).catch(showToastError);
@@ -2318,7 +2327,7 @@
     state.teams.forEach(t => select.appendChild(el('<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>')));
   }
   function openEventModal(ev, dateKey) {
-    if (ev?.meeting_id) { meetings.show(ev.meeting_id); return; }
+    if (ev?.meeting_id) { meetings.show(ev.meeting_id, { forUser: state.calendarFor }); return; }
     populateEventTeamSelect();
     document.getElementById('eventFormError').classList.add('d-none');
     eventForm.reset();
@@ -2594,6 +2603,56 @@
     notice.innerHTML = away.map(p => '<div><i class="bi bi-airplane" aria-hidden="true"></i> <strong>' + escapeHtml(p.full_name) + '</strong> is out of office' + escapeHtml(oooUntilLabel(p.out_of_office.until)) + '.' +
       (p.out_of_office.message ? '<div class="ooo-notice-message">' + escapeHtml(p.out_of_office.message) + '</div>' : '') + '</div>').join('');
   }
+
+  // ---------------- calendar delegates ----------------
+  // The avatar menu's "Calendar delegates" (src/delegates.js): who manages my calendar (add, remove)
+  // and whose calendars I manage, which also fills the calendar's "Calendar of" picker.
+  function applyDelegation({ delegates, owners }) {
+    state.calendarOwners = owners;
+    const pick = document.getElementById('calOwnerSelect');
+    pick.innerHTML = '<option value="">Mine</option>' + owners.map(o => '<option value="' + o.id + '">' + escapeHtml(o.full_name) + '</option>').join('');
+    if (state.calendarFor && !owners.some(o => o.id === state.calendarFor)) { state.calendarFor = null; if (state.view === 'calendar') renderCalendarGrid(); }
+    pick.value = state.calendarFor ? String(state.calendarFor) : '';
+    document.getElementById('calOwnerLabel').classList.toggle('d-none', !owners.length);
+    document.getElementById('calNewEventBtn').classList.toggle('d-none', !!state.calendarFor);
+    const list = document.getElementById('delegateList'), mine = document.getElementById('delegateOwnersList');
+    list.innerHTML = delegates.length ? '' : '<p class="text-muted small mb-0">No delegates.</p>';
+    delegates.forEach(p => {
+      const row = el('<div class="vip-row">' + avatarHtml(p) + '<span class="vip-name"></span><button type="button" class="btn btn-sm btn-outline-secondary">Remove</button></div>');
+      row.querySelector('.vip-name').textContent = p.full_name + (p.title ? ' · ' + p.title : '');
+      row.querySelector('button').addEventListener('click', () => api('/api/profile/delegates/' + p.id, { method: 'DELETE' }).then(applyDelegation).catch(showToastError));
+      list.appendChild(row);
+    });
+    mine.innerHTML = owners.length ? '' : '<p class="text-muted small mb-0">Nobody has made you their delegate.</p>';
+    owners.forEach(p => {
+      const row = el('<div class="vip-row">' + avatarHtml(p) + '<span class="vip-name"></span></div>');
+      row.querySelector('.vip-name').textContent = p.full_name + ' (open it from the calendar’s "Calendar of")';
+      mine.appendChild(row);
+    });
+  }
+  const refreshDelegation = () => api('/api/profile/delegates').then(applyDelegation).catch(() => {});
+  socket.on('delegates:changed', refreshDelegation);
+  const delegateSearch = document.getElementById('delegateSearch'), delegateResults = document.getElementById('delegateResults');
+  let delegateTimer = null;
+  delegateSearch.addEventListener('input', () => {
+    clearTimeout(delegateTimer);
+    const q = delegateSearch.value.trim();
+    if (!q) { delegateResults.innerHTML = ''; return; }
+    delegateTimer = setTimeout(() => api('/api/users/search?q=' + encodeURIComponent(q)).then(people => {
+      if (delegateSearch.value.trim() !== q) return;
+      delegateResults.innerHTML = '';
+      people.slice(0, 6).forEach(p => {
+        const b = el('<button type="button" class="vip-result">' + avatarHtml(p) + '<span></span><i class="bi bi-person-plus ms-auto" aria-hidden="true"></i></button>');
+        b.querySelector('span').textContent = p.full_name + ' (@' + p.username + ')';
+        b.setAttribute('aria-label', 'Make ' + p.full_name + ' a calendar delegate');
+        b.addEventListener('click', () => api('/api/profile/delegates/' + p.id, { method: 'PUT' }).then(d => { applyDelegation(d); delegateSearch.value = ''; delegateResults.innerHTML = ''; }).catch(showToastError));
+        delegateResults.appendChild(b);
+      });
+      if (!delegateResults.children.length) delegateResults.innerHTML = '<p class="text-muted small mb-0">No one matches.</p>';
+    }).catch(showToastError), 250);
+  });
+  document.getElementById('delegatesModal').addEventListener('show.bs.modal', () => { delegateSearch.value = ''; delegateResults.innerHTML = ''; refreshDelegation(); });
+  refreshDelegation();
 
   // ---------------- VIP people ----------------
   // The avatar menu's "VIP people" dialog: your list, a search to add someone, remove buttons.

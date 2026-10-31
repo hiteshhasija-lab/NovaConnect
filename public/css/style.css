@@ -867,3 +867,9 @@ button.msg-edited:hover, button.msg-edited:focus-visible { color: var(--brand, #
 
 /* Per-device presence on the profile card (profile-card.js). */
 .profile-card-devices { font-size: 0.8rem; color: var(--text-muted); margin: -0.4rem 0 0.8rem; }
+
+/* Calendar delegates (calendar toolbar; workspace.js applyDelegation). */
+.calendar-owner { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; margin-left: 0.75rem; }
+.calendar-owner select { width: auto; }
+.calendar-actions { display: flex; gap: 0.5rem; }
+.meeting-organizer { margin-left: 1rem; }
